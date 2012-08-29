@@ -1,0 +1,9 @@
+# -*- tuareg -*-
+
+type f = float
+
+let () =
+  let x = 5. in
+  let x = (x:f) in
+  let y = x+3 in
+  ()
