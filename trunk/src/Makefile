@@ -7,9 +7,8 @@ ANNOTATE = yes
 DOC_FILES = lang.ml
 OCAMLOPT = ocamlopt.opt
 OCAMLFLAGS = -w -8-23
-
-INCDIRS += ../../../prog/savonet/ocaml-mm/src +pulseaudio ../../../prog/savonet/ocaml-mm/external/pulseaudio backends/ocaml
-LIBS += bigarray unix mm pulseaudio mm.pulseaudio samlib
+INCDIRS = +pulseaudio backends/ocaml
+LIBS = pulseaudio samlib
 
 test: all
 	OCAMLRUNPARAM=b ./saml test.saml

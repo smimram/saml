@@ -124,7 +124,7 @@ let array_play =
       match !writer with
       | Some w -> w
       | None ->
-        let w = new MMPulseaudio.writer "SAML" "sound" channels sr in
+        let w = new Samlib.pulseaudio_writer "SAML" "sound" channels sr in
         (* let w = new Audio.IO.Writer.to_wav_file channels sr "output.wav" in *)
         writer := Some w;
         w

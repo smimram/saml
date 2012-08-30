@@ -35,9 +35,31 @@ let output writer (f : float stream) =
     writer#write cbuf 0 buflen
   done
 
-let play sr f = output (new MMPulseaudio.writer "SAML" "sound" !channels sr) f
+class pulseaudio_writer client_name stream_name channels rate =
+object (self)
+  val dev =
+    let sample =
+      {
+        Pulseaudio.
+        sample_format = Pulseaudio.Sample_format_float32le;
+        sample_rate = rate;
+        sample_chans = channels;
+      }
+    in
+    Pulseaudio.Simple.create ~client_name ~dir:Pulseaudio.Dir_playback ~stream_name ~sample ()
 
-let save fname sr f = output (new Audio.IO.Writer.to_wav_file !channels sr fname) f
+  method write buf ofs len =
+    Pulseaudio.Simple.write dev buf ofs len
+
+  method close =
+    Pulseaudio.Simple.free dev
+end
+
+let play sr f = output (new pulseaudio_writer "SAML" "sound" !channels sr) f
+
+let save fname sr f =
+(* output (new Audio.IO.Writer.to_wav_file !channels sr fname) f *)
+  assert false
 
 let equals x y = compare x y = 0
 
