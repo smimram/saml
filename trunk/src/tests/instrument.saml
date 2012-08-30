@@ -36,7 +36,7 @@ let adsr(a,d,s,r,x) =
     freq = fun (x) -> f := x,
     gain = fun (x) -> g := x,
     activate = fun (x) -> let x = (x:unit) in (),
-(* fun (x) -> x.activate(); act := true, *)
+    (* fun (x) -> x.activate(); act := true, *)
     is_active = fun () -> !act
   )
 
@@ -52,12 +52,11 @@ let play(s) =
     let buf = array.create(buflen,0.) in
     let t = ref 0. in
     let f = ref 440. in
-    (* TODO: there is no more problem if we rename i to k... *)
     for i = 0 to buflen-1 do
       buf[i] := run();
       freq(!t*440);
       t := !t + dt
-        (* if duration >= 0 then on(!t >= duration, release) *)
+      (* if duration >= 0 then on(!t >= duration, release) *)
     done;
     array.play(buf)
   in

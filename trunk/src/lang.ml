@@ -1249,6 +1249,7 @@ module Expr = struct
         | Cst _ | External _ | Proc _ as e -> e
         | Module _ -> assert false
         | For (i,b,e,f) ->
+          let ss = List.remove_all_assoc i ss in
           let s = substs ss in
           For (i, s b, s e, s f)
       in
