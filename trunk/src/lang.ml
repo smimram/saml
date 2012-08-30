@@ -5,6 +5,9 @@
 (* TODO: think about partial evaluation *)
 (* TODO: functions can be curryfied as usual now that we have records with
    optional types. *)
+(* TODO: for i = a to b do e done should be compiled to for(a,b,fun(i)->e)
+   otherwise we get nasty capture of variables... *)
+(* TODO: in records we should let ... otherwise {x = !r} does get propagated *)
 
 open Stdlib
 open Common
@@ -837,7 +840,9 @@ module Expr = struct
         in
         let t =
           if List.for_all (fun (l,(t,o)) -> o) !u then v
-          else T.arr !u v
+          else
+            (* T.arr !u v *)
+            failwith "Partial application."
         in
         let e =
           let ret () = ret (App (e, a)) t in
@@ -1007,7 +1012,7 @@ module Expr = struct
   (** Emit the programs, optionally allowing free variables and generating a
       state. *)
   let rec emit ~subst ~state ?(free_vars=false) ?prog expr =
-    Printf.printf "emit: %s\n\n" (to_string expr);
+    (* Printf.printf "emit: %s\n\n" (to_string expr); *)
     let rec aux ~subst ~state ~free_vars prog expr =
       (* Printf.printf "emit: %s\n\n" (to_string expr); *)
       let emit ?(subst=subst) ~state prog expr = aux ~subst ~state ~free_vars prog expr in
@@ -1084,6 +1089,7 @@ module Expr = struct
         | Record [] ->
           state, prog, B.unit
         | Record r ->
+          (* Printf.printf "emit record: %s : %s\n%!" (to_string expr) (T.to_string (typ expr)); *)
           (* Records are handled in a (very) special way: functional fields are
              actually function declarations. If there is only one data field left
              then the return value is not a 1-uple but the value itself. *)
