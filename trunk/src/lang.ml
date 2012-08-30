@@ -5,8 +5,6 @@
 (* TODO: think about partial evaluation *)
 (* TODO: functions can be curryfied as usual now that we have records with
    optional types. *)
-(* TODO: for i = a to b do e done should be compiled to for(a,b,fun(i)->e)
-   otherwise we get nasty capture of variables... *)
 (* TODO: in records we should let ... otherwise {x = !r} does get propagated *)
 
 open Stdlib
@@ -695,6 +693,10 @@ module Expr = struct
     (* e *)
     (* in *)
 
+    let type_error e s =
+      Printf.ksprintf (fun s -> annot e; raise (Typing (e.pos, s))) s
+    in
+
     (** Try to coerce e into a value of type t. *)
     let coerce e t =
       let is_unary_record t =
@@ -749,7 +751,7 @@ module Expr = struct
       with
       | Exit ->
         let te = typ e in
-        raise (Typing (e.pos, Printf.sprintf "This expression has type %s but expected to be of type %s." (T.to_string te) (T.to_string t)))
+        type_error e "This expression has type %s but expected to be of type %s." (T.to_string te) (T.to_string t)
     in
 
     let ret desc t = { e with desc = desc; t = Some t } in
@@ -769,8 +771,7 @@ module Expr = struct
               let t = if T.is_arr t then T.generalize t else t in
               ret desc t
             with
-            | Not_found ->
-              raise (Typing (e.pos, Printf.sprintf "Unbound value %s." x))
+            | Not_found -> type_error e "Unbound value %s." x
           )
         | Fun (a, e) ->
           let a =
@@ -817,7 +818,7 @@ module Expr = struct
             | _ -> ()
           );
           if not (T.is_arr t) then
-            raise (Typing (e.pos, Printf.sprintf "This expression of type %s is not a function; it cannot be applied." (T.to_string t)));
+            type_error e "This expression of type %s is not a function; it cannot be applied." (T.to_string t);
           let u,v = T.split_arr t in
           let u = ref u in
           let expr = e in
@@ -830,9 +831,9 @@ module Expr = struct
                   with
                   | Not_found ->
                     if l = "" then
-                      raise (Typing (expr.pos, Printf.sprintf "The expression has type %s. It cannot be applied to this many arguments." (T.to_string t)))
+                      type_error expr "The expression has type %s. It cannot be applied to this many arguments." (T.to_string t)
                     else
-                      raise (Typing (expr.pos, Printf.sprintf "The function applied to this argument has type %s. This argument cannot be applied with label %s." (T.to_string t) l))
+                      type_error expr "The function applied to this argument has type %s. This argument cannot be applied with label %s." (T.to_string t) l;
                 in
                 u := List.remove_assoc l !u;
                 let e = coerce e tu in
@@ -880,7 +881,7 @@ module Expr = struct
             if not ((typ def) <: t) then
               failwith "ERROR (TODO) in let rec";
             if not (T.free_vars (typ def) = []) then
-              raise (Typing (l.def.pos, Printf.sprintf "Expression has type %s but free variables are not allowed in recursive definitions." (T.to_string (typ def))));
+              type_error l.def "Expression has type %s but free variables are not allowed in recursive definitions." (T.to_string (typ def));
             let env = (x,typ def)::(List.tl env) in
             let body = infer_type env l.body in
             ret (Let { l with def; body }) (typ body)
@@ -919,7 +920,7 @@ module Expr = struct
         | Ref e ->
           let e = infer_type env e in
           if T.is_arr (typ e) then
-            raise (Typing (e.pos, Printf.sprintf "This expression has type %s but references are only allowed on data types." (T.to_string (typ e))));
+            type_error e "This expression has type %s but references are only allowed on data types." (T.to_string (typ e));
           let t = typ e in
           let t = T.ref t in
           ret (Ref e) t
@@ -933,7 +934,7 @@ module Expr = struct
                 let e =infer_type env e in
                 let te = typ e in
                 if not (t <: te) then
-                  raise (Typing (e.pos, Printf.sprintf "This expression has type %s but %s was expected." (T.to_string te) (T.to_string t)));
+                  type_error e "This expression has type %s but %s was expected." (T.to_string te) (T.to_string t);
                 e
               ) a
           in
@@ -958,7 +959,7 @@ module Expr = struct
           let r = infer_type env r in
           let tr = typ r in
           if not (tr <: (T.record ~row:true [])) then
-            raise (Typing (r.pos, Printf.sprintf "This expression has type %s but expected to be a record." (T.to_string (typ r))));
+            type_error r "This expression has type %s but expected to be a record." (T.to_string (typ r));
           let t = T.fresh_var () in
           if not (tr <: (T.record ~row:true [l,(t,false)])) then
             raise (Typing (r.pos, Printf.sprintf "This record does not have a member %s." l));
@@ -968,7 +969,7 @@ module Expr = struct
           let tr = typ r in
           let l = List.map (fun (l,(e,o)) -> l,(infer_type env e,o)) l in
           if not (tr <: (T.record ~row:true [])) then
-            raise (Typing (r.pos, Printf.sprintf "This expression has type %s but expected to be a record." (T.to_string (typ r))));
+            type_error r "This expression has type %s but expected to be a record." (T.to_string (typ r));
           (* TODO: we could indicate optional fields by subtyping *)
           let t =
             match (typ r).T.desc with

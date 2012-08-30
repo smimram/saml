@@ -459,13 +459,17 @@ let run =
   in
   mop "run" t ~i b
 
+(* TODO: we could implement for as an external *)
+(*
 let for_loop =
   let t _ = T.arrnl[T.int; T.int; T.arrnl [T.int] T.unit] T.unit in
   let b t prog arg =
     let prog, a = BB.eq_alloc_anon prog (T.emit T.int) arg.(0) in
+    let prog, b = BB.eq_alloc_anon prog (T.emit T.int) arg.(1) in
     assert false
   in
   mop "for" t b
+*)
 
 (* TODO: use GADT for cleanly handling type especially with backend
    externals. *)
