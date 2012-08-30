@@ -78,7 +78,7 @@ module Value = struct
 
   let get_int = function
     | I n -> n
-    | _ -> assert false
+    | e -> failwith (Printf.sprintf "Backend expected an int but got %s." (to_string e))
 
   let get_bool = function
     | B b -> b
@@ -199,7 +199,7 @@ let rec string_of_expr ?(tab=0) e =
   | String s -> Printf.sprintf "\"%s\"" s
   | Var v -> string_of_var v
   | Arg n -> string_of_arg n
-  | Field (e,i) -> Printf.sprintf "%s[%d]" (string_of_expr e) i
+  | Field (e,i) -> Printf.sprintf "%s[%s]" (string_of_expr e) (string_of_var i)
   | Op (o, a) ->
     if Array.length a = 0 then
       string_of_op o

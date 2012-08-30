@@ -3,7 +3,7 @@ module Compiler = struct
 
   module Coerce = struct
     (** Coerce (x,a=...,b=...) into x. *)
-    let records = ref false
+    let records = ref true
   end
 
   let optimize = ref false

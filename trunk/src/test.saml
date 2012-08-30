@@ -52,7 +52,13 @@ let array =
 
     let length = builtin "array_length"
 
-    (* let init *)
+    (* TODO: bad implementation, the array is cleared each time... *)
+    (* let init (n,x) = *)
+      (* let a = create(n,x) in *)
+      (* for i = 0 to n - 1 do *)
+        (* a[i] := x *)
+      (* done; *)
+      (* a *)
 
     let iter(f,a) =
       for i = 0 to length(a)-1 do
@@ -222,6 +228,17 @@ let filter =
     end
   end
 
+let effect =
+  struct
+    let delay(n,x) =
+      let a = array.create(n,0.) in
+      let i = ref 0 in
+      a[!i] := x;
+      i := !i+1;
+      if !i >= n then i := 0;
+      a[!i]
+  end
+
 type instrument = ()->(float,freq:(float)->(),activate:()->())
 
 let instrument =
@@ -278,10 +295,37 @@ let instrument =
       run(player)
   end
 
+let play(duration=-1,s)=
+  let player() =
+    let dt = 1./44100. in
+    let s = (s:()->float) in
+    let prog = emit(s) in
+    let state = prog.alloc() in
+    let run() = prog.run(state) in
+    let buflen = 1024 in
+    let buf = array.create(buflen,0.) in
+    let t = ref 0. in
+    for i = 0 to buflen-1 do
+      buf[i] := run();
+      t := !t + dt
+      (* if duration >= 0 then on(!t >= duration, release) *)
+    done;
+    array.play(buf)
+  in
+  run(player)
+
 let () =
-  let s (freq) = osc.sine(freq) in
-  let i () = instrument.adsr(0.5,0.4,0.8,1,s) in
-  instrument.play(i)
+  let s() = osc.sine(440) in
+  let s() =
+    let x = s() in
+    x+effect.delay(100,x)
+  in
+  play(s)
+
+(* let () = *)
+  (* let s (freq) = osc.sine(freq) in *)
+  (* let i () = instrument.adsr(0.5,0.4,0.8,1,s) in *)
+  (* instrument.play(i) *)
 
 let s() = osc.sine(440,phase=0.777)
 let s() = time.accelerate(440+60*time.accelerate(10*time.now,fun()->osc.sine(1)),fun()->osc.saw(1.))
@@ -306,6 +350,13 @@ let s() = (1+osc.sine(4)*0.1)*(envelope.adsr(0.5,0.4,0.7,1,fun()->osc.triangle(4
 (* let s() = instrument.adsr(0.8,0.2,0.8,0.3,osc.sine) *)
 (* let s() = envelope.adsr(0.01,0.04,0.,1,osc.random)+s *)
 let s() = envelope.ad(0.01,2,dfun=fun(x)->x*x,on_die=fun ()->print("DIED!\n"),osc.saw(frequency.vibrato(4,0.01,440))+osc.random*0.1)
+
+(*
+  let s (freq) =
+    let x = s(freq) in
+    x+effect.delay(1000,x)
+  in
+*)
 
 (* let () = play (s) *)
 

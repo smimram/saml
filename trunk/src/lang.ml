@@ -572,6 +572,9 @@ module Expr = struct
   let float ?pos ?(t=T.float) x =
     make ?pos ~t (Cst (Float x))
 
+  let bool ?pos b =
+    make ?pos ~t:T.bool (Cst (Bool b))
+
   let letin ?pos ?t ?(recursive=false) x e1 e2 =
     let t =
       match t with

@@ -66,7 +66,8 @@ let exit =
   in
   mop "exit" t ~i b
 
-let sub =
+(** Declare a binary operator on either int or floats. *)
+let nn_n name fop iop fml oml =
   let is_int args =
     let args = List.map snd args in
     let int = List.exists T.is_int args in
@@ -74,7 +75,7 @@ let sub =
     int
   in
   let t args =
-    (* Printf.printf "sub: %s\n%!" (String.concat_map ", " T.to_string args); *)
+    (* Printf.printf "nn_n: %s\n%!" (String.concat_map ", " T.to_string args); *)
     if is_int args then
       T.arrnl [T.int; T.int] T.int
     else
@@ -85,8 +86,8 @@ let sub =
     let x = List.assoc "" args in
     let y = List.assoc_nth 1 "" args in
     match x.E.desc, y.E.desc with
-    | E.Cst (E.Int x), E.Cst (E.Int y) -> state, E.int (x-y)
-    | E.Cst (E.Float x), E.Cst (E.Float y) -> state, E.float (x-.y)
+    | E.Cst (E.Int x), E.Cst (E.Int y) -> state, E.int (iop x y)
+    | E.Cst (E.Float x), E.Cst (E.Float y) -> state, E.float (fop x y)
     | _ -> raise E.Cannot_reduce
   in
   let b t prog args =
@@ -94,13 +95,55 @@ let sub =
     let a = List.map (fun (l,(t,o)) -> l,t) a in
     let op =
       if is_int a then
-        B.extern ~saml:(fun a -> B.V.int ((B.V.get_int a.(0)) - (B.V.get_int a.(1)))) ~ocaml:"( - )" "sub"
+        B.extern ~saml:(fun a -> B.V.int (iop (B.V.get_int a.(0)) (B.V.get_int a.(1)))) ~ocaml:"( - )" name
       else
-        B.extern ~saml:(fun a -> B.V.float ((B.V.get_float a.(0)) -. (B.V.get_float a.(1)))) ~ocaml:"( -. )" "sub"
+        B.extern ~saml:(fun a -> B.V.float (fop (B.V.get_float a.(0)) (B.V.get_float a.(1)))) ~ocaml:"( -. )" name
     in
     prog, B.Op(op, args)
   in
-  mop "sub" t ~i b
+  mop name t ~i b
+
+let add = nn_n "add" (+.) (+) "(+.)" "(+)"
+let sub = nn_n "sub" (-.) (-) "(-.)" "(-)"
+
+(* TODO: share code with nn_n *)
+let nn_b name fop iop fml oml =
+  let is_int args =
+    let args = List.map snd args in
+    let int = List.exists T.is_int args in
+    let int = int && List.for_all (fun t -> T.is_int t || T.is_var t) args in
+    int
+  in
+  let t args =
+    (* Printf.printf "nn_n: %s\n%!" (String.concat_map ", " T.to_string args); *)
+    if is_int args then
+      T.arrnl [T.int; T.int] T.bool
+    else
+      T.arrnl [T.float; T.float] T.bool
+  in
+  let i ~subst ~state args =
+    let ta = List.map (fun (l,e) -> E.typ e) args in
+    let x = List.assoc "" args in
+    let y = List.assoc_nth 1 "" args in
+    match x.E.desc, y.E.desc with
+    | E.Cst (E.Int x), E.Cst (E.Int y) -> state, E.bool (iop x y)
+    | E.Cst (E.Float x), E.Cst (E.Float y) -> state, E.bool (fop x y)
+    | _ -> raise E.Cannot_reduce
+  in
+  let b t prog args =
+    let a, _ = T.split_arr t in
+    let a = List.map (fun (l,(t,o)) -> l,t) a in
+    let op =
+      if is_int a then
+        B.extern ~saml:(fun a -> B.V.bool (iop (B.V.get_int a.(0)) (B.V.get_int a.(1)))) ~ocaml:"( - )" name
+      else
+        B.extern ~saml:(fun a -> B.V.bool (fop (B.V.get_float a.(0)) (B.V.get_float a.(1)))) ~ocaml:"( -. )" name
+    in
+    prog, B.Op(op, args)
+  in
+  mop name t ~i b
+
+let le = nn_b "le" (<=) (<=) "(<=)" "(<=)"
 
 let print =
   let t _ = (T.arrnl [T.fresh_var ()] T.unit) in
@@ -214,8 +257,8 @@ let array_set =
   let b t prog a =
     let t, _ = T.split_arr t in
     let t, _ = List.assoc_nth 2 "" t in
-    let prog = BB.eq_alloc prog "_array" (T.emit t) a.(0) in
-    let prog = BB.eq prog "_array" ~field:(a.(1)) a.(2) in
+    let prog, x = BB.eq_alloc_anon prog (T.emit t) a.(0) in
+    let prog = BB.eq_anon prog (B.LField(x,a.(1))) a.(2) in
     prog, B.Unit
   in
   mop "array_set" t b
@@ -484,8 +527,9 @@ let impl =
   let aa_b () = let a = T.fresh_var () in T.arrnl [a;a] tb in
   [
     (* Arithmetic. *)
-    op "add" ff_f B.Add;
+    (* op "add" ff_f B.Add; *)
     (* op "sub" ff_f B.Sub; *)
+    add;
     sub;
     op "mul" ff_f B.Mul;
     op "div" ff_f B.Div;
@@ -496,7 +540,8 @@ let impl =
     op "random" f_f (B.extern ~saml:(fun a -> B.V.float (Random.float (B.V.get_float a.(0)))) ~ocaml:"Random.float" "random");
 
     (* Booleans. *)
-    op "le" ff_b B.Le;
+    (* op "le" ff_b B.Le; *)
+    le;
     op "lt" ff_b B.Lt;
     op "eq" (aa_b()) B.Eq;
     op "and" bb_b (B.extern ~saml:(fun a -> B.V.bool ((B.V.get_bool a.(0)) && (B.V.get_bool a.(1)))) ~ocaml:"( && )" "and");
