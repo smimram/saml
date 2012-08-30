@@ -40,10 +40,10 @@ let output_file = ref "out.ml"
 
 let usage = "saml -- Stream Advanced Monadic Language\nusage: saml [options] file"
 
-let infer_type p =
+let infer_type ?annot p =
   try
     (* (Builtin.decls@p) *)
-    Lang.M.infer_type p
+    Lang.M.infer_type ?annot p
   with
     | Lang.E.Typing (pos, msg) ->
       let msg =
@@ -77,8 +77,7 @@ let () =
     prog
   in
   let prog = pass "Parsing program" id prog in
-  let prog = pass "Infering type" infer_type prog in
-  Common.file_out (Filename.chop_extension fname ^ ".annot") (Lang.M.annot fname prog);
+  let prog = pass "Infering type" (infer_type ~annot:fname) prog in
   let prog = pass "Reducing program" Lang.M.reduce prog in
   ()
   (* Printf.printf "* Emitting program:\n%!"; *)

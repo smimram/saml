@@ -788,6 +788,10 @@ module Builder = struct
     let b = alloc b x t in
     eq b ?init x e
 
+  let eq_alloc_anon b ?init t e =
+    let b, x = alloc_anon b t in
+    eq_anon b ?init (LVar x) e, x
+
   (** Perform a command. *)
   let cmd ?init b e =
     let b, x = alloc_anon b T.Unit in

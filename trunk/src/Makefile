@@ -11,8 +11,7 @@ INCDIRS = +pulseaudio backends/ocaml
 LIBS = pulseaudio samlib
 
 test: all
-#	OCAMLRUNPARAM=b ./saml test.saml
-	OCAMLRUNPARAM=b ./saml i.saml
+	OCAMLRUNPARAM=b ./saml test.saml
 
 all: saml_dssi.ml backends dnc
 
