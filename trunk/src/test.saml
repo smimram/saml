@@ -272,10 +272,10 @@ let instrument =
       run(player)
   end
 
-let () =
-  let s (freq) = osc.sine(freq) in
-  let i () = instrument.adsr(0.5,0.4,0.8,1,s) in
-  play(i)
+(* let () = *)
+  (* let s (freq) = osc.sine(freq) in *)
+  (* let i () = instrument.adsr(0.5,0.4,0.8,1,s) in *)
+  (* play(i) *)
 
 let s() = osc.sine(440,phase=0.777)
 let s() = time.accelerate(440+60*time.accelerate(10*time.now,fun()->osc.sine(1)),fun()->osc.saw(1.))
@@ -337,7 +337,7 @@ let play(duration=-1,s)=
   in
   run(player)
 
-(* let () = play(s) *)
+let () = play(s)
 
 (* let s() = (1+osc.sine(4)*0.1)*envelope.adsr(0.5,0.4,0.7,1,osc.triangle(440)) *)
 let s() = osc.sine(440)
