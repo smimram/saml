@@ -52,6 +52,8 @@ let array =
 
     let length = builtin "array_length"
 
+    (* let init *)
+
     let iter(f,a) =
       for i = 0 to length(a)-1 do
         f(a[i])

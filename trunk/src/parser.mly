@@ -220,7 +220,7 @@ simple_expr:
     | simple_expr DOT IDENT { mk (Field ($1, $3)) }
     | simple_expr DOT { mk (Field ($1, "")) }
     | MODULE decls END { mk_module $2 }
-    | BUILTIN STRING { Builtin.get $2 }
+    | BUILTIN STRING { Builtin.get ~pos:(defpos None) $2 }
     | EMIT { Builtin.get "emit" }
 
 /***** Types *****/

@@ -532,9 +532,12 @@ let externals =
 (* let decls = *)
 (* List.map (fun (x,e) -> M.Decl (x,e)) externals *)
 
-let get x =
+let get ?pos x =
   try
-    List.assoc x externals
+    let e = List.assoc x externals in
+    match pos with
+    | Some pos -> { e with E.pos = pos }
+    | None -> e
   with
   | Not_found -> failwith (Printf.sprintf "Internal command %s was not found. Please report." x)
 
