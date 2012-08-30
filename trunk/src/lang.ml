@@ -1006,9 +1006,18 @@ module Expr = struct
     | _ -> assert false
 
   (** A value is something that can be substituted. *)
-  let is_value e =
+  let rec is_value e =
+    (* Printf.printf "is_value: %s\n%!" (to_string e); *)
     match e.desc with
-      | Ident _ | Fun _ | Cst _ | External _ | Record _ | Array _ -> true
+      | Ident _ | Fun _ | Cst _ | External _ -> true
+      | Record r ->
+        (* TODO *)
+        (* assert (List.for_all (fun (l,e) -> is_value e) r); *)
+        true
+      | Array a ->
+        (* TODO *)
+        assert (List.for_all is_value a);
+        true
       | _ -> false
 
   module BB = B.Builder
@@ -1431,7 +1440,10 @@ module Expr = struct
           | Record r ->
             (* The value should aleardy be reduced at this point *)
             state, List.assoc l r
-          | _ -> failwith (Printf.sprintf "Cannot reduce field \"%s\" of %s : %s." l (to_string r) (T.to_string (typ r)))
+          | _ ->
+            (* let s = String.concat_map "\n" (fun (l,e) -> Printf.sprintf "*** %s = %s" l (to_string e)) subst in *)
+            (* Printf.printf "%s\n%!" s; *)
+            failwith (Printf.sprintf "Cannot reduce field \"%s\" of %s : %s." l (to_string r) (T.to_string (typ r)))
         )
       | Replace_fields (r, l) ->
         let state, r = reduce ~state r in

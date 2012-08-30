@@ -220,7 +220,7 @@ let filter =
     end
   end
 
-type instrument = ()->(float,freq:(float)->())
+type instrument = ()->(float,freq:(float)->(),activate:()->())
 
 let instrument =
   struct
@@ -236,16 +236,19 @@ let instrument =
 
     let adsr(a,d,s,r,x) =
       let f = ref 440. in
-      let x = envelope.activate(x(!f)) in
+      let x = (x:(float)->float) in
+      let x = x(!f) in
+      let x = envelope.activate(x) in
       let g = ref 1. in
       let act = ref false in
       let on_die () = act := false in
+      let activate() = x.activate(); act := true in
       let x = envelope.adsr(a,d,s,r,on_die=,x.) in
       (
         !g*x.,
         freq = fun (x) -> f := x,
         gain = fun (x) -> g := x,
-        activate = fun (x) -> x.activate(); act := true,
+        activate=,
         is_active = fun () -> !act
       )
 
@@ -261,6 +264,7 @@ let instrument =
         let buf = array.create(buflen,0.) in
         let t = ref 0. in
         let f = ref 440. in
+        prog.activate(state);
         for i = 0 to buflen-1 do
           buf[i] := run();
           freq(!t*440);
@@ -275,7 +279,7 @@ let instrument =
 let () =
   let s (freq) = osc.sine(freq) in
   let i () = instrument.adsr(0.5,0.4,0.8,1,s) in
-  play(i)
+  instrument.play(i)
 
 let s() = osc.sine(440,phase=0.777)
 let s() = time.accelerate(440+60*time.accelerate(10*time.now,fun()->osc.sine(1)),fun()->osc.saw(1.))
