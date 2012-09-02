@@ -26,7 +26,7 @@
       "builtin", BUILTIN;
       "static", STATIC;
       "not", BNOT;
-      "emit", EMIT;
+      "compile", COMPILE;
       "with", WITH;
       "type", TYPE;
     ]

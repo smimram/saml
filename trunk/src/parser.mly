@@ -79,7 +79,7 @@
 %token CMP LE GE LT GT
 %token BAND BOR BNOT
 %token IF THEN ELSE
-%token STATIC EMIT WITH TYPE
+%token STATIC COMPILE WITH TYPE
 %token LPAR RPAR LARR RARR
 %token SEMICOLON COLON COMMA MAYBE
 %token EQ PLUS MINUS TIMES DIV
@@ -221,7 +221,7 @@ simple_expr:
     | simple_expr DOT { mk (Field ($1, "")) }
     | MODULE decls END { mk_module $2 }
     | BUILTIN STRING { Builtin.get ~pos:(defpos None) $2 }
-    | EMIT { Builtin.get "emit" }
+    | COMPILE { Builtin.get "compile" }
 
 /***** Types *****/
 

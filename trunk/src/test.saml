@@ -6,7 +6,6 @@ let sin = builtin "sin"
 let cos = builtin "cos"
 let random = builtin "random"
 let print = builtin "print"
-(* let emit = builtin "emit" *)
 let run = builtin "run"
 let play = builtin "play"
 
@@ -82,8 +81,8 @@ let event =
     let create (x) =
       ref (event=false,value=x)
 
-    (* let emit (e,x) = *)
-      (* e := (event=true,value=x) *)
+    let emit (e,x) =
+      e := (event=true,value=x)
 
     let handle (e,f) =
       if (!e).event then f((!e).value);
@@ -279,7 +278,7 @@ let instrument =
       let player() =
         let dt = 1./44100. in
         let s = (s : instrument) in
-        let prog = emit(s) in
+        let prog = compile(s) in
         let state = prog.alloc() in
         let run() = prog.run(state) in
         let freq(f) = prog.freq(state,f) in
@@ -303,7 +302,7 @@ let play(duration=-1,s)=
   let player() =
     let dt = 1./44100. in
     let s = (s:()->float) in
-    let prog = emit(s) in
+    let prog = compile(s) in
     let state = prog.alloc() in
     let run() = prog.run(state) in
     let buflen = 1024 in
@@ -382,7 +381,7 @@ let play(duration=-1,s)=
       let s = s() in
       (s with die=fun()->print("DIE!"))
     in
-    let prog = emit(s) in
+    let prog = compile(s) in
     let state = prog.alloc() in
     let run() = prog.run(state) in
     let release() = prog.release(state) in

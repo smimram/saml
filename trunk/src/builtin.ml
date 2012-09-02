@@ -315,13 +315,13 @@ let array_length =
   in
   mop "array_length" t ~i b
 
-let emit =
+let compile =
   let t args =
     let state = T.state () in
     let t_out, (t_ret, t_aux) =
       try
         let t = List.assoc "" args in
-        Printf.printf "emit t: %s\n%!" (T.to_string t);
+        Printf.printf "compile t: %s\n%!" (T.to_string t);
         if not (T.is_arr t) then raise Not_found;
         let _, t = T.split_arr t in
         let t_out = t in
@@ -460,7 +460,7 @@ let emit =
     in
     state, E.record r
   in
-  mop "emit" t ~i b
+  mop "compile" t ~i b
 
 let run =
   let t _ = T.arr ["loop",(T.bool,true); "",(T.arrnl [] T.unit,false)] T.unit in
@@ -559,7 +559,7 @@ let impl =
 
     (* Actions. *)
     exit;
-    emit;
+    compile;
     run;
     print;
 

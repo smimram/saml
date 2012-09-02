@@ -6,6 +6,7 @@
 (* TODO: functions can be curryfied as usual now that we have records with
    optional types. *)
 (* TODO: in records we should let ... otherwise {x = !r} does get propagated *)
+(* TODO: proper generalization with levels *)
 
 open Stdlib
 open Common
