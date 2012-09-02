@@ -132,7 +132,7 @@ type expr =
 | Op of op * expr array
 | If of expr * eqs * eqs
 | For of var * expr * expr * eqs
-| Field of expr * int
+| Field of expr * expr
 (** The global state (given as argument of functions). *)
 | State
 (** Return a value. *)
@@ -199,7 +199,7 @@ let rec string_of_expr ?(tab=0) e =
   | String s -> Printf.sprintf "\"%s\"" s
   | Var v -> string_of_var v
   | Arg n -> string_of_arg n
-  | Field (e,i) -> Printf.sprintf "%s[%s]" (string_of_expr e) (string_of_var i)
+  | Field (e,i) -> Printf.sprintf "%s[%s]" (string_of_expr e) (string_of_expr i)
   | Op (o, a) ->
     if Array.length a = 0 then
       string_of_op o
@@ -438,7 +438,7 @@ module FV = struct
     | Op (o,a) -> Array.fold_left expr fv a
     | If (b,t,e) -> union (expr fv b) (max (eqs fv t) (eqs fv e))
     | Var v -> incr fv v
-    | Field (e,i) -> expr fv e
+    | Field (e,i) -> union (expr fv e) (expr fv i)
     | Bool _ | Int _ | Float _ | String _ -> fv
 
   and eq ?(masking=true) fv (x,e) =
@@ -474,7 +474,7 @@ let rec subst_expr ((x',e',fve') as s) e =
   (* Printf.printf "B.subst_expr: %s\n%!" (string_of_expr e); *)
   match e with
   | Var x -> if x = x' then e' else e
-  | Field(e,i) -> Field (subst_expr s e, i)
+  | Field(e,i) -> Field (subst_expr s e, subst_expr s i)
   | Op(op,a) -> Op(op, Array.map (subst_expr s) a)
   | If(b,t,e) -> If(subst_expr s b, subst_eqs s t, subst_eqs s e)
   | Float _  | Int _ | String _ | Bool _ as e -> e
@@ -582,7 +582,7 @@ let compact prog =
     (* We cannot use regular substitution because we don't want masking here. *)
     match e with
     | Var v -> Var s.(v)
-    | Field(e,i) -> Field (subst_expr e, i)
+    | Field(e,i) -> Field (subst_expr e, subst_expr i)
     | Op(op,a) -> Op(op, Array.map subst_expr a)
     | If(b,t,e) ->
       let b = subst_expr b in
@@ -644,7 +644,7 @@ let proc prog ?(state=false) args t eqs =
 let pack_state prog =
   let t = T.Record prog.vars in
   let n = Array.length prog.vars in
-  let load = List.init n (fun i -> LVar i, Field(State, i)) in
+  let load = List.init n (fun i -> LVar i, Field(State, Int i)) in
   let store = List.init n (fun i -> LState(i), Var i) in
   let loop =
     let eqs, ret = split_ret prog.loop in
@@ -917,7 +917,10 @@ module SAML = struct
     | Var v -> State.get state v
     | Arg n -> State.get_arg state n
     | Field (e,i) ->
+      (* Printf.printf "eval_expr field: %s[%s]\n" (string_of_expr e) (string_of_expr i); *)
       let v = eval_expr prog state e in
+      let i = eval_expr prog state i in
+      let i = V.get_int i in
       (V.get_record v).(i)
     | Op(op,a) ->
       let a = Array.map (eval_expr prog state) a in

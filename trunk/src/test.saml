@@ -10,6 +10,10 @@ let print = builtin "print"
 let run = builtin "run"
 let play = builtin "play"
 
+let print_nl(x) =
+  print(x);
+  print("\n")
+
 let id(x) = x
 
 (** No action. *)
@@ -116,7 +120,7 @@ let osc =
     let sine(freq,phase=0.) = sin(2 * pi * integrator.euler(freq,phase=))
 
     let saw(freq,phase=0.) =
-      let reset(x) = if x >= 2 then x-2 else x in
+      let reset(x) = if x >= 2. then x-2 else x in
       let x = integrator.euler(freq,phase=,reset=) in
       x - 1
 
@@ -231,11 +235,11 @@ let filter =
 let effect =
   struct
     let delay(n,x) =
-      let a = array.create(n,0.) in
+      let a = array.create(n+1,0.) in
       let i = ref 0 in
       a[!i] := x;
       i := !i+1;
-      if !i >= n then i := 0;
+      if !i > n then i := 0;
       a[!i]
   end
 
@@ -315,10 +319,10 @@ let play(duration=-1,s)=
   run(player)
 
 let () =
-  let s() = osc.sine(440) in
+  let s() = osc.saw(440) in
   let s() =
     let x = s() in
-    x+effect.delay(100,x)
+    x+effect.delay(10000,x)
   in
   play(s)
 

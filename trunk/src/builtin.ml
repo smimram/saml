@@ -144,6 +144,7 @@ let nn_b name fop iop fml oml =
   mop name t ~i b
 
 let le = nn_b "le" (<=) (<=) "(<=)" "(<=)"
+let lt = nn_b "lt" (<) (<) "(<)" "(<)"
 
 let print =
   let t _ = (T.arrnl [T.fresh_var ()] T.unit) in
@@ -278,8 +279,7 @@ let array_get =
   in
   let b t prog a =
     let _, t = T.split_arr t in
-    let prog = BB.eq_alloc prog "_n" B.T.Int a.(1) in
-    prog, B.Field(a.(0),BB.var prog "_n")
+    prog, B.Field(a.(0), a.(1))
   in
   mop "array_get" t ~i b
 
@@ -542,7 +542,8 @@ let impl =
     (* Booleans. *)
     (* op "le" ff_b B.Le; *)
     le;
-    op "lt" ff_b B.Lt;
+    (* op "lt" ff_b B.Lt; *)
+    lt;
     op "eq" (aa_b()) B.Eq;
     op "and" bb_b (B.extern ~saml:(fun a -> B.V.bool ((B.V.get_bool a.(0)) && (B.V.get_bool a.(1)))) ~ocaml:"( && )" "and");
     op "or" bb_b (B.extern ~saml:(fun a -> B.V.bool ((B.V.get_bool a.(0)) || (B.V.get_bool a.(1)))) ~ocaml:"( || )" "or");
