@@ -10,10 +10,13 @@ OCAMLFLAGS = -w -8-23
 INCDIRS = +pulseaudio backends/ocaml
 LIBS = pulseaudio samlib
 
+OCAMLC = ocamlc.opt
+OCAMLOPT = ocamlopt.opt
+
 test: all
 	OCAMLRUNPARAM=b ./saml test.saml
 
-all: saml_dssi.ml backends dnc
+all: backends nc
 
 backends:
 	$(MAKE) -C backends
@@ -31,4 +34,6 @@ saml_dssi.ml: saml_dssi.c
 	cat $^ | sed 's/\\n/\\\\n/g' | sed 's/"/\\"/g' >> $@
 	echo '"' >> $@
 
+# include Makefile.defs
+# include Makefile.rules
 include OCamlMakefile

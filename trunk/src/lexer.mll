@@ -29,6 +29,7 @@
       "compile", COMPILE;
       "with", WITH;
       "type", TYPE;
+      "include", INCLUDE;
     ]
 }
 

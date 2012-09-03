@@ -1,0 +1,4 @@
+OCAMLC = ocamlc.opt
+OCAMLOPT = ocamlopt.opt
+OCAMLYACC = ocamlyacc
+OCAMLLEX = ocamllex

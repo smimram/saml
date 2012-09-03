@@ -1,0 +1,309 @@
+(* -*- tuareg -*- *)
+
+let pi = builtin "pi"
+let sin = builtin "sin"
+let cos = builtin "cos"
+let random = builtin "random"
+let print = builtin "print"
+let run = builtin "run"
+let play = builtin "play"
+let exit = builtin "exit"
+
+let print_nl(x) =
+  print(x);
+  print("\n")
+
+let id(x) = x
+
+(** No action. *)
+let nact() = ()
+
+let ignore (x) = ()
+
+let prev(init, x) =
+  (* TODO: proper type generalization *)
+  let init = (init : float) in
+  let y = ref init in
+  let ans = !y in
+  y := x;
+  ans
+
+let on(b,f) =
+  (* TODO: use usual prev *)
+  let prev(x) =
+    let x' = ref false in
+    let ans = !x' in
+    x' := x;
+    ans
+  in
+  let b' = prev(b) in
+  if (b && not b') then f()
+
+(* let prevn(n,x) = *)
+  (* let n = (n : static int) in *)
+  (* for i = 0 to n-1 do *)
+    (* let x = prev(0.,x) in *)
+    (* () *)
+  (* done; *)
+  (* x *)
+
+let array =
+  struct
+    let empty = []
+
+    let create = builtin "array_create"
+
+    let length = builtin "array_length"
+
+    (* TODO: bad implementation, the array is cleared each time... *)
+    (* let init (n,x) = *)
+      (* let a = create(n,x) in *)
+      (* for i = 0 to n - 1 do *)
+        (* a[i] := x *)
+      (* done; *)
+      (* a *)
+
+    let iter(f,a) =
+      for i = 0 to length(a)-1 do
+        f(a[i])
+      done
+
+    let hd(a) = a[0]
+
+    let tl = builtin "array_tail"
+
+    let play = builtin "array_play"
+  end
+
+(** Dummy implementation of events. *)
+let event =
+  struct
+    let create (x) =
+      ref (event=false,value=x)
+
+    let emit (e,x) =
+      e := (event=true,value=x)
+
+    let handle (e,f) =
+      if (!e).event then f((!e).value);
+      e := (event=false, value=(!e).value)
+  end
+
+let integrator =
+  struct
+    let euler(reset=id,phase=0.,f') =
+      let x = ref phase in
+      let ans = !x in
+      x := !x + dt * f';
+      x := reset(!x);
+      ans
+  end
+
+let time =
+  struct
+    let now() = integrator.euler(1.)
+
+    let distort(f,s) =
+      let dt = f(dt) in
+      s()
+
+    let accelerate(freq,phase=0.,x) = distort(fun (t) -> freq*t+phase, x)
+
+    (* let seq (f,a) = *)
+      (* let t = now () in *)
+      (* let t0 = ref 0. in *)
+  end
+
+let osc =
+  struct
+    let sine(freq,phase=0.) = sin(2 * pi * integrator.euler(freq,phase=))
+
+    let saw(freq,phase=0.) =
+      let reset(x) = if x >= 2. then x-2 else x in
+      let x = integrator.euler(freq,phase=,reset=) in
+      x - 1
+
+    let square(freq,phase=0.) =
+      let x = saw(freq,phase=) in
+      if x >= 0.5 then -1 else 1.
+
+    let triangle(freq,phase=0.) =
+      let x = saw(freq,phase=0.25) in
+      if x <= 0. then 2*x+1 else -2*x+1
+
+    let random() =
+      random(2.)-1
+  end
+
+let frequency =
+  struct
+    let vibrato(freq,amp,x) =
+      (1+amp*osc.sine(freq))*x
+  end
+
+let envelope =
+  struct
+    let gain(n,x) = n*x
+
+    let activate(x) =
+      let active = ref false in
+      let x = if !active then x else 0. in
+      (x, activate=fun()->active:=true)
+
+    (** The functions should be valid between 0 and 1 and return something
+        between 0 (at begining) and 1 (at end), dfun and rfun being read
+        backwards. *)
+    let adsr(a,afun=id,d,dfun=id,s,r,rfun=id,on_die=fun()->(),x) =
+      let t = time.now() in
+      let state = ref 0 in
+      let rtime = ref (-1.) in
+      let die () =
+        state := 4;
+        on_die()
+      in
+      if !state == 0 then (if t >= a then state := 1)
+      else if !state == 1 then (if t >= a+d then if s == 0. then die() else state := 2);
+      let n =
+        (* Attack. *)
+        if !state == 0 then afun(t/a)
+        (* Decay. *)
+        else if !state == 1 then dfun(1-(t-a)/d)*(1-s)+s
+        (* Released. *)
+        else if !state == 4 then 0.
+        (* Release. *)
+        else if !rtime >= 0 then
+          if t-!rtime >= r then (die(); 0.)
+          else rfun(1-(t-!rtime)/r)*s
+        (* Sustain. *)
+        else s
+      in
+      (n*x, release=fun()->rtime := t)
+
+    let ad(a,afun=id,d,dfun=id,on_die=fun()->(),x) = adsr(a,afun=,d,dfun=,0,0,on_die=,x)
+
+    let tremolo(amplitude,freq,x) =
+      (1+amplitude*osc.sine(freq))*x
+  end
+
+let filter =
+  struct
+    let first_order =
+    struct
+      let low_pass(freq,x) =
+        let rc = 1/(2*pi*freq) in
+        let a = dt/(rc+dt) in
+        let rec y =
+          let y' = prev(0.,y) in
+          y'+a*(x-y')
+        in
+        y
+      let lp = low_pass
+
+      let high_pass(freq,x) =
+        let rc = 1/(2*pi*freq) in
+        let a = rc/(rc+dt) in
+        let rec y =
+          a*(prev(0.,y)+x-prev(0.,x))
+        in
+        y
+      let hp = high_pass
+    end
+    let fo = first_order
+
+    let iir (a,b,x) =
+      (* let la = array.length a in *)
+      (* for i = 0 to la - 1 do *)
+        (* let  *)
+      (* done *)
+      ()
+
+    let fir (a,x) = iir(a,[],x)
+
+    (** See http://www.musicdsp.org/files/Audio-EQ-Cookbook.txt *)
+    let biquad =
+    struct
+      let high_pass(freq,q,x) =
+        let w0 = 2*pi*freq*dt in
+        let alpha = sin(w0)/(2*q) in
+        let a = [1+alpha,-2*cos(w0),1-alpha] in
+        let b = [(1+cos(w0))/2,-(1+cos(w0)),(1+cos(w0))/2] in
+        ()
+    end
+  end
+
+let effect =
+  struct
+    let delay(n,x) =
+      let a = array.create(n+1,0.) in
+      let i = ref 0 in
+      a[!i] := x;
+      i := !i+1;
+      if !i > n then i := 0;
+      a[!i]
+  end
+
+type instrument = ()->(float,freq:(float)->(),activate:()->())
+
+let instrument =
+  struct
+    let make (freq=ignore,gain=fun(x)->(),off=fun()->(),activate=fun()->(),is_active=fun()->true,f) =
+      (
+        freq=,
+        gain=,
+        off=,
+        activate=,
+        is_active=,
+        f
+      )
+
+    let adsr(a,d,s,r,x) =
+      let f = ref 440. in
+      let x = (x:(float)->float) in
+      let x = x(!f) in
+      let x = envelope.activate(x) in
+      let g = ref 1. in
+      let act = ref false in
+      let on_die () = act := false in
+      let activate() = x.activate(); act := true in
+      let x = envelope.adsr(a,d,s,r,on_die=,x.) in
+      (
+        !g*x.,
+        freq = fun (x) -> f := x,
+        gain = fun (x) -> g := x,
+        activate=,
+        is_active = fun () -> !act
+      )
+
+    let play(s) =
+      let player() =
+        let dt = 1./44100. in
+        let s = (s : instrument) in
+        let prog = compile(s) in
+        let state = prog.alloc() in
+        let run() = prog.run(state) in
+        let freq(f) = prog.freq(state,f) in
+        let buflen = 1024 in
+        let buf = array.create(buflen,0.) in
+        let t = ref 0. in
+        let f = ref 440. in
+        prog.activate(state);
+        for i = 0 to buflen-1 do
+          buf[i] := run();
+          freq(!t*440);
+          t := !t + dt
+          (* if duration >= 0 then on(!t >= duration, release) *)
+        done;
+        array.play(buf)
+      in
+      run(player)
+  end
+
+let emit =
+  struct
+    let c = builtin "emit_c"
+
+    let dssi(s) =
+      let s = (s : instrument) in
+      let prog = compile(s) in
+      ()
+  end

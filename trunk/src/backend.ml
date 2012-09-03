@@ -1173,8 +1173,8 @@ struct
       types = [];
     }
 
-  let rec emit_type c t =
-    (* Printf.printf "C.emit_type: %s\n%!" (T.to_string t); *)
+  let rec emit_type c ?(state=false) t =
+    (* Printf.printf "C.emit_type %B: %s\n%!" state (T.to_string t); *)
     match t with
     | T.Int -> c, "int"
     | T.Float -> c, "double"
@@ -1185,12 +1185,17 @@ struct
           c, List.assoc t c.types
         with
         | Not_found ->
-          let l = Printf.sprintf "type%d" (List.length c.types) in
+          (* Printf.printf "didn't find type\n%!"; *)
+          let l = if state then "state" else Printf.sprintf "type%d" (List.length c.types) in
           let c = { c with types = (t,l)::c.types } in
           c, l
       )
 
-  let rec emit_expr c e =
+  let tab n = String.spaces (2*n)
+
+  let rec emit_expr c ~tabs e =
+    let emit_expr ?(tabs=tabs) = emit_expr ~tabs in
+    let emit_eqs ?(tabs=tabs) = emit_eqs ~tabs in
     (* Printf.printf "C.emit_expr: %s\n%!" (string_of_expr e); *)
     match e with
     | Int n -> c, Printf.sprintf "%d" n
@@ -1220,23 +1225,35 @@ struct
       c, Printf.sprintf "%s[%s]" e i
     | State -> c, "state"
     | If (b,t,e) ->
+      let emit_eqs = emit_eqs ~tabs:(tabs+1) in
       let c, b = emit_expr c b in
       let c, t = emit_eqs c t in
       let c, e = emit_eqs c e in
-      c, Printf.sprintf "if (%s) then {\n%s\n} else {\n%s\n}" b t e
+      let tabs = tab tabs in
+      c, Printf.sprintf "if (%s) then {\n%s\n%s} else {\n%s\n%s}" b t tabs e tabs
 
-  and emit_eq c (x,e) =
-    let c, e = emit_expr c e in
+  and emit_eq ~tabs c (x,e) =
+    let c, e = emit_expr ~tabs c e in
+    let tabs = tab tabs in
     if typ c.prog x = T.Unit then
-      c, Printf.sprintf "%s;" e
+      c, Printf.sprintf "%s%s;" tabs e
     else
-      c, Printf.sprintf "%s = %s;" (string_of_loc x) e
+      c, Printf.sprintf "%s%s = %s;" tabs (string_of_loc x) e
 
-  and emit_eqs c eqs =
-    let c, eqs = List.fold_map emit_eq c eqs in
+  and emit_eqs ?(tabs=0) c eqs =
+    let c, eqs = List.fold_map (emit_eq ~tabs) c eqs in
     c, String.concat "\n" eqs
 
   let emit_proc c (name,p) =
+    let args = p.proc_args in
+    let c =
+      match p.proc_state with
+      | Some t ->
+        (* We emit the state first so that we know its name. *)
+        let c, _ = emit_type c ~state:true t in
+        c
+      | None -> c
+    in
     let c, args =
       let i = ref (-1) in
       let c = ref c in
@@ -1246,18 +1263,20 @@ struct
             Printf.sprintf "%s a%d"
               (let c', t = emit_type !c t in c := c'; t)
               (incr i; !i)
-          ) p.proc_args
+          ) args
       in
-      !c, String.concat ", " a
+      !c, a
     in
     let c, args =
       match p.proc_state with
       | Some t ->
-        let c, t = emit_type c t in
-        c, Printf.sprintf "%s state" t
+        (* We emit the state first so that we know its name. *)
+        let c, t = emit_type c ~state:true t in
+        c, (Printf.sprintf "state %s" t)::args
       | None -> c, args
     in
-    let c, eqs = emit_eqs c p.proc_eqs in
+    let args = String.concat ", " args in
+    let c, eqs = emit_eqs c ~tabs:1 p.proc_eqs in
     c,
     Printf.sprintf "%s %s(%s) {\n%s\n}"
       (T.to_string p.proc_ret)
@@ -1268,7 +1287,7 @@ struct
   let emit prog =
     let c = create prog in
     (* TODO: alloc and run should always be handled as usual procs. *)
-    let procs = ["alloc", proc_alloc prog; "run", proc_run prog]@prog.procs in
+    let procs = ["run", proc_run prog; "alloc", proc_alloc prog]@prog.procs in
     let c, procs = List.fold_map emit_proc c procs in
     let procs = String.concat "\n\n" procs in
     let types =

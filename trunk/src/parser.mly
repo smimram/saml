@@ -74,7 +74,7 @@
 %}
 
 %token LET REC IN FUN ARR DOT
-%token MODULE END BUILTIN
+%token MODULE END BUILTIN INCLUDE
 %token REF GET SET FOR TO DO DONE
 %token CMP LE GE LT GT
 %token BAND BOR BNOT
@@ -122,6 +122,7 @@ prog:
 
 decls:
     | decl decls { $1::$2 }
+    | INCLUDE STRING decls { (M.parse_file $2)@$3 }
     | { [] }
 
 decl:

@@ -1500,12 +1500,36 @@ module Expr = struct
     let state = { state with rs_fresh = state.rs_fresh + 1 } in
     (* Printf.printf "fresh var: _x%d\n%!" state.rs_fresh; *)
     state, Printf.sprintf "_x%d" state.rs_fresh
+end
 
+module E = Expr
 
-  (** Generate .annot file with type annotations. *)
-  let rec annot fname e =
-    let ans = ref "" in
+module Module = struct
+  type instr =
+  | Decl of string * E.t
+  | Expr of E.t
+  | Type of string * T.t
+
+  type t = instr list
+
+  let to_string = function
+    | Decl (x,e) -> Printf.sprintf "%s = %s" x (E.to_string e)
+    | Expr e -> Printf.sprintf "%s" (E.to_string e)
+    | Type (l,t) -> Printf.sprintf "type %s = %s" l (T.to_string t)
+
+  let to_string m =
+    String.concat_map "\n\n" to_string m
+
+  let parse_file_fun : (string -> t) ref = ref (fun _ -> assert false)
+  let parse_file f = !parse_file_fun f
+
+  let infer_type ?(annot=false) ?(env=[]) m =
+    let annotations = ref [] in
+    let out fname x =
+      annotations := List.map_assoc ~d:"" (fun y -> y ^ x) fname !annotations
+    in
     let annot_type (p1,p2) t =
+      let fname = p2.Lexing.pos_fname in
       let a =
         Printf.sprintf "\"%s\" %d %d %d \"%s\" %d %d %d\n%s(\n  %s\n)\n"
           fname
@@ -1519,72 +1543,19 @@ module Expr = struct
           "type"
           (T.to_string t)
       in
-      if p1.Lexing.pos_lnum > 0 then
-        ans := !ans ^ a
+      if p1.Lexing.pos_lnum > 0 then out fname a
     in
-    let rec aux e =
-      (* Printf.printf "annot: %s\n%!" (to_string e); *)
-      (match e.desc with Cst Set | Proc _ -> () | _ -> annot_type e.pos (typ e));
-      match e.desc with
-      | Let l -> aux l.def; aux l.body
-      | App (e,a) -> aux e; List.iter (fun (l,e) -> aux e) a
-      | Fun (_,e) -> aux e
-      | Array a -> List.iter aux a
-      | Record r | Module r -> List.iter (fun (l,e) -> aux e) r
-      | For(_,b,e,f) -> aux b; aux e; aux f
-      | Ref e -> aux e
-      | Field(e,_) -> aux e
-      | Replace_fields(r,l) -> aux r; List.iter (fun (l,(e,o)) -> aux e) l
-      | Coerce (e,_) -> aux e
-      | Ident _ | External _ | Cst _ -> ()
-    in
-    aux e;
-    !ans
-end
-
-module E = Expr
-
-module Module = struct
-  type instr =
-    | Decl of string * E.t
-    | Expr of E.t
-    | Type of string * T.t
-
-  type t = instr list
-
-  let to_string = function
-    | Decl (x,e) -> Printf.sprintf "%s = %s" x (E.to_string e)
-    | Expr e -> Printf.sprintf "%s" (E.to_string e)
-    | Type (l,t) -> Printf.sprintf "type %s = %s" l (T.to_string t)
-
-  let to_string m =
-    String.concat_map "\n\n" to_string m
-
-  let infer_type ?annot ?(env=[]) m =
-    let annotations = ref "" in
     let annot, annot_final =
-      match annot with
-      | Some fname ->
-        let annot_type (p1,p2) t =
-          let a =
-            Printf.sprintf "\"%s\" %d %d %d \"%s\" %d %d %d\n%s(\n  %s\n)\n"
-              fname
-              p1.Lexing.pos_lnum
-              p1.Lexing.pos_bol
-              p1.Lexing.pos_cnum
-              fname
-              p2.Lexing.pos_lnum
-              p2.Lexing.pos_bol
-              p2.Lexing.pos_cnum
-              "type"
-              (T.to_string t)
-          in
-          if p1.Lexing.pos_lnum > 0 then
-            annotations := !annotations ^ a
-        in
+      if annot then
         (fun e -> try annot_type e.E.pos (E.typ e) with _ -> ()),
-        (fun () -> Common.file_out (Filename.chop_extension fname ^ ".annot") !annotations)
-      | None ->
+        (fun () ->
+          List.iter
+            (fun (fname,x) ->
+              Printf.printf "fname: %s\n%!" fname;
+              if fname <> "" then
+                Common.file_out (Filename.chop_extension fname ^ ".annot") x
+            ) !annotations)
+      else
         (fun _ -> ()), (fun () -> ())
     in
     let env = ref env in
@@ -1607,6 +1578,18 @@ module Module = struct
       m
     with
     | e -> annot_final (); raise e
+
+  let infer_type ?annot p =
+    try
+      infer_type ?annot p
+    with
+    | E.Typing (pos, msg) ->
+      let msg =
+        Printf.sprintf "\nError %s: %s"
+          (string_of_pos pos)
+          msg
+      in
+      error msg
 
   let reduce ?(subst=[]) ?(state=E.reduce_state_empty) m =
     let emit_let state =

@@ -147,6 +147,19 @@ module List = struct
       | Some v -> v,l
       | None -> raise Not_found
 
+  let map_assoc ?d f x l =
+    let rec aux = function
+      | (y,v)::l when y = x -> (x,f v)::l
+      | (y,v)::l -> (y,v)::(aux l)
+      | [] ->
+        (
+          match d with
+          | Some d -> [x,d]
+          | None -> raise Not_found
+        )
+    in
+    aux l
+
   let rec remove_all_assoc x = function
     | (y,_ as p)::l -> if x = y then remove_all_assoc x l else p::(remove_all_assoc x l)
     | [] -> []
