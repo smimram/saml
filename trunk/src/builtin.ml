@@ -5,9 +5,11 @@ open Lang
 module B = Backend
 module BB = B.Builder
 
-let may_implem = function
-  | Some i -> i
-  | None -> (fun ~subst ~state _ -> raise E.Cannot_reduce)
+let may_implem i =
+  maybe (fun ~subst ~state _ -> raise E.Cannot_reduce) i
+
+let may_backend b =
+  maybe (fun _ -> assert false) b
 
 (** Used for operators reducing to a closure. *)
 let quick_external t i =
@@ -43,18 +45,18 @@ let op name t ?i b =
     ext_implem = may_implem i;
   }
 
-let mop name t ?i b =
+let mop name ?i ?b t =
+  assert (i <> None || b <> None);
   {
     E.
     ext_name = name;
     ext_t = t;
-    ext_backend = b;
+    ext_backend = may_backend b;
     ext_implem = may_implem i;
   }
 
 let exit =
   let t _ = T.arrnl [T.int] (T.fresh_var ()) in
-  let b _ = assert false in
   let i ~subst ~state args =
     let n = List.assoc "" args in
     let n =
@@ -64,10 +66,11 @@ let exit =
     in
     exit n
   in
-  mop "exit" t ~i b
+  mop "exit" t ~i
 
 (** Declare a binary operator on either int or floats. *)
-let nn_n name fop iop fml oml =
+let nn_n name fop iop fml iml c =
+  let c arg = Printf.sprintf "(%s %s %s)" arg.(0) c arg.(1) in
   let is_int args =
     let args = List.map snd args in
     let int = List.exists T.is_int args in
@@ -95,19 +98,20 @@ let nn_n name fop iop fml oml =
     let a = List.map (fun (l,(t,o)) -> l,t) a in
     let op =
       if is_int a then
-        B.extern ~saml:(fun a -> B.V.int (iop (B.V.get_int a.(0)) (B.V.get_int a.(1)))) ~ocaml:"( - )" name
+        B.extern ~saml:(fun a -> B.V.int (iop (B.V.get_int a.(0)) (B.V.get_int a.(1)))) ~ocaml:iml ~c name
       else
-        B.extern ~saml:(fun a -> B.V.float (fop (B.V.get_float a.(0)) (B.V.get_float a.(1)))) ~ocaml:"( -. )" name
+        B.extern ~saml:(fun a -> B.V.float (fop (B.V.get_float a.(0)) (B.V.get_float a.(1)))) ~ocaml:fml ~c name
     in
     prog, B.Op(op, args)
   in
-  mop name t ~i b
+  mop name t ~i ~b
 
-let add = nn_n "add" (+.) (+) "(+.)" "(+)"
-let sub = nn_n "sub" (-.) (-) "(-.)" "(-)"
+let add = nn_n "add" (+.) (+) "(+.)" "(+)" "+"
+let sub = nn_n "sub" (-.) (-) "(-.)" "(-)" "-"
 
 (* TODO: share code with nn_n *)
-let nn_b name fop iop fml oml =
+let nn_b name fop iop ocaml c =
+  let c arg = Printf.sprintf "(%s %s %s)" arg.(0) c arg.(1) in
   let is_int args =
     let args = List.map snd args in
     let int = List.exists T.is_int args in
@@ -135,25 +139,34 @@ let nn_b name fop iop fml oml =
     let a = List.map (fun (l,(t,o)) -> l,t) a in
     let op =
       if is_int a then
-        B.extern ~saml:(fun a -> B.V.bool (iop (B.V.get_int a.(0)) (B.V.get_int a.(1)))) ~ocaml:"( - )" name
+        B.extern ~saml:(fun a -> B.V.bool (iop (B.V.get_int a.(0)) (B.V.get_int a.(1)))) ~ocaml ~c name
       else
-        B.extern ~saml:(fun a -> B.V.bool (fop (B.V.get_float a.(0)) (B.V.get_float a.(1)))) ~ocaml:"( -. )" name
+        B.extern ~saml:(fun a -> B.V.bool (fop (B.V.get_float a.(0)) (B.V.get_float a.(1)))) ~ocaml ~c name
     in
     prog, B.Op(op, args)
   in
-  mop name t ~i b
+  mop name t ~i ~b
 
-let le = nn_b "le" (<=) (<=) "(<=)" "(<=)"
-let lt = nn_b "lt" (<) (<) "(<)" "(<)"
+let le = nn_b "le" (<=) (<=) "(<=)" "<="
+let lt = nn_b "lt" (<) (<) "(<)" "<"
 
 let print =
   let t _ = (T.arrnl [T.fresh_var ()] T.unit) in
+  let i ~subst ~state args =
+    let s = List.assoc "" args in
+    match s.E.desc with
+    | E.Cst (E.String s) ->
+      Printf.printf "%s\n%!" s;
+      raise E.Cannot_reduce
+    | _ ->
+      raise E.Cannot_reduce
+  in
   let b t prog args =
     let t, _ = T.split_arr t in
     let t = T.unvar (fst (List.assoc "" t)) in
     prog, B.Op(B.Print (T.emit t),args)
   in
-  mop "print" t b
+  mop "print" t ~i ~b
 
 let array_play =
   let channels = 1 in
@@ -248,7 +261,7 @@ let array_create =
     let t = T.emit t in
     prog, B.Op(B.Alloc t,[|a.(0)|])
   in
-  mop "array_create" t b
+  mop "array_create" t ~b
 
 let array_set =
   let t _ =
@@ -262,7 +275,7 @@ let array_set =
     let prog = BB.eq_anon prog (B.LField(x,a.(1))) a.(2) in
     prog, B.Unit
   in
-  mop "array_set" t b
+  mop "array_set" t ~b
 
 let array_get =
   let t _ =
@@ -281,7 +294,7 @@ let array_get =
     let _, t = T.split_arr t in
     prog, B.Field(a.(0), a.(1))
   in
-  mop "array_get" t ~i b
+  mop "array_get" t ~i ~b
 
 let array_tail =
   let t _ =
@@ -289,7 +302,6 @@ let array_tail =
     let a = T.array ~static:true v in
     T.arrnl [a] a
   in
-  let b _ = assert false in
   let i ~subst ~state a =
     let array = List.assoc "" a in
     match array.E.desc with
@@ -298,7 +310,7 @@ let array_tail =
       state, E.array ~t:(E.typ array) a
     | _ -> raise E.Cannot_reduce
   in
-  mop "array_tail" t ~i b
+  mop "array_tail" t ~i
 
 let array_length =
   let t _ =
@@ -306,14 +318,13 @@ let array_length =
     let a = T.array ~static:true v in
     T.arrnl [a] T.int
   in
-  let b _ = assert false in
   let i ~subst ~state a =
     let array = List.assoc "" a in
     match array.E.desc with
     | E.Array a -> state, E.int (List.length a)
     | _ -> raise E.Cannot_reduce
   in
-  mop "array_length" t ~i b
+  mop "array_length" t ~i
 
 let compile =
   let t args =
@@ -357,14 +368,12 @@ let compile =
     in
     T.arrnl [T.arrnl [] t_out] (T.record r)
   in
-  let b _ = assert false in
   let i ~subst ~state a =
     let prog = List.assoc "" a in
     let t_ret = E.typ prog in
     let ret_t = E.emit_type (E.unquote prog) in
     let state, prog = E.reduce_quote ~subst ~state prog [] in
     let state, prog = E.emit ~subst ~state ~free_vars:true prog in
-    (* TODO: general mechanism to propagate dt *)
     (* let dt = 1. /. 44100. in *)
     (* let prog = BB.init prog "dt" (B.Float dt) in *)
     let prog = BB.prog ~state:true prog in
@@ -460,11 +469,26 @@ let compile =
     in
     state, E.record r
   in
-  mop "compile" t ~i b
+  mop "compile" t ~i
+
+let emit_c =
+  let t _ =
+    let a = T.fresh_var () in
+    T.arrnl [T.arrnl [] a] T.string
+  in
+  let i ~subst ~state args =
+    let prog = List.assoc "" args in
+    let state, prog = E.reduce_quote ~subst ~state prog [] in
+    let state, prog = E.emit ~subst ~state ~free_vars:true prog in
+    let prog = BB.prog ~state:true prog in
+    Printf.printf "---\nEmit C prog:\n%s---\n\n%!" (B.to_string prog);
+    let c = B.C.emit prog in
+    state, E.string c
+  in
+  mop "emit_c" t ~i
 
 let run =
   let t _ = T.arr ["loop",(T.bool,true); "",(T.arrnl [] T.unit,false)] T.unit in
-  let b _ = assert false in
   let i ~subst ~state args =
     let loop =
       try
@@ -500,7 +524,7 @@ let run =
       );
     state, E.unit ()
   in
-  mop "run" t ~i b
+  mop "run" t ~i
 
 (* TODO: we could implement for as an external *)
 (*
@@ -560,6 +584,7 @@ let impl =
     (* Actions. *)
     exit;
     compile;
+    emit_c;
     run;
     print;
 

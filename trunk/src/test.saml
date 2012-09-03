@@ -8,6 +8,7 @@ let random = builtin "random"
 let print = builtin "print"
 let run = builtin "run"
 let play = builtin "play"
+let exit = builtin "exit"
 
 let print_nl(x) =
   print(x);
@@ -298,6 +299,16 @@ let instrument =
       run(player)
   end
 
+let emit =
+  struct
+    let c = builtin "emit_c"
+
+    let dssi(s) =
+      let s = (s : instrument) in
+      let prog = compile(s) in
+      ()
+  end
+
 let play(duration=-1,s)=
   let player() =
     let dt = 1./44100. in
@@ -317,13 +328,19 @@ let play(duration=-1,s)=
   in
   run(player)
 
+(* let () = *)
+  (* let s() = osc.saw(440) in *)
+  (* let s() = *)
+    (* let x = s() in *)
+    (* x+effect.delay(10000,x) *)
+  (* in *)
+  (* play(s) *)
+
 let () =
   let s() = osc.saw(440) in
-  let s() =
-    let x = s() in
-    x+effect.delay(10000,x)
-  in
-  play(s)
+  let c = emit.c(s) in
+  print(c);
+  exit(0)
 
 (* let () = *)
   (* let s (freq) = osc.sine(freq) in *)

@@ -598,6 +598,10 @@ module Expr = struct
   let unit ?pos ?t () =
     record ?pos ?t []
 
+  let string ?pos ?t s =
+    let t = maybe T.string t in
+    make ?pos ~t (Cst (String s))
+
   let seq ?pos ?t e1 e2 =
     let t =
       match t with
@@ -1578,7 +1582,7 @@ module Module = struct
           if p1.Lexing.pos_lnum > 0 then
             annotations := !annotations ^ a
         in
-        (fun e -> annot_type e.E.pos (E.typ e)),
+        (fun e -> try annot_type e.E.pos (E.typ e) with _ -> ()),
         (fun () -> Common.file_out (Filename.chop_extension fname ^ ".annot") !annotations)
       | None ->
         (fun _ -> ()), (fun () -> ())

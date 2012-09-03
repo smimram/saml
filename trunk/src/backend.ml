@@ -105,6 +105,7 @@ type extern =
     ext_name : string;
     ext_saml : V.t array -> V.t;
     ext_ocaml : unit -> string;
+    ext_c : string array -> string;
   }
 
 (** Operators. Non-prefixed operators operate on floats. *)
@@ -151,17 +152,19 @@ and loc =
 
 let unit = Unit
 
-let extern ?saml ?ocaml name =
+let extern ?saml ?ocaml ?c name =
   let saml = maybe (fun _ -> failwith ("TODO: saml implementation for " ^ name)) saml in
+  let c = maybe (fun _ -> failwith ("TODO: C implementation for " ^ name)) c in
   let ocaml =
     match ocaml with
     | Some ocaml -> (fun () -> ocaml)
-    | None -> (fun () -> failwith ("TODO: ocaml implementation for " ^ name))
+    | None -> (fun () -> failwith ("TODO: OCaml implementation for " ^ name))
   in
   External {
     ext_name = name;
     ext_saml = saml;
     ext_ocaml = ocaml;
+    ext_c = c;
   }
 
 let string_of_var n = Printf.sprintf "x%d" n
@@ -321,10 +324,33 @@ let init_free prog x ?field e =
   let x = List.assoc x prog.free_vars in
   init prog (loc x field) e
 
-let typ prog x =
+(** Type of the state of a program. *)
+let state_t prog = get_some prog.state
+
+let rec typ prog x =
+  (* Printf.printf "typ: %s\n%!" (string_of_loc x); *)
   match x with
   | LVar x -> prog.vars.(x)
-  | LField (x,i) -> failwith "TODO"
+  | LField (x, Int n) ->
+    (
+      match typ prog (LVar x) with
+      | T.Array t -> t
+      | T.Record r -> r.(n)
+      | _ -> assert false
+    )
+  | LField (x, _) ->
+    (
+      match typ prog (LVar x) with
+      | T.Array t -> t
+      | _ -> assert false
+    )
+  | LState n ->
+    let t = state_t prog in
+    (
+      match t with
+      | T.Record r -> r.(n)
+      | _ -> assert false
+    )
 
 let to_string p =
   let ans = ref "" in
@@ -627,9 +653,6 @@ let split_ret eqs =
   in
   let eqs, eq = aux [] eqs in
   List.rev eqs, eq
-
-(** Type of the state of a program. *)
-let state_t prog = get_some prog.state
 
 let proc prog ?(state=false) args t eqs =
   let state = if state then Some (state_t prog) else None in
@@ -1136,64 +1159,125 @@ end
 
 module C =
 struct
-  let emit_op = function
-    | Sin -> "sin"
-    | op -> failwith (Printf.sprintf "TODO: C.emit_op for %s." (string_of_op op))
+  type t =
+    {
+      (** Currently processed program. *)
+      prog : prog;
+      (** Already defined types. *)
+      types : (T.t * string) list;
+    }
 
-  let rec emit_type = function
-    | T.Int -> "int"
-    | T.Float -> "double"
-    | T.Unit -> "void"
+  let create prog =
+    {
+      prog;
+      types = [];
+    }
 
-  let rec emit_expr prog = function
-    | Int n -> Printf.sprintf "(%d)" n
-    | Float f -> Printf.sprintf "(%f)" f
-    | Var n -> Printf.sprintf "%s" (string_of_var n)
+  let rec emit_type c t =
+    (* Printf.printf "C.emit_type: %s\n%!" (T.to_string t); *)
+    match t with
+    | T.Int -> c, "int"
+    | T.Float -> c, "double"
+    | T.Unit -> c, "void"
+    | T.Record r ->
+      (
+        try
+          c, List.assoc t c.types
+        with
+        | Not_found ->
+          let l = Printf.sprintf "type%d" (List.length c.types) in
+          let c = { c with types = (t,l)::c.types } in
+          c, l
+      )
+
+  let rec emit_expr c e =
+    (* Printf.printf "C.emit_expr: %s\n%!" (string_of_expr e); *)
+    match e with
+    | Int n -> c, Printf.sprintf "%d" n
+    | Float f -> c, Printf.sprintf "%f" f
+    | Var n -> c, Printf.sprintf "%s" (string_of_var n)
     | Op (op, args) ->
-      let args = Array.map (emit_expr prog) args in
+      let c, args =
+        let c = ref c in
+        let args = Array.map (fun e -> let c', e = emit_expr !c e in c := c'; e) args in
+        !c, args
+      in
       (
         match op with
-        | Add -> Printf.sprintf "(%s + %s)" args.(0) args.(1)
+        | Add -> c, Printf.sprintf "(%s + %s)" args.(0) args.(1)
+        | Mul -> c, Printf.sprintf "(%s * %s)" args.(0) args.(1)
+        | Alloc t ->
+          let n = if Array.length args = 0 then "1" else args.(0) in
+          let c, t = emit_type c t in
+          c, Printf.sprintf "malloc(%s * sizeof(%s))" n t
+        | External ext -> c, ext.ext_c args
       )
+    | Return x ->
+      c, if typ c.prog (LVar x) = T.Unit then "" else Printf.sprintf "return %s" (string_of_var x)
+    | Field (e, i) ->
+      let c, e = emit_expr c e in
+      let c, i = emit_expr c i in
+      c, Printf.sprintf "%s[%s]" e i
+    | State -> c, "state"
     | If (b,t,e) ->
-      let b = emit_expr prog b in
-      let emit_eqs prog eqs = "{" ^ String.concat " " (List.map (emit_eq prog) eqs) ^ "}" in
-      let t = emit_eqs prog t in
-      let e = emit_eqs prog e in
-      Printf.sprintf "if (%s) then %s else %s" b t e
+      let c, b = emit_expr c b in
+      let c, t = emit_eqs c t in
+      let c, e = emit_eqs c e in
+      c, Printf.sprintf "if (%s) then {\n%s\n} else {\n%s\n}" b t e
 
-  and emit_eq prog (x,e) =
-    (* if static then Printf.sprintf "let %s = %s in" (string_of_var x) (emit_expr prog e) else *)
-    if typ prog x = T.Unit then
-      Printf.sprintf "%s;" (emit_expr prog e)
+  and emit_eq c (x,e) =
+    let c, e = emit_expr c e in
+    if typ c.prog x = T.Unit then
+      c, Printf.sprintf "%s;" e
     else
-      Printf.sprintf "%s = %s;" (string_of_loc x) (emit_expr prog e)
+      c, Printf.sprintf "%s = %s;" (string_of_loc x) e
 
-  and emit_eqs prog eqs =
-    String.concat "\n" (List.map (emit_eq prog) eqs)
+  and emit_eqs c eqs =
+    let c, eqs = List.fold_map emit_eq c eqs in
+    c, String.concat "\n" eqs
+
+  let emit_proc c (name,p) =
+    let c, args =
+      let i = ref (-1) in
+      let c = ref c in
+      let a =
+        List.map
+          (fun t ->
+            Printf.sprintf "%s a%d"
+              (let c', t = emit_type !c t in c := c'; t)
+              (incr i; !i)
+          ) p.proc_args
+      in
+      !c, String.concat ", " a
+    in
+    let c, args =
+      match p.proc_state with
+      | Some t ->
+        let c, t = emit_type c t in
+        c, Printf.sprintf "%s state" t
+      | None -> c, args
+    in
+    let c, eqs = emit_eqs c p.proc_eqs in
+    c,
+    Printf.sprintf "%s %s(%s) {\n%s\n}"
+      (T.to_string p.proc_ret)
+      name
+      args
+      eqs
 
   let emit prog =
-    let vars = Array.to_list prog.vars in
-    let vars =
-      List.may_mapi
-        (fun i t ->
-          let default =
-            match t with
-            | T.Unit -> "()"
-            | T.Int -> "0"
-            | T.Bool -> "0"
-            | T.Float -> "0."
-          in
-          if t = T.Unit then
-            None
-          else
-            Some (Printf.sprintf "%s %s = ref %s in" (T.to_string (typ prog (LVar i))) (string_of_var i) default)
-        ) vars
+    let c = create prog in
+    (* TODO: alloc and run should always be handled as usual procs. *)
+    let procs = ["alloc", proc_alloc prog; "run", proc_run prog]@prog.procs in
+    let c, procs = List.fold_map emit_proc c procs in
+    let procs = String.concat "\n\n" procs in
+    let types =
+      String.concat_map "\n\n"
+        (fun (t,l) ->
+          Printf.sprintf "typedef { ... } %s;" l
+        ) c.types
     in
-    let vars = String.concat "\n" vars in
-    let init = emit_eqs prog prog.init in
-    let loop = emit_eqs prog prog.loop in
-    Printf.sprintf "let program () =\n%s\n%s\nfun () ->\n%s" vars init loop
+    types ^ "\n\n" ^ procs
 end
 
 (*
