@@ -133,7 +133,10 @@ type expr =
 | Op of op * expr array
 | If of expr * eqs * eqs
 | For of var * expr * expr * eqs
-| Field of expr * expr
+(** Field of a record. *)
+| Field of T.t * expr * int
+(** Cell of an array. *)
+| Cell of expr * expr
 (** The global state (given as argument of functions). *)
 | State
 (** Return a value. *)
@@ -146,7 +149,8 @@ and eqs = eq list
 (** A memory location (where things can be written). *)
 and loc =
 | LVar of var
-| LField of var * expr
+| LField of var * int
+| LCell of var * expr
 (** A field of the state. *)
 | LState of int
 
@@ -202,7 +206,8 @@ let rec string_of_expr ?(tab=0) e =
   | String s -> Printf.sprintf "\"%s\"" s
   | Var v -> string_of_var v
   | Arg n -> string_of_arg n
-  | Field (e,i) -> Printf.sprintf "%s[%s]" (string_of_expr e) (string_of_expr i)
+  | Field (t,e,i) -> Printf.sprintf "%s.%d" (string_of_expr e) i
+  | Cell (e,i) -> Printf.sprintf "%s[%s]" (string_of_expr e) (string_of_expr i)
   | Op (o, a) ->
     if Array.length a = 0 then
       string_of_op o
@@ -248,13 +253,9 @@ and string_of_eqs ?(tab=0) eqs =
 
 and string_of_loc = function
   | LVar v -> string_of_var v
-  | LField (v,i) -> Printf.sprintf "%s[%s]" (string_of_var v) (string_of_expr i)
+  | LField (v,i) -> Printf.sprintf "%s.%d" (string_of_var v) i
+  | LCell (v,i) -> Printf.sprintf "%s[%s]" (string_of_var v) (string_of_expr i)
   | LState i -> Printf.sprintf "state[%d]" i
-
-let loc v field =
-  match field with
-  | Some i -> LField (v,i)
-  | None -> LVar v
 
 (** A procedure. *)
 type proc =
@@ -301,6 +302,16 @@ let create t =
     state = None;
   }
 
+type field =
+| FField of int
+| FCell of expr
+
+let loc x field =
+  match field with
+  | Some (FField n) -> LField (x,n)
+  | Some (FCell e) -> LCell (x,e)
+  | None -> LVar x
+
 let free_var prog x = List.assoc x prog.free_vars
 
 let alloc prog ?free t =
@@ -331,14 +342,13 @@ let rec typ prog x =
   (* Printf.printf "typ: %s\n%!" (string_of_loc x); *)
   match x with
   | LVar x -> prog.vars.(x)
-  | LField (x, Int n) ->
+  | LField (x, n) ->
     (
       match typ prog (LVar x) with
-      | T.Array t -> t
       | T.Record r -> r.(n)
       | _ -> assert false
     )
-  | LField (x, _) ->
+  | LCell (x, _) ->
     (
       match typ prog (LVar x) with
       | T.Array t -> t
@@ -464,25 +474,31 @@ module FV = struct
     | Op (o,a) -> Array.fold_left expr fv a
     | If (b,t,e) -> union (expr fv b) (max (eqs fv t) (eqs fv e))
     | Var v -> incr fv v
-    | Field (e,i) -> union (expr fv e) (expr fv i)
+    | Field (t,e,_) -> expr fv e
+    | Cell (e,i) -> union (expr fv e) (expr fv i)
     | Bool _ | Int _ | Float _ | String _ -> fv
 
   and eq ?(masking=true) fv (x,e) =
     let expr = expr ~masking in
     let fv =
-      if masking then
-        match x with
-        | LVar x -> hide fv x
-        | LField (x,i) -> expr fv i
-      else
-        match x with
-        | LVar x -> incr fv x
-        | LField (x,i) -> incr (expr fv i) x
+      match x with
+      | LVar x -> if masking then hide fv x else incr fv x
+      | LField _ -> fv
+      | LCell (x,i) -> if masking then expr fv i else incr (expr fv i) x
     in
     expr fv e
 
   and eqs ?(masking=true) fv eqs =
     List.fold_right (fun xe fv -> eq ~masking fv xe) eqs fv
+
+  let written fv eqs =
+    let aux fv = function
+      | LVar x -> incr fv x
+      | LField (x,_) -> incr fv x
+      | LCell (x,_) -> incr fv x
+      | LState _ -> fv
+    in
+    List.fold_left aux fv eqs
 
   let bound prog =
     let bound = create prog in
@@ -500,7 +516,8 @@ let rec subst_expr ((x',e',fve') as s) e =
   (* Printf.printf "B.subst_expr: %s\n%!" (string_of_expr e); *)
   match e with
   | Var x -> if x = x' then e' else e
-  | Field(e,i) -> Field (subst_expr s e, subst_expr s i)
+  | Field(t,e,i) -> Field (t, subst_expr s e, i)
+  | Cell(e,i) -> Cell (subst_expr s e, subst_expr s i)
   | Op(op,a) -> Op(op, Array.map (subst_expr s) a)
   | If(b,t,e) -> If(subst_expr s b, subst_eqs s t, subst_eqs s e)
   | Float _  | Int _ | String _ | Bool _ as e -> e
@@ -522,9 +539,10 @@ and subst_eqs ((x',e',fve') as s) = function
           (x,e)::(LVar x',e')::eqs
         else
           (x,e)::(subst_eqs s eqs)
-      | LField (v,i) ->
+      (* TODO: LField *)
+      | LCell (v,i) ->
         let i = subst_expr s i in
-        let x = LField(v,i) in
+        let x = LCell(v,i) in
         if v = x' then
           assert false
         else if FV.has fve' v then
@@ -608,7 +626,8 @@ let compact prog =
     (* We cannot use regular substitution because we don't want masking here. *)
     match e with
     | Var v -> Var s.(v)
-    | Field(e,i) -> Field (subst_expr e, subst_expr i)
+    | Field(t,e,i) -> Field (t, subst_expr e, i)
+    | Cell(e,i) -> Cell (subst_expr e, subst_expr i)
     | Op(op,a) -> Op(op, Array.map subst_expr a)
     | If(b,t,e) ->
       let b = subst_expr b in
@@ -667,7 +686,7 @@ let proc prog ?(state=false) args t eqs =
 let pack_state prog =
   let t = T.Record prog.vars in
   let n = Array.length prog.vars in
-  let load = List.init n (fun i -> LVar i, Field(State, Int i)) in
+  let load = List.init n (fun i -> LVar i, Field(t, State, i)) in
   let store = List.init n (fun i -> LState(i), Var i) in
   let loop =
     let eqs, ret = split_ret prog.loop in
@@ -676,7 +695,7 @@ let pack_state prog =
   let prog, init =
     let prog, x = alloc prog t in
     let prog, ret = alloc prog T.Unit in
-    let store = List.init n (fun i -> LField(x,Int i), Var i) in
+    let store = List.init n (fun i -> LField(x,i), Var i) in
     prog, [(LVar x), (Op(Alloc t,[||]))]@prog.init@store@[(LVar ret), Return x]
   in
   let procs =
@@ -773,7 +792,7 @@ module Builder = struct
       let field = get_some field in
       let field =
         match field with
-        | Int n -> n
+        | FField n -> n
         | _ -> assert false
       in
       LState field
@@ -939,8 +958,10 @@ module SAML = struct
     match e with
     | Var v -> State.get state v
     | Arg n -> State.get_arg state n
-    | Field (e,i) ->
-      (* Printf.printf "eval_expr field: %s[%s]\n" (string_of_expr e) (string_of_expr i); *)
+    | Field (t,e,i) ->
+      let v = eval_expr prog state e in
+      (V.get_record v).(i)
+    | Cell (e,i) ->
       let v = eval_expr prog state e in
       let i = eval_expr prog state i in
       let i = V.get_int i in
@@ -1036,6 +1057,10 @@ module SAML = struct
       (* Printf.printf "eval_eq var: %s\n%!" (string_of_var x); *)
       State.set state x e
     | LField (x,i) ->
+      (* Printf.printf "eval_eq field: %s\n%!" (string_of_var x); *)
+      let r = V.get_record (State.get state x) in
+      r.(i) <- e
+    | LCell (x,i) ->
       (* Printf.printf "eval_eq field: %s\n%!" (string_of_var x); *)
       let r = V.get_record (State.get state x) in
       let i = V.get_int (eval_expr prog state i) in
@@ -1173,29 +1198,65 @@ struct
       types = [];
     }
 
-  let rec emit_type c ?(state=false) t =
+  let is_ptr t =
+    match t with
+    | T.Int | T.Float | T.Unit -> false
+    | T.Record _ | T.Array _ -> true
+
+  let deref t =
+    if is_ptr t then "*" else ""
+
+  let rec emit_type c ?(noderef=false) ?(state=false) ?(full=false) t =
     (* Printf.printf "C.emit_type %B: %s\n%!" state (T.to_string t); *)
     match t with
     | T.Int -> c, "int"
     | T.Float -> c, "double"
     | T.Unit -> c, "void"
     | T.Record r ->
-      (
-        try
-          c, List.assoc t c.types
-        with
-        | Not_found ->
-          (* Printf.printf "didn't find type\n%!"; *)
-          let l = if state then "state" else Printf.sprintf "type%d" (List.length c.types) in
-          let c = { c with types = (t,l)::c.types } in
-          c, l
-      )
+      if full then
+        let c, l = emit_type c ~noderef:true t in
+        let c = ref c in
+        let ans =
+          Array.mapi
+            (fun i t ->
+              if t = T.Unit then "" else
+                let c', t = emit_type !c t in
+                c := c';
+                Printf.sprintf "%s %s_%d;" t l i
+            ) r
+        in
+        let ans = Array.to_list ans in
+        !c, String.concat " " ans
+      else
+        let c, typ =
+          try
+            c, List.assoc t c.types
+          with
+          | Not_found ->
+            (* Printf.printf "didn't find type\n%!"; *)
+            let l = if state then "state" else Printf.sprintf "type%d" (List.length c.types) in
+            let c = { c with types = (t,l)::c.types } in
+            c, l
+        in
+        c, if is_ptr t && not noderef then typ ^ "*" else typ
 
   let tab n = String.spaces (2*n)
 
-  let rec emit_expr c ~tabs e =
-    let emit_expr ?(tabs=tabs) = emit_expr ~tabs in
-    let emit_eqs ?(tabs=tabs) = emit_eqs ~tabs in
+  let rec emit_loc c ~decl ~tabs x =
+    match x with
+    | LVar _
+    | LState _ -> c, string_of_loc x
+    | LField (a,i) ->
+      let t = typ c.prog (LVar a) in
+      let c, t = emit_type c ~noderef:true t in
+      c, Printf.sprintf "%s->%s_%d" (string_of_var a) t i
+    | LCell (a,i) ->
+      let c, i = emit_expr c ~decl ~tabs i in
+      c, Printf.sprintf "%s[%s]" (string_of_var a) i
+
+  and emit_expr c ~decl ~tabs e =
+    let emit_expr ?(decl=decl) ?(tabs=tabs) = emit_expr ~decl ~tabs in
+    let emit_eqs ?(decl=decl) ?(tabs=tabs) = emit_eqs ~decl ~tabs in
     (* Printf.printf "C.emit_expr: %s\n%!" (string_of_expr e); *)
     match e with
     | Int n -> c, Printf.sprintf "%d" n
@@ -1213,13 +1274,19 @@ struct
         | Mul -> c, Printf.sprintf "(%s * %s)" args.(0) args.(1)
         | Alloc t ->
           let n = if Array.length args = 0 then "1" else args.(0) in
+          assert (is_ptr t);
+          let c, tv = emit_type c ~noderef:true t in
           let c, t = emit_type c t in
-          c, Printf.sprintf "malloc(%s * sizeof(%s))" n t
+          c, Printf.sprintf "(%s)malloc(%s * sizeof(%s))" t n tv
         | External ext -> c, ext.ext_c args
       )
     | Return x ->
       c, if typ c.prog (LVar x) = T.Unit then "" else Printf.sprintf "return %s" (string_of_var x)
-    | Field (e, i) ->
+    | Field (t, e, i) ->
+      let c, e = emit_expr c e in
+      let c, t = emit_type c ~noderef:true t in
+      c, Printf.sprintf "%s->%s_%d" e t i
+    | Cell (e, i) ->
       let c, e = emit_expr c e in
       let c, i = emit_expr c i in
       c, Printf.sprintf "%s[%s]" e i
@@ -1232,16 +1299,38 @@ struct
       let tabs = tab tabs in
       c, Printf.sprintf "if (%s) then {\n%s\n%s} else {\n%s\n%s}" b t tabs e tabs
 
-  and emit_eq ~tabs c (x,e) =
-    let c, e = emit_expr ~tabs c e in
-    let tabs = tab tabs in
+  and emit_eq c ~decl ~tabs (x,expr) =
+    let c, e = emit_expr ~decl ~tabs c expr in
     if typ c.prog x = T.Unit then
-      c, Printf.sprintf "%s%s;" tabs e
+      (
+        match expr with
+        | Var _ | Field _ -> (c, decl), ""
+        | _ -> (c, decl), Printf.sprintf "%s%s;" (tab tabs) e
+      )
     else
-      c, Printf.sprintf "%s%s = %s;" tabs (string_of_loc x) e
+      let c, decl, t =
+        match x with
+        | LVar x ->
+          let t = typ c.prog (LVar x) in
+          if List.mem x decl then
+            c, decl, ""
+          else
+            let decl = x::decl in
+            let deref = deref t in
+            let c, t = emit_type c t in
+            c, decl, (t^" ")
+        | LCell _
+        | LField _
+        | LState _ ->
+          c, decl, ""
+      in
+      let c, l = emit_loc c ~decl ~tabs x in
+      (c, decl), Printf.sprintf "%s%s%s = %s;" (tab tabs) t l e
 
-  and emit_eqs ?(tabs=0) c eqs =
-    let c, eqs = List.fold_map (emit_eq ~tabs) c eqs in
+  (* TODO: decl should be replaced by FV.written because of if, etc. *)
+  and emit_eqs c ?(decl=[]) ?(tabs=0) eqs =
+    let (c,decl), eqs = List.fold_map (fun (c,decl) -> emit_eq c ~decl ~tabs) (c,decl) eqs in
+    let eqs = List.filter (fun s -> s <> "") eqs in
     c, String.concat "\n" eqs
 
   let emit_proc c (name,p) =
@@ -1272,14 +1361,15 @@ struct
       | Some t ->
         (* We emit the state first so that we know its name. *)
         let c, t = emit_type c ~state:true t in
-        c, (Printf.sprintf "state %s" t)::args
+        c, (Printf.sprintf "%s state" t)::args
       | None -> c, args
     in
     let args = String.concat ", " args in
     let c, eqs = emit_eqs c ~tabs:1 p.proc_eqs in
+    let c, ret = emit_type c p.proc_ret in
     c,
-    Printf.sprintf "%s %s(%s) {\n%s\n}"
-      (T.to_string p.proc_ret)
+    Printf.sprintf "inline %s %s(%s) {\n%s\n}"
+      ret
       name
       args
       eqs
@@ -1290,11 +1380,17 @@ struct
     let procs = ["run", proc_run prog; "alloc", proc_alloc prog]@prog.procs in
     let c, procs = List.fold_map emit_proc c procs in
     let procs = String.concat "\n\n" procs in
-    let types =
-      String.concat_map "\n\n"
-        (fun (t,l) ->
-          Printf.sprintf "typedef { ... } %s;" l
-        ) c.types
+    let c, types =
+      let c = ref c in
+      let ans =
+        String.concat_map "\n\n"
+          (fun (t,l) ->
+            let c', t = emit_type !c ~full:true t in
+            c := c';
+            Printf.sprintf "typedef struct { %s } %s;" t l
+          ) (!c).types
+      in
+      !c, ans
     in
     types ^ "\n\n" ^ procs
 end

@@ -55,6 +55,11 @@ let mop name ?i ?b t =
     ext_implem = may_implem i;
   }
 
+let get_string e =
+  match e.E.desc with
+  | E.Cst (E.String s) -> s
+  | _ -> raise E.Cannot_reduce
+
 let exit =
   let t _ = T.arrnl [T.int] (T.fresh_var ()) in
   let i ~subst ~state args =
@@ -85,7 +90,6 @@ let nn_n name fop iop fml iml c =
       T.arrnl [T.float; T.float] T.float
   in
   let i ~subst ~state args =
-    let ta = List.map (fun (l,e) -> E.typ e) args in
     let x = List.assoc "" args in
     let y = List.assoc_nth 1 "" args in
     match x.E.desc, y.E.desc with
@@ -126,7 +130,6 @@ let nn_b name fop iop ocaml c =
       T.arrnl [T.float; T.float] T.bool
   in
   let i ~subst ~state args =
-    let ta = List.map (fun (l,e) -> E.typ e) args in
     let x = List.assoc "" args in
     let y = List.assoc_nth 1 "" args in
     match x.E.desc, y.E.desc with
@@ -272,7 +275,7 @@ let array_set =
     let t, _ = T.split_arr t in
     let t, _ = List.assoc_nth 2 "" t in
     let prog, x = BB.eq_alloc_anon prog (T.emit t) a.(0) in
-    let prog = BB.eq_anon prog (B.LField(x,a.(1))) a.(2) in
+    let prog = BB.eq_anon prog (B.LCell(x,a.(1))) a.(2) in
     prog, B.Unit
   in
   mop "array_set" t ~b
@@ -290,10 +293,7 @@ let array_get =
     | E.Array a, E.Cst (E.Int n) -> state, List.nth n a
     | _ -> raise E.Cannot_reduce
   in
-  let b t prog a =
-    let _, t = T.split_arr t in
-    prog, B.Field(a.(0), a.(1))
-  in
+  let b t prog a = prog, B.Cell(a.(0), a.(1)) in
   mop "array_get" t ~i ~b
 
 let array_tail =
@@ -390,13 +390,17 @@ let compile =
     let state = { state with E. rs_procs = procs@state.E.rs_procs } in
     let t_state = T.state () in
     let t_alloc = T.arrnl [] t_state in
-    let t_run = T.arrnl [t_state] t_ret in
     let alloc = E.proc ~t:t_alloc (name^"_alloc",([],state_t)) in
     (* We need to load the state before calling and store it afterwards. *)
     let set_state =
       let b t prog arg =
         let state = arg.(0) in
         let n = arg.(1) in
+        let n =
+          match n with
+          | B.Int n -> n
+          | _ -> assert false
+        in
         let v = arg.(2) in
         let prog, s = BB.alloc_anon prog state_t in
         let prog = BB.eq_anon prog (B.LVar s) state in
@@ -471,7 +475,7 @@ let compile =
   in
   mop "compile" t ~i
 
-let emit_c =
+let emit_dssi =
   let t _ =
     let a = T.fresh_var () in
     T.arrnl [T.arrnl [] a] T.string
@@ -483,9 +487,23 @@ let emit_c =
     let prog = BB.prog ~state:true prog in
     Printf.printf "---\nEmit C prog:\n%s---\n\n%!" (B.to_string prog);
     let c = B.C.emit prog in
+    let c = "#include <stdlib.h>\n#include <math.h>\n#include <stdio.h>\n\n"^c^"\n" in
+    let c = c^Saml_dssi.c in
     state, E.string c
   in
-  mop "emit_c" t ~i
+  mop "emit_dssi" t ~i
+
+let write_file =
+  let t _ = T.arrnl[T.string; T.string] T.unit in
+  let i ~subst ~state args =
+    let fname = List.assoc "" args in
+    let fname = get_string fname in
+    let s = List.assoc_nth 1 "" args in
+    let s = get_string s in
+    file_out fname s;
+    state, E.unit ()
+  in
+  mop "write_file" t ~i
 
 let run =
   let t _ = T.arr ["loop",(T.bool,true); "",(T.arrnl [] T.unit,false)] T.unit in
@@ -545,7 +563,6 @@ let impl =
   let tb = T.bool in
   let f_f = T.arrnl [tf] tf in
   let ff_f = T.arrnl [tf;tf] tf in
-  let ff_b = T.arrnl [tf;tf] tb in
   let bb_b = T.arrnl [tb;tb] tb in
   let b_b = T.arrnl [tb] tb in
   let aa_b () = let a = T.fresh_var () in T.arrnl [a;a] tb in
@@ -584,9 +601,10 @@ let impl =
     (* Actions. *)
     exit;
     compile;
-    emit_c;
+    emit_dssi;
     run;
     print;
+    write_file;
 
     (* Sound. *)
     (* play_buffer_mono; *)

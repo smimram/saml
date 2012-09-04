@@ -33,7 +33,8 @@ let play(duration=-1,s)=
 
 let () =
   let s() = osc.saw(440) in
-  let c = emit.c(s) in
+  let c = emit.dssi(s) in
+  file.write("dssi_out.c", c);
   print(c);
   exit(0)
 

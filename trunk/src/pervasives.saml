@@ -75,6 +75,11 @@ let array =
     let play = builtin "array_play"
   end
 
+let file =
+  struct
+    let write = builtin "write_file"
+  end
+
 (** Dummy implementation of events. *)
 let event =
   struct
@@ -300,10 +305,10 @@ let instrument =
 
 let emit =
   struct
-    let c = builtin "emit_c"
+    let dssi = builtin "emit_dssi"
 
-    let dssi(s) =
-      let s = (s : instrument) in
-      let prog = compile(s) in
-      ()
+    (* let dssi(s) = *)
+      (* let s = (s : instrument) in *)
+      (* let prog = compile(s) in *)
+      (* () *)
   end
