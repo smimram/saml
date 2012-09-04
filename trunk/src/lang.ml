@@ -1035,7 +1035,7 @@ module Expr = struct
   (** Emit the programs, optionally allowing free variables and generating a
       state. *)
   let rec emit ~subst ~state ?(free_vars=false) ?prog expr =
-    (* Printf.printf "emit: %s\n\n" (to_string expr); *)
+    Printf.printf "emit: %s\n\n" (to_string expr);
     let rec aux ~subst ~state ~free_vars prog expr =
       (* Printf.printf "emit: %s\n\n" (to_string expr); *)
       let emit ?(subst=subst) ~state prog expr = aux ~subst ~state ~free_vars prog expr in

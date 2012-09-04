@@ -33,14 +33,6 @@ let play(duration=-1,s)=
 
 let () =
   let s() = instrument.adsr(0.01,0.05,0.8,0.5,osc.saw) in
-  let s() =
-    let period = ref (1./22050.) in
-    let dt() = !period in
-    (
-      s(),
-      period = fun(x)-> period := x
-    )
-  in
   let c = emit.dssi(s) in
   file.write("dssi_out.c", c);
   (* print(c); *)

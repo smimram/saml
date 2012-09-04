@@ -269,6 +269,7 @@ let instrument =
 
     let adsr(a,d,s,r,x) =
       let period = ref (1./44100.) in
+      let dt() = !period in
       let f = ref 440. in
       let x = (x:(float)->float) in
       let x = x(!f) in
@@ -278,7 +279,6 @@ let instrument =
       let on_die () = act := false in
       let activate() = x.activate(); act := true in
       let x = envelope.adsr(a,d,s,r,on_die=,x.) in
-      let dt() = !period in
       let ans =
         (
           !g*x.,
