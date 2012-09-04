@@ -6,7 +6,7 @@ include "pervasives.saml"
 
 let play(duration=-1,s)=
   let player() =
-    let dt = 1./44100. in
+    let dt() = 1./44100. in
     let s = (s:()->float) in
     let prog = compile(s) in
     let state = prog.alloc() in
@@ -31,17 +31,25 @@ let play(duration=-1,s)=
   (* in *)
   (* play(s) *)
 
-let () =
-  let s() = osc.saw(440) in
-  let c = emit.dssi(s) in
-  file.write("dssi_out.c", c);
-  print(c);
-  exit(0)
-
 (* let () = *)
-  (* let s (freq) = osc.sine(freq) in *)
-  (* let i () = instrument.adsr(0.5,0.4,0.8,1,s) in *)
-  (* instrument.play(i) *)
+  (* let s() = osc.saw(440) in *)
+  (* let period = ref (1./44110.) in *)
+  (* let dt = !period in *)
+  (* let s() = *)
+    (* ( *)
+      (* s(), *)
+      (* period = fun(x)-> period := dt; *)
+    (* ) *)
+  (* in *)
+  (* let c = emit.dssi(s) in *)
+  (* file.write("dssi_out.c", c); *)
+  (* (\* print(c); *\) *)
+  (* exit(0) *)
+
+let () =
+  let s (freq) = osc.sine(freq) in
+  let i () = instrument.adsr(0.5,0.4,0.8,1,s) in
+  instrument.play(i)
 
 let s() = osc.sine(440,phase=0.777)
 let s() = time.accelerate(440+60*time.accelerate(10*time.now,fun()->osc.sine(1)),fun()->osc.saw(1.))
@@ -88,7 +96,7 @@ let s() = envelope.ad(0.01,2,dfun=fun(x)->x*x,on_die=fun ()->print("DIED!\n"),os
 
 let play(duration=-1,s)=
   let player() =
-    let dt = 1./44100. in
+    let dt() = 1./44100. in
     let s = (s:()->(float, release:()->())) in
     let s() =
       let s = s() in

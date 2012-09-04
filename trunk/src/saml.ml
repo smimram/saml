@@ -16,10 +16,11 @@ let parse_file f =
   try
     Parser.prog Lexer.token lexbuf
   with
+    (* TODO: use string_of_pos *)
     | Failure "lexing: empty token" ->
       let pos = (Lexing.lexeme_end_p lexbuf) in
       let err =
-        Printf.sprintf "%s: lexing error at line %d, character %d."
+        Printf.sprintf "Lexing error in file %s at line %d, character %d."
           pos.Lexing.pos_fname
           pos.Lexing.pos_lnum
           (pos.Lexing.pos_cnum - pos.Lexing.pos_bol)
@@ -28,7 +29,7 @@ let parse_file f =
     | Parsing.Parse_error ->
       let pos = (Lexing.lexeme_end_p lexbuf) in
       let err =
-        Printf.sprintf "%s: parse error at word \"%s\", line %d, character %d."
+        Printf.sprintf "Parsing error in file %s at word \"%s\", line %d, character %d."
           pos.Lexing.pos_fname
           (Lexing.lexeme lexbuf)
           pos.Lexing.pos_lnum

@@ -488,6 +488,16 @@ let emit_dssi =
     Printf.printf "---\nEmit C prog:\n%s---\n\n%!" (B.to_string prog);
     let c = B.C.emit prog in
     let c = "#include <stdlib.h>\n#include <math.h>\n#include <stdio.h>\n\n"^c^"\n" in
+    let c = c ^ String.concat "\n"
+      [
+        "";
+        "#define STATE state";
+        "#define SAML_name \"SAML synth\"";
+        "#define SAML_synth run";
+        "#define SAML_synth_alloc alloc";
+        "";
+      ]
+    in
     let c = c^Saml_dssi.c in
     state, E.string c
   in

@@ -770,7 +770,9 @@ module Expr = struct
       | None ->
         let desc = e.desc in
         match desc with
-        | Ident "dt" -> ret desc T.float
+        | Ident "dt" ->
+          let t = T.arr [] T.float in
+          ret desc t
         | Ident x ->
           (
             try
@@ -895,7 +897,7 @@ module Expr = struct
             ret (Let { l with def; body }) (typ body)
           else
             let def = infer_type env l.def in
-            let def = if l.var = "dt" then coerce def T.float else def in
+            let def = if l.var = "dt" then coerce def (T.arr [] T.float) else def in
             let env = (l.var,typ def)::env in
             let body = infer_type env l.body in
             ret (Let { l with def; body }) (typ body)
@@ -1327,37 +1329,37 @@ module Expr = struct
             Printf.printf "print: %s [ %s ]\n" (to_string (List.assoc "" args)) s;
             state, app e args
           *)
-          | External ext when ext.ext_name = "play" || ext.ext_name = "save" ->
-            Printf.printf "PLAY\n%!";
-            let prog = List.assoc "" args in
-            let state, prog = reduce_quote ~subst ~state prog [] in
-            file_out "out/output.prog" (to_string prog ^ "\n");
-            let state, prog = emit ~subst ~state prog in
-            let sr = 44100 in
-            let dt = 1. /. (float_of_int sr) in
-            let prog = BB.eq prog ~init:true "dt" (B.Float dt) in
-            let prog = BB.prog prog in
-            (* This is a test. *)
-            (* let prog = B.pack_state prog "state" in *)
-            file_out "out/output.saml" (B.to_string prog);
-            (* Emit OCaml. *)
-            if true then
-              (
-                let ml = B.OCaml.emit prog in
-                let cmd = ext.ext_name in
-                let cmd = if cmd = "save" then "save \"output.wav\"" else cmd in
-                let ml = Printf.sprintf "%s\n\nlet () = Samlib.%s %d (program ())\n" ml cmd sr in
-                file_out "out/output.ml" ml;
-              );
-            (* Emit SAML. *)
-            if true then
-              (
-                Printf.printf "%s\n%!" (B.to_string prog);
-                let prog = B.SAML.emit prog in
-                let prog () = B.V.get_float (prog ()) in
-                (if ext.ext_name = "save" then Samlib.save "output.wav" else Samlib.play) 44100 prog;
-              );
-            state, unit ()
+          (* | External ext when ext.ext_name = "play" || ext.ext_name = "save" -> *)
+            (* Printf.printf "PLAY\n%!"; *)
+            (* let prog = List.assoc "" args in *)
+            (* let state, prog = reduce_quote ~subst ~state prog [] in *)
+            (* file_out "out/output.prog" (to_string prog ^ "\n"); *)
+            (* let state, prog = emit ~subst ~state prog in *)
+            (* let sr = 44100 in *)
+            (* let dt = 1. /. (float_of_int sr) in *)
+            (* let prog = BB.eq prog ~init:true "dt" (B.Float dt) in *)
+            (* let prog = BB.prog prog in *)
+            (* (\* This is a test. *\) *)
+            (* (\* let prog = B.pack_state prog "state" in *\) *)
+            (* file_out "out/output.saml" (B.to_string prog); *)
+            (* (\* Emit OCaml. *\) *)
+            (* if true then *)
+              (* ( *)
+                (* let ml = B.OCaml.emit prog in *)
+                (* let cmd = ext.ext_name in *)
+                (* let cmd = if cmd = "save" then "save \"output.wav\"" else cmd in *)
+                (* let ml = Printf.sprintf "%s\n\nlet () = Samlib.%s %d (program ())\n" ml cmd sr in *)
+                (* file_out "out/output.ml" ml; *)
+              (* ); *)
+            (* (\* Emit SAML. *\) *)
+            (* if true then *)
+              (* ( *)
+                (* Printf.printf "%s\n%!" (B.to_string prog); *)
+                (* let prog = B.SAML.emit prog in *)
+                (* let prog () = B.V.get_float (prog ()) in *)
+                (* (if ext.ext_name = "save" then Samlib.save "output.wav" else Samlib.play) 44100 prog; *)
+              (* ); *)
+            (* state, unit () *)
           | External ext when not (T.is_arr (typ expr)) ->
             (* Printf.printf "EXT %s\n%!" (to_string expr); *)
             (* TODO: better when and reduce partial applications. *)
@@ -1410,7 +1412,7 @@ module Expr = struct
           reduce ~subst ~state e
         else
           let state, def = reduce ~subst ~state l.def in
-          if is_value def && l.var <> "dt" then
+          if is_value def then
             let subst = (l.var,def)::subst in
             reduce ~subst ~state l.body
           else

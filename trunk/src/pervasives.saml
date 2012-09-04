@@ -109,7 +109,7 @@ let time =
     let now() = integrator.euler(1.)
 
     let distort(f,s) =
-      let dt = f(dt) in
+      let dt() = f(dt()) in
       s()
 
     let accelerate(freq,phase=0.,x) = distort(fun (t) -> freq*t+phase, x)
@@ -281,7 +281,7 @@ let instrument =
 
     let play(s) =
       let player() =
-        let dt = 1./44100. in
+        let dt() = 1./44100. in
         let s = (s : instrument) in
         let prog = compile(s) in
         let state = prog.alloc() in
