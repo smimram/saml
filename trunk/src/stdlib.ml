@@ -207,6 +207,16 @@ module List = struct
       else (f k)::(aux (k+1))
     in
     aux 0
+
+  let may_init n f =
+    let rec aux k =
+      if k = n then []
+      else
+        match f k with
+        | Some x -> x::(aux (k+1))
+        | None -> aux (k+1)
+    in
+    aux 0
 end
 
 module String = struct

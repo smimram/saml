@@ -498,7 +498,7 @@ module FV = struct
       | LCell (x,_) -> incr fv x
       | LState _ -> fv
     in
-    List.fold_left aux fv eqs
+    List.fold_left (fun fv (x,e) -> aux fv x) fv eqs
 
   let bound prog =
     let bound = create prog in
@@ -695,7 +695,8 @@ let pack_state prog =
   let prog, init =
     let prog, x = alloc prog t in
     let prog, ret = alloc prog T.Unit in
-    let store = List.init n (fun i -> LField(x,i), Var i) in
+    let written = FV.written (FV.create prog) prog.init in
+    let store = List.may_init n (fun i -> if FV.has written i then Some (LField(x,i), Var i) else None) in
     prog, [(LVar x), (Op(Alloc t,[||]))]@prog.init@store@[(LVar ret), Return x]
   in
   let procs =
@@ -717,7 +718,7 @@ let proc_alloc prog =
   proc prog ~state:false [] t prog.init
 
 let proc_run prog =
-  proc prog ~state:true [] (T.Unit) prog.loop
+  proc prog ~state:true [] prog.output prog.loop
 
 let procs prog =
   prog.procs
@@ -1244,8 +1245,11 @@ struct
 
   let rec emit_loc c ~decl ~tabs x =
     match x with
-    | LVar _
-    | LState _ -> c, string_of_loc x
+    | LVar x -> c, string_of_var x
+    | LState i ->
+      let t = state_t c.prog in
+      let c, t = emit_type c ~noderef:true t in
+      c, Printf.sprintf "state->%s_%d" t i
     | LField (a,i) ->
       let t = typ c.prog (LVar a) in
       let c, t = emit_type c ~noderef:true t in
@@ -1297,7 +1301,7 @@ struct
       let c, t = emit_eqs c t in
       let c, e = emit_eqs c e in
       let tabs = tab tabs in
-      c, Printf.sprintf "if (%s) then {\n%s\n%s} else {\n%s\n%s}" b t tabs e tabs
+      c, Printf.sprintf "if (%s) {\n%s\n%s} else {\n%s\n%s}" b t tabs e tabs
 
   and emit_eq c ~decl ~tabs (x,expr) =
     let c, e = emit_expr ~decl ~tabs c expr in
