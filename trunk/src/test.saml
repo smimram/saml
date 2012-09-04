@@ -31,25 +31,25 @@ let play(duration=-1,s)=
   (* in *)
   (* play(s) *)
 
-(* let () = *)
-  (* let s() = osc.saw(440) in *)
-  (* let period = ref (1./44110.) in *)
-  (* let dt = !period in *)
-  (* let s() = *)
-    (* ( *)
-      (* s(), *)
-      (* period = fun(x)-> period := dt; *)
-    (* ) *)
-  (* in *)
-  (* let c = emit.dssi(s) in *)
-  (* file.write("dssi_out.c", c); *)
-  (* (\* print(c); *\) *)
-  (* exit(0) *)
-
 let () =
-  let s (freq) = osc.sine(freq) in
-  let i () = instrument.adsr(0.5,0.4,0.8,1,s) in
-  instrument.play(i)
+  let s() = instrument.adsr(0.01,0.05,0.8,0.5,osc.saw) in
+  let s() =
+    let period = ref (1./22050.) in
+    let dt() = !period in
+    (
+      s(),
+      period = fun(x)-> period := x
+    )
+  in
+  let c = emit.dssi(s) in
+  file.write("dssi_out.c", c);
+  (* print(c); *)
+  exit(0)
+
+(* let () = *)
+  (* let s (freq) = osc.sine(freq) in *)
+  (* let i () = instrument.adsr(0.5,0.4,0.8,1,s) in *)
+  (* instrument.play(i) *)
 
 let s() = osc.sine(440,phase=0.777)
 let s() = time.accelerate(440+60*time.accelerate(10*time.now,fun()->osc.sine(1)),fun()->osc.saw(1.))

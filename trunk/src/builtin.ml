@@ -487,14 +487,31 @@ let emit_dssi =
     let prog = BB.prog ~state:true prog in
     Printf.printf "---\nEmit C prog:\n%s---\n\n%!" (B.to_string prog);
     let c = B.C.emit prog in
-    let c = "#include <stdlib.h>\n#include <math.h>\n#include <stdio.h>\n\n"^c^"\n" in
+    let c = String.concat "\n"
+      [
+        "#include <stdlib.h>";
+        "#include <math.h>";
+        "#include <stdio.h>";
+        "";
+        c;
+        "";
+      ]
+    in
     let c = c ^ String.concat "\n"
       [
         "";
         "#define STATE state";
-        "#define SAML_name \"SAML synth\"";
+        "#define SAML_name \"saml_syth\"";
         "#define SAML_synth run";
         "#define SAML_synth_alloc alloc";
+        "#define SAML_synth_period period";
+        "#define SAML_synth_reset reset";
+        "#define SAML_synth_free unalloc";
+        "#define SAML_synth_set_velocity velocity";
+        "#define SAML_synth_set_freq freq";
+        "#define SAML_synth_note_off release";
+        "#define SAML_synth_is_active is_active";
+        "#define SAML_synth_activate activate";
         "";
       ]
     in

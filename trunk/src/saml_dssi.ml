@@ -58,7 +58,7 @@ static LADSPA_Handle SAML_instantiate(const LADSPA_Descriptor *descriptor, unsig
   for (i = 0; i < POLYPHONY; i++)
     {
       h->state[i] = SAML_synth_alloc();
-      h->state[i]->period = 1. / (float)sample_rate;
+      SAML_synth_period(h->state[i], 1. / (float)sample_rate);
     }
   h->first_inactive=0;
 
@@ -190,10 +190,12 @@ static void SAML_run_synth(LADSPA_Handle instance, unsigned long sample_count, s
       for (n = 0; n < h->first_inactive; n++)
         if (SAML_synth_is_active(h->state[n]))
           {
-            /* LADSPA_Data s = SAML_synth(h->state[n]); */
-            pair_double_double s = SAML_synth(h->state[n]);
-            h->output_l[pos] += s.x;
-            h->output_r[pos] += s.y;
+            LADSPA_Data s = SAML_synth(h->state[n]);
+            h->output_l[pos] += s;
+            h->output_r[pos] += s;
+            /* pair_double_double s = SAML_synth(h->state[n]); */
+            /* h->output_l[pos] += s.x; */
+            /* h->output_r[pos] += s.y; */
           }
     }
 }
@@ -263,7 +265,7 @@ __attribute__((constructor)) void init()
     }
 }
 
-__attribute__((constructor)) void fini()
+__attribute__((destructor)) void fini()
 {
   if (SAML_LADSPA_descriptor)
     {

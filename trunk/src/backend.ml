@@ -666,7 +666,8 @@ let compact prog =
 (* TODO: we should maybe define eqs = eq list * expr and remove Return... *)
 let split_ret eqs =
   let rec aux h = function
-    | [eq] -> h, eq
+    | [_, Return _] as eq -> h, eq
+    | [eq] -> eq::h, []
     | eq::eqs -> aux (eq::h) eqs
     | [] -> assert false
   in
@@ -683,15 +684,18 @@ let proc prog ?(state=false) args t eqs =
     proc_ret = t;
   }
 
+
+(* TODO: alloc and run should be handled as other procs. *)
 let pack_state prog =
   let t = T.Record prog.vars in
   let n = Array.length prog.vars in
   let load = List.init n (fun i -> LVar i, Field(t, State, i)) in
   let store = List.init n (fun i -> LState(i), Var i) in
-  let loop =
-    let eqs, ret = split_ret prog.loop in
-    load@eqs@store@[ret]
+  let ls eqs =
+    let eqs, ret = split_ret eqs in
+    load@eqs@store@ret
   in
+  let loop = ls prog.loop in
   let prog, init =
     let prog, x = alloc prog t in
     let prog, ret = alloc prog T.Unit in
@@ -699,16 +703,36 @@ let pack_state prog =
     let store = List.may_init n (fun i -> if FV.has written i then Some (LField(x,i), Var i) else None) in
     prog, [(LVar x), (Op(Alloc t,[||]))]@prog.init@store@[(LVar ret), Return x]
   in
+  let proc_reset =
+    {
+      proc_vars = prog.vars;
+      proc_state = Some t;
+      proc_args = [];
+      proc_eqs = prog.init;
+      proc_ret = T.Unit;
+    }
+  in
+  let procs = ("reset", proc_reset)::prog.procs in
   let procs =
     List.map
       (fun (l,p) ->
         l, { p with
-          proc_eqs = load@p.proc_eqs@store;
+          proc_eqs = ls p.proc_eqs;
           (* We add a lot of vars but it should be correct. *)
           proc_vars = prog.vars;
           proc_state = Some t }
-      ) prog.procs
+      ) procs
   in
+  let proc_unalloc =
+    {
+      proc_vars = prog.vars;
+      proc_state = Some t;
+      proc_args = [];
+      proc_eqs = load; (* TODO *)
+      proc_ret = T.Unit;
+    }
+  in
+  let procs = ("unalloc", proc_unalloc)::procs in
   { prog with init; loop; state = Some t; procs }
 
 (** Procedures. *)
@@ -756,9 +780,9 @@ module Builder = struct
     { b with prog }, v
 
   let alloc b ?(free=false) x t =
+    (* Printf.printf "alloc: %s\n%!" x; *)
     (* In theory, we could have masking but in practice we rename all the
        variables, so it's safer this way for now. *)
-    (* Printf.printf "alloc: %s\n%!" x; *)
     if List.exists (fun (y,_) -> x = y) b.var_pos then
       failwith (Printf.sprintf "Backend: trying to reallocate %s." x);
     let free = if free then Some x else None in
@@ -1200,8 +1224,9 @@ struct
     }
 
   let is_ptr t =
+    (* Printf.printf "is_ptr: %s\n%!" (T.to_string t); *)
     match t with
-    | T.Int | T.Float | T.Unit -> false
+    | T.Int | T.Float | T.Bool | T.Unit -> false
     | T.Record _ | T.Array _ -> true
 
   let deref t =
@@ -1213,6 +1238,7 @@ struct
     | T.Int -> c, "int"
     | T.Float -> c, "double"
     | T.Unit -> c, "void"
+    | T.Bool -> c, "int"
     | T.Record r ->
       if full then
         let c, l = emit_type c ~noderef:true t in
@@ -1259,13 +1285,15 @@ struct
       c, Printf.sprintf "%s[%s]" (string_of_var a) i
 
   and emit_expr c ~decl ~tabs e =
+    (* Printf.printf "C.emit_expr: %s\n%!" (string_of_expr e); *)
     let emit_expr ?(decl=decl) ?(tabs=tabs) = emit_expr ~decl ~tabs in
     let emit_eqs ?(decl=decl) ?(tabs=tabs) = emit_eqs ~decl ~tabs in
-    (* Printf.printf "C.emit_expr: %s\n%!" (string_of_expr e); *)
     match e with
     | Int n -> c, Printf.sprintf "%d" n
     | Float f -> c, Printf.sprintf "%f" f
+    | Bool b -> c, if b then "1" else "0"
     | Var n -> c, Printf.sprintf "%s" (string_of_var n)
+    | Arg n -> c, Printf.sprintf "a%d" n
     | Op (op, args) ->
       let c, args =
         let c = ref c in
@@ -1273,9 +1301,13 @@ struct
         !c, args
       in
       (
+        (* Printf.printf "C.emit_expr op: %s\n%!" (string_of_op op); *)
         match op with
         | Add -> c, Printf.sprintf "(%s + %s)" args.(0) args.(1)
+        | Sub -> c, Printf.sprintf "(%s - %s)" args.(0) args.(1)
         | Mul -> c, Printf.sprintf "(%s * %s)" args.(0) args.(1)
+        | Div -> c, Printf.sprintf "(%s / %s)" args.(0) args.(1)
+        | Eq -> c, Printf.sprintf "(%s == %s)" args.(0) args.(1)
         | Alloc t ->
           let n = if Array.length args = 0 then "1" else args.(0) in
           assert (is_ptr t);

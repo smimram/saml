@@ -247,7 +247,13 @@ let effect =
       a[!i]
   end
 
-type instrument = ()->(float,freq:(float)->(),activate:()->())
+type instrument =
+  ()->(
+    float,
+    period:(float)->(),
+    freq:(float)->(),
+    activate:()->()
+   )
 
 let instrument =
   struct
@@ -262,6 +268,7 @@ let instrument =
       )
 
     let adsr(a,d,s,r,x) =
+      let period = ref (1./44100.) in
       let f = ref 440. in
       let x = (x:(float)->float) in
       let x = x(!f) in
@@ -271,13 +278,21 @@ let instrument =
       let on_die () = act := false in
       let activate() = x.activate(); act := true in
       let x = envelope.adsr(a,d,s,r,on_die=,x.) in
-      (
-        !g*x.,
-        freq = fun (x) -> f := x,
-        gain = fun (x) -> g := x,
-        activate=,
-        is_active = fun () -> !act
-      )
+      let dt() = !period in
+      let ans =
+        (
+          !g*x.,
+          freq = fun (x) -> f := x,
+          gain = fun (x) -> g := x,
+          velocity = fun(x) -> g := x,
+          activate =,
+          is_active = fun () -> !act,
+          release = x.release,
+          period = fun(x) -> period := x
+        )
+      in
+      (* (ans : instrument) *)
+      ans
 
     let play(s) =
       let player() =
@@ -305,7 +320,9 @@ let instrument =
 
 let emit =
   struct
-    let dssi = builtin "emit_dssi"
+    let dssi(i) =
+      let i = (i:instrument) in
+      (builtin "emit_dssi")(i)
 
     (* let dssi(s) = *)
       (* let s = (s : instrument) in *)

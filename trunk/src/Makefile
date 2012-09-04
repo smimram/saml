@@ -15,8 +15,16 @@ OCAMLOPT = ocamlopt.opt
 
 test: all
 	OCAMLRUNPARAM=b ./saml test.saml
+	$(MAKE) dssi
 
-all: backends nc
+dssi: dssi_out.so
+analyze: dssi
+	DSSI_PATH="." dssi_analyse_plugin dssi_out.so
+
+%.so: %.c
+	gcc -fPIC -shared -Wall -Wno-unused-variable -g -lm $^ -o $@
+
+all: backends saml_dssi.ml nc
 
 backends:
 	$(MAKE) -C backends
