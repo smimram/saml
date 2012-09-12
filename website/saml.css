@@ -37,7 +37,8 @@ body {
 h1 {
     margin: 1% 0;
     padding: 3% 8%;
-    background: -moz-linear-gradient(to bottom, #7db9e8, #1e5799);
+    background: -webkit-linear-gradient(bottom, #7db9e8, #1e5799);
+    background: -moz-linear-gradient(bottom, #7db9e8, #1e5799);
     color: white;
     text-shadow: 1px 1px black;
 }
@@ -54,4 +55,10 @@ a {
 
 a:hover {
     text-decoration: underline;
+}
+
+#footer {
+    color: grey;
+    font-size: small;
+    text-align: center;
 }
