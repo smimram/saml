@@ -293,7 +293,14 @@ let array_get =
     | E.Array a, E.Cst (E.Int n) -> state, List.nth n a
     | _ -> raise E.Cannot_reduce
   in
-  let b t prog a = prog, B.Cell(a.(0), a.(1)) in
+  let b t prog a =
+    let x =
+      match a.(0) with
+      | B.Var x -> x
+      | _ -> assert false
+    in
+    prog, B.Cell(x, a.(1))
+  in
   mop "array_get" t ~i ~b
 
 let array_tail =

@@ -158,7 +158,7 @@ type expr =
 (** Field of a record. *)
 | Field of rvar * int
 (** Cell of an array. *)
-| Cell of expr * expr
+| Cell of var * expr
 (** Return a value. *)
 | Return of var
 (** The n-th argument. In programs with state, the 0-th argument refers the
@@ -228,7 +228,7 @@ let rec string_of_expr ?(tab=0) e =
   | Var v -> string_of_var v
   | Arg n -> string_of_arg n
   | Field (x,i) -> Printf.sprintf "%s.%d" (string_of_rvar x) i
-  | Cell (e,i) -> Printf.sprintf "%s[%s]" (string_of_expr e) (string_of_expr i)
+  | Cell (x,i) -> Printf.sprintf "%s[%s]" (string_of_var x) (string_of_expr i)
   | Op (o, a) ->
     if Array.length a = 0 then
       string_of_op o
@@ -466,7 +466,7 @@ module FV = struct
     | Var v -> incr fv v
     | Field (RVar x,_) -> incr fv x
     | Field (RState,_) -> fv
-    | Cell (e,i) -> union (expr fv e) (expr fv i)
+    | Cell (x,i) -> incr (expr fv i) x
     | Bool _ | Int _ | Float _ | String _ -> fv
 
   and eq ?(masking=true) fv (x,e) =
@@ -509,7 +509,7 @@ let rec subst_expr ((x',e',fve') as s) e =
   | Var x -> if x = x' then e' else e
   | Field(RVar x,i) -> assert (x <> x'); Field (RVar x, i)
   | Field(RState,i) -> Field (RState, i)
-  | Cell(e,i) -> Cell (subst_expr s e, subst_expr s i)
+  | Cell(x,i) -> assert (x <> x'); Cell (x, subst_expr s i)
   | Op(op,a) -> Op(op, Array.map (subst_expr s) a)
   | If(b,t,e) -> If(subst_expr s b, subst_eqs s t, subst_eqs s e)
   | Float _  | Int _ | String _ | Bool _ as e -> e
@@ -654,7 +654,7 @@ module Opt = struct
       match e with
       | Var v -> Var s.(v)
       (* | Field(x,i) -> Field (t, subst_expr e, i) *)
-      | Cell(e,i) -> Cell (subst_expr e, subst_expr i)
+      (* | Cell(e,i) -> Cell (subst_expr e, subst_expr i) *)
       | Op(op,a) -> Op(op, Array.map subst_expr a)
       | If(b,t,e) ->
         let b = subst_expr b in
@@ -711,7 +711,6 @@ let proc prog ?(state=false) args t eqs =
     proc_eqs = eqs;
     proc_ret = t;
   }
-
 
 (* TODO: alloc and run should be handled as other procs. *)
 let pack_state prog =
@@ -1017,8 +1016,8 @@ module SAML = struct
         | RState -> State.to_record state
       in
       (V.get_record v).(i)
-    | Cell (e,i) ->
-      let v = eval_expr prog state e in
+    | Cell (v,i) ->
+      let v = State.get state v in
       let i = eval_expr prog state i in
       let i = V.get_int i in
       (V.get_record v).(i)
@@ -1351,8 +1350,8 @@ struct
       in
       let c, t = emit_type c ~noderef:true (T.unptr t) in
       c, Printf.sprintf "%s->%s_%d" x t i
-    | Cell (e, i) ->
-      let c, e = emit_expr c e in
+    | Cell (x, i) ->
+      let c, e = emit_expr c (Var x) in
       let c, i = emit_expr c i in
       c, Printf.sprintf "%s[%s]" e i
     | If (b,t,e) ->
