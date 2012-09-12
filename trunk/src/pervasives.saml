@@ -282,7 +282,7 @@ let instrument =
       let ans =
         (
           !g*x.,
-          freq = fun (x) -> f := x,
+          freq = fun (x) -> (*print_nl(x);*) f := x,
           gain = fun (x) -> g := x,
           velocity = fun(x) -> g := x,
           activate =,

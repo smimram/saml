@@ -4,7 +4,15 @@ open Stdlib
 type backend = LLVM | C | OCaml
 
 module Type = struct
-  type t = Int | Float | Bool | Unit | String | Record of t array | Array of t
+  type t =
+  | Int
+  | Float
+  | Bool
+  | Unit
+  | String
+  | Ptr of t
+  | Record of t array
+  | Array of t
 
   let rec to_string = function
     | Int -> "int"
@@ -12,11 +20,20 @@ module Type = struct
     | Bool -> "bool"
     | Unit -> "unit"
     | String -> "string"
+    | Ptr t -> Printf.sprintf "*%s" (to_string t)
     | Record t ->
       let t = Array.to_list t in
       let t = String.concat_map ", " to_string t in
       Printf.sprintf "{ %s }" t
     | Array t -> Printf.sprintf "%s array" (to_string t)
+
+  let is_ptr = function
+    | Ptr _ -> true
+    | _ -> false
+
+  let rec unptr = function
+    | Ptr t -> unptr t
+    | t -> t
 end
 
 module T = Type
@@ -123,6 +140,11 @@ type op =
 (** Call an internal procedure. *)
 | Call of string
 
+(** Variable pointing to a record. *)
+type rvar =
+| RVar of var
+| RState
+
 type expr =
 | Unit
 | Bool of bool
@@ -134,11 +156,9 @@ type expr =
 | If of expr * eqs * eqs
 | For of var * expr * expr * eqs
 (** Field of a record. *)
-| Field of T.t * expr * int
+| Field of rvar * int
 (** Cell of an array. *)
 | Cell of expr * expr
-(** The global state (given as argument of functions). *)
-| State
 (** Return a value. *)
 | Return of var
 (** The n-th argument. In programs with state, the 0-th argument refers the
@@ -149,10 +169,8 @@ and eqs = eq list
 (** A memory location (where things can be written). *)
 and loc =
 | LVar of var
-| LField of var * int
+| LField of rvar * int
 | LCell of var * expr
-(** A field of the state. *)
-| LState of int
 
 let unit = Unit
 
@@ -172,6 +190,9 @@ let extern ?saml ?ocaml ?c name =
   }
 
 let string_of_var n = Printf.sprintf "x%d" n
+let string_of_rvar = function
+  | RVar v -> string_of_var v
+  | RState -> "state"
 let string_of_arg n = Printf.sprintf "arg[%d]" n
 
 (* TODO: many of them can go external (we only need those with partial
@@ -206,7 +227,7 @@ let rec string_of_expr ?(tab=0) e =
   | String s -> Printf.sprintf "\"%s\"" s
   | Var v -> string_of_var v
   | Arg n -> string_of_arg n
-  | Field (t,e,i) -> Printf.sprintf "%s.%d" (string_of_expr e) i
+  | Field (x,i) -> Printf.sprintf "%s.%d" (string_of_rvar x) i
   | Cell (e,i) -> Printf.sprintf "%s[%s]" (string_of_expr e) (string_of_expr i)
   | Op (o, a) ->
     if Array.length a = 0 then
@@ -240,7 +261,6 @@ let rec string_of_expr ?(tab=0) e =
   | For(i,b,e,f) ->
     let soeqs eqs = String.concat_map "; " (fun eq -> string_of_eq eq) eqs in
     Printf.sprintf "for %s = %s to %s { %s }" (string_of_var i) (string_of_expr b) (string_of_expr e) (soeqs f)
-  | State -> "state"
   | Return v -> Printf.sprintf "return %s" (string_of_var v)
 
 and string_of_eq ?(tab=0) (x,e) =
@@ -253,9 +273,8 @@ and string_of_eqs ?(tab=0) eqs =
 
 and string_of_loc = function
   | LVar v -> string_of_var v
-  | LField (v,i) -> Printf.sprintf "%s.%d" (string_of_var v) i
+  | LField (v,i) -> Printf.sprintf "%s.%d" (string_of_rvar v) i
   | LCell (v,i) -> Printf.sprintf "%s[%s]" (string_of_var v) (string_of_expr i)
-  | LState i -> Printf.sprintf "state[%d]" i
 
 (** A procedure. *)
 type proc =
@@ -308,7 +327,7 @@ type field =
 
 let loc x field =
   match field with
-  | Some (FField n) -> LField (x,n)
+  | Some (FField n) -> LField (RVar x,n)
   | Some (FCell e) -> LCell (x,e)
   | None -> LVar x
 
@@ -338,13 +357,21 @@ let init_free prog x ?field e =
 (** Type of the state of a program. *)
 let state_t prog = get_some prog.state
 
+(** Type of a loc *)
 let rec typ prog x =
   (* Printf.printf "typ: %s\n%!" (string_of_loc x); *)
   match x with
   | LVar x -> prog.vars.(x)
-  | LField (x, n) ->
+  | LField (RVar x, n) ->
     (
-      match typ prog (LVar x) with
+      match T.unptr (typ prog (LVar x)) with
+      | T.Record r -> r.(n)
+      | _ -> assert false
+    )
+  | LField (RState, n) ->
+    let t = T.unptr (state_t prog) in
+    (
+      match t with
       | T.Record r -> r.(n)
       | _ -> assert false
     )
@@ -354,13 +381,10 @@ let rec typ prog x =
       | T.Array t -> t
       | _ -> assert false
     )
-  | LState n ->
-    let t = state_t prog in
-    (
-      match t with
-      | T.Record r -> r.(n)
-      | _ -> assert false
-    )
+
+let typ_rvar prog = function
+  | RVar x -> typ prog (LVar x)
+  | RState -> state_t prog
 
 let to_string p =
   let ans = ref "" in
@@ -401,40 +425,6 @@ let to_string p =
   print (Printf.sprintf "loop:\n%s\n\n" loop);
   !ans
 
-(** Optimizations. *)
-
-let rec simpl_expr = function
-  | Op(op,a) ->
-    let a = Array.map simpl_expr a in
-    (
-      match op,a with
-      | Pi,[||] -> Float pi
-      | Add,[|Float x; Float y|] -> Float (x +. y)
-      | Sub,[|Float x; Float y|] -> Float (x -. y)
-      | Mul,[|Float x; Float y|] -> Float (x *. y)
-      | Div,[|Float x; Float y|] -> Float (x /. y)
-      | Add,[|x; Float 0.|] -> x
-      | Mul,[|x; Float 1.|] -> x
-      | Mul,[|x; Float 0.|] -> Float 0.
-      | Mul,[|Float 1.; x|] -> x
-      | Eq,[|Float x;Float y|] -> Bool (x=y)
-      | _ -> Op(op,a)
-    )
-  | If (b,t,e) ->
-    let b = simpl_expr b in
-    let t = simpl_eqs t in
-    let e = simpl_eqs e in
-    If (b,t,e)
-  | e -> e
-
-and simpl_eqs eqs =
-  List.map (fun (l,e) -> l, simpl_expr e) eqs
-
-let simpl p =
-  { p with
-    init = simpl_eqs p.init;
-    loop = simpl_eqs p.loop }
-
 (** Helper structure to compute free variables. *)
 module FV = struct
   let create p =
@@ -474,7 +464,8 @@ module FV = struct
     | Op (o,a) -> Array.fold_left expr fv a
     | If (b,t,e) -> union (expr fv b) (max (eqs fv t) (eqs fv e))
     | Var v -> incr fv v
-    | Field (t,e,_) -> expr fv e
+    | Field (RVar x,_) -> incr fv x
+    | Field (RState,_) -> fv
     | Cell (e,i) -> union (expr fv e) (expr fv i)
     | Bool _ | Int _ | Float _ | String _ -> fv
 
@@ -494,9 +485,9 @@ module FV = struct
   let written fv eqs =
     let aux fv = function
       | LVar x -> incr fv x
-      | LField (x,_) -> incr fv x
+      | LField (RVar x,_) -> incr fv x
+      | LField (RState,_) -> fv
       | LCell (x,_) -> incr fv x
-      | LState _ -> fv
     in
     List.fold_left (fun fv (x,e) -> aux fv x) fv eqs
 
@@ -516,7 +507,8 @@ let rec subst_expr ((x',e',fve') as s) e =
   (* Printf.printf "B.subst_expr: %s\n%!" (string_of_expr e); *)
   match e with
   | Var x -> if x = x' then e' else e
-  | Field(t,e,i) -> Field (t, subst_expr s e, i)
+  | Field(RVar x,i) -> assert (x <> x'); Field (RVar x, i)
+  | Field(RState,i) -> Field (RState, i)
   | Cell(e,i) -> Cell (subst_expr s e, subst_expr s i)
   | Op(op,a) -> Op(op, Array.map (subst_expr s) a)
   | If(b,t,e) -> If(subst_expr s b, subst_eqs s t, subst_eqs s e)
@@ -554,105 +546,140 @@ and subst_eqs ((x',e',fve') as s) = function
 
 let subst_eqs prog (x,e) = subst_eqs (x,e,FV.expr (FV.create prog) e)
 
-(** Inline linearly used variables and eliminate dead code. *)
-(* TODO: inline the end first! *)
-let inline prog =
-  let bound = FV.create prog in
-  let bound = FV.eqs bound prog.loop in
-  let bound = FV.union (FV.bound prog) bound in
-  (* Printf.printf "bound: %s\n%!" (FV.to_string bound); *)
-  let rec aux = function
-    | (LVar x,Var y)::eqs when x = y -> aux eqs
-    | ((LVar x,e) as eq)::eqs ->
-      let fv = FV.eqs (FV.create prog) eqs in
-      if FV.has bound x || typ prog (LVar x) = T.Unit then
-        eq::(aux eqs)
-      else
-        if FV.get fv x = 0 then aux eqs
-        else if FV.get fv x = 1 then aux (subst_eqs prog (x,e) eqs)
-        else eq::(aux eqs)
-    | ((LField _,_) as eq)::eqs ->
-      eq::eqs
-    | [] -> []
-  in
-  { prog with init = aux prog.init; loop = aux prog.loop }
+(** Optimizations on the code. *)
+module Opt = struct
+  (** Simple algebraic simplification of expressions. *)
+  let simpl p =
+    let rec simpl_expr = function
+      | Op(op,a) ->
+        let a = Array.map simpl_expr a in
+        (
+          match op,a with
+          | Pi,[||] -> Float pi
+          | Add,[|Float x; Float y|] -> Float (x +. y)
+          | Sub,[|Float x; Float y|] -> Float (x -. y)
+          | Mul,[|Float x; Float y|] -> Float (x *. y)
+          | Div,[|Float x; Float y|] -> Float (x /. y)
+          | Add,[|x; Float 0.|] -> x
+          | Mul,[|x; Float 1.|] -> x
+          | Mul,[|x; Float 0.|] -> Float 0.
+          | Mul,[|Float 1.; x|] -> x
+          | Eq,[|Float x;Float y|] -> Bool (x=y)
+          | _ -> Op(op,a)
+        )
+      | If (b,t,e) ->
+        let b = simpl_expr b in
+        let t = simpl_eqs t in
+        let e = simpl_eqs e in
+        If (b,t,e)
+      | e -> e
 
-(* let inline prog = fixpoint inline prog *)
-
-let dead_code prog =
-let bound = FV.create prog in
-  let bound = FV.eqs bound prog.loop in
-  let bound = FV.union (FV.bound prog) bound in
-  (* Printf.printf "DC: %s\n%!" (FV.to_string bound); *)
-  let rec aux = function
-    | (LVar x as l, e)::eqs when FV.get bound x = 0 && FV.get (FV.eqs (FV.create prog) eqs) x = 0 && not (typ prog l = T.Unit) -> aux eqs
-    | eq::eqs -> eq::(aux eqs)
-    | [] -> []
-  in
-  { prog with init = aux prog.init; loop = aux prog.loop }
-
-(* fv for loop could change if we remove unused variables... *)
-let dead_code = fixpoint dead_code
-
-(** Don't allocate unused variables. *)
-let compact prog =
-  let fv_eq fv (x,e) =
-    let x =
-      match x with
-      | LVar x -> x
-      | LField (x,_) -> x
+    and simpl_eqs eqs =
+      List.map (fun (l,e) -> l, simpl_expr e) eqs
     in
-    FV.union (FV.incr fv x) (FV.expr ~masking:false (FV.create prog) e)
-  in
-  let fv_eqs = List.fold_left fv_eq in
-  let fv = FV.bound prog in
-  let fv = fv_eqs fv prog.init in
-  let fv = fv_eqs fv prog.loop in
-  (* Printf.printf "compact fv: %s\n" (FV.to_string fv); *)
-  let used = Array.init (Array.length prog.vars) (fun i -> FV.get fv i <> 0) in
-  let n = ref (-1) in
-  let s =
-    Array.map (fun u -> if u then (incr n; !n) else -1) used
-  in
-  let n = !n + 1 in
-  let vars = Array.init n (fun i -> typ prog (LVar (Array.index i s))) in
-  (* ( *)
-  (* let vars = Array.mapi (fun i v -> if v = -1 then "" else Printf.sprintf "%s -> %s" (string_of_var i) (string_of_var v)) s in *)
-  (* let vars = Array.to_list vars in *)
-  (* let vars = String.concat ", " vars in *)
-  (* Printf.printf "compact vars: %s\n%!" vars *)
-  (* ); *)
-  let rec subst_expr e =
-    (* We cannot use regular substitution because we don't want masking here. *)
-    match e with
-    | Var v -> Var s.(v)
-    | Field(t,e,i) -> Field (t, subst_expr e, i)
-    | Cell(e,i) -> Cell (subst_expr e, subst_expr i)
-    | Op(op,a) -> Op(op, Array.map subst_expr a)
-    | If(b,t,e) ->
-      let b = subst_expr b in
-      let t = subst_eqs t in
-      let e = subst_eqs e in
-      If(b,t,e)
-    | Bool _ | Float _ | Int _ | String _ as e -> e
-  and subst_eq (x,e) =
-    let x =
-      match x with
-      | LVar x -> LVar s.(x)
-      | LField (x,i) -> LField (s.(x),i)
+    { p with
+      init = simpl_eqs p.init;
+      loop = simpl_eqs p.loop }
+
+  (** Inline linearly used variables and eliminate dead code. *)
+  (* TODO: inline the end first! *)
+  let inline prog =
+    let bound = FV.create prog in
+    let bound = FV.eqs bound prog.loop in
+    let bound = FV.union (FV.bound prog) bound in
+    (* Printf.printf "bound: %s\n%!" (FV.to_string bound); *)
+    let rec aux = function
+      | (LVar x,Var y)::eqs when x = y -> aux eqs
+      | ((LVar x,e) as eq)::eqs ->
+        let fv = FV.eqs (FV.create prog) eqs in
+        if FV.has bound x || typ prog (LVar x) = T.Unit then
+          eq::(aux eqs)
+        else
+          if FV.get fv x = 0 then aux eqs
+          else if FV.get fv x = 1 then aux (subst_eqs prog (x,e) eqs)
+          else eq::(aux eqs)
+      | ((LField _,_) as eq)::eqs ->
+        eq::eqs
+      | [] -> []
     in
-    x, subst_expr e
-  and subst_eqs eqs = List.map subst_eq eqs in
-  assert (prog.procs = []);
-  {
-    vars;
-    procs = prog.procs;
-    free_vars = List.map (fun (l,v) -> l, s.(v)) prog.free_vars;
-    output = prog.output;
-    init = subst_eqs prog.init;
-    loop = subst_eqs prog.loop;
-    state = prog.state;
-  }
+    { prog with init = aux prog.init; loop = aux prog.loop }
+
+  (* let inline prog = fixpoint inline prog *)
+
+  let dead_code prog =
+    let bound = FV.create prog in
+    let bound = FV.eqs bound prog.loop in
+    let bound = FV.union (FV.bound prog) bound in
+    (* Printf.printf "DC: %s\n%!" (FV.to_string bound); *)
+    let rec aux = function
+      | (LVar x as l, e)::eqs when FV.get bound x = 0 && FV.get (FV.eqs (FV.create prog) eqs) x = 0 && not (typ prog l = T.Unit) -> aux eqs
+      | eq::eqs -> eq::(aux eqs)
+      | [] -> []
+    in
+    { prog with init = aux prog.init; loop = aux prog.loop }
+
+  (* fv for loop could change if we remove unused variables... *)
+  let dead_code = fixpoint dead_code
+
+  (** Don't allocate unused variables. *)
+  let compact prog =
+    let fv_eq fv (x,e) =
+      let x =
+        match x with
+        | LVar x -> x
+        | LField (RVar x,_) -> x
+      in
+      FV.union (FV.incr fv x) (FV.expr ~masking:false (FV.create prog) e)
+    in
+    let fv_eqs = List.fold_left fv_eq in
+    let fv = FV.bound prog in
+    let fv = fv_eqs fv prog.init in
+    let fv = fv_eqs fv prog.loop in
+    (* Printf.printf "compact fv: %s\n" (FV.to_string fv); *)
+    let used = Array.init (Array.length prog.vars) (fun i -> FV.get fv i <> 0) in
+    let n = ref (-1) in
+    let s =
+      Array.map (fun u -> if u then (incr n; !n) else -1) used
+    in
+    let n = !n + 1 in
+    let vars = Array.init n (fun i -> typ prog (LVar (Array.index i s))) in
+    (* ( *)
+    (* let vars = Array.mapi (fun i v -> if v = -1 then "" else Printf.sprintf "%s -> %s" (string_of_var i) (string_of_var v)) s in *)
+    (* let vars = Array.to_list vars in *)
+    (* let vars = String.concat ", " vars in *)
+    (* Printf.printf "compact vars: %s\n%!" vars *)
+    (* ); *)
+    let rec subst_expr e =
+      (* We cannot use regular substitution because we don't want masking here. *)
+      match e with
+      | Var v -> Var s.(v)
+      (* | Field(x,i) -> Field (t, subst_expr e, i) *)
+      | Cell(e,i) -> Cell (subst_expr e, subst_expr i)
+      | Op(op,a) -> Op(op, Array.map subst_expr a)
+      | If(b,t,e) ->
+        let b = subst_expr b in
+        let t = subst_eqs t in
+        let e = subst_eqs e in
+        If(b,t,e)
+      | Bool _ | Float _ | Int _ | String _ as e -> e
+    and subst_eq (x,e) =
+      let x =
+        match x with
+        | LVar x -> LVar s.(x)
+      (* | LField (x,i) -> LField (s.(x),i) *)
+      in
+      x, subst_expr e
+    and subst_eqs eqs = List.map subst_eq eqs in
+    assert (prog.procs = []);
+    {
+      vars;
+      procs = prog.procs;
+      free_vars = List.map (fun (l,v) -> l, s.(v)) prog.free_vars;
+      output = prog.output;
+      init = subst_eqs prog.init;
+      loop = subst_eqs prog.loop;
+      state = prog.state;
+    }
 
 (* TODO *)
 (* Inline events. *)
@@ -660,6 +687,7 @@ let compact prog =
 (* Move constant assignments from loop to init. *)
 (* Explode records. *)
 (* Merge common subexpressions. *)
+end
 
 (** {3 Operations on state.} *)
 
@@ -689,18 +717,18 @@ let proc prog ?(state=false) args t eqs =
 let pack_state prog =
   let t = T.Record prog.vars in
   let n = Array.length prog.vars in
-  let load = List.init n (fun i -> LVar i, Field(t, State, i)) in
-  let store = List.init n (fun i -> LState(i), Var i) in
+  let load = List.init n (fun i -> LVar i, Field(RState, i)) in
+  let store = List.init n (fun i -> LField(RState, i), Var i) in
   let ls eqs =
     let eqs, ret = split_ret eqs in
     load@eqs@store@ret
   in
   let loop = ls prog.loop in
   let prog, init =
-    let prog, x = alloc prog t in
+    let prog, x = alloc prog (T.Ptr t) in
     let prog, ret = alloc prog T.Unit in
     let written = FV.written (FV.create prog) prog.init in
-    let store = List.may_init n (fun i -> if FV.has written i then Some (LField(x,i), Var i) else None) in
+    let store = List.may_init n (fun i -> if FV.has written i then Some (LField(RVar x,i), Var i) else None) in
     prog, [(LVar x), (Op(Alloc t,[||]))]@prog.init@store@[(LVar ret), Return x]
   in
   let proc_reset =
@@ -738,7 +766,7 @@ let pack_state prog =
 (** Procedures. *)
 
 let proc_alloc prog =
-  let t = state_t prog in
+  let t = T.Ptr (state_t prog) in
   proc prog ~state:false [] t prog.init
 
 let proc_run prog =
@@ -813,14 +841,13 @@ module Builder = struct
 
   let loc b x field =
     if x = "state" then
-      (* TODO: this looks a bit hackish... *)
       let field = get_some field in
       let field =
         match field with
         | FField n -> n
         | _ -> assert false
       in
-      LState field
+      LField (RState, field)
     else
       loc (var b x) field
 
@@ -885,10 +912,10 @@ module Builder = struct
     (* Optimize the program. *)
     let prog =
       if !Config.Compiler.optimize then
-        let prog = simpl prog in
-        let prog = dead_code prog in
-        let prog = inline prog in
-        let prog = simpl prog in
+        let prog = Opt.simpl prog in
+        let prog = Opt.dead_code prog in
+        let prog = Opt.inline prog in
+        let prog = Opt.simpl prog in
         (* let prog = compact prog in *)
         prog
       else
@@ -983,8 +1010,12 @@ module SAML = struct
     match e with
     | Var v -> State.get state v
     | Arg n -> State.get_arg state n
-    | Field (t,e,i) ->
-      let v = eval_expr prog state e in
+    | Field (v,i) ->
+      let v =
+        match v with
+        | RVar v -> State.get state v
+        | RState -> State.to_record state
+      in
       (V.get_record v).(i)
     | Cell (e,i) ->
       let v = eval_expr prog state e in
@@ -1069,7 +1100,6 @@ module SAML = struct
     | Bool b -> V.bool b
     | String s -> V.string s
     | Unit -> V.unit
-    | State -> State.to_record state
     | Return x ->
       let x = State.get state x in
       State.set_out state x;
@@ -1081,16 +1111,17 @@ module SAML = struct
     | LVar x ->
       (* Printf.printf "eval_eq var: %s\n%!" (string_of_var x); *)
       State.set state x e
-    | LField (x,i) ->
+    | LField (RVar x,i) ->
       (* Printf.printf "eval_eq field: %s\n%!" (string_of_var x); *)
       let r = V.get_record (State.get state x) in
       r.(i) <- e
+    | LField (RState,i) ->
+      State.set state i e
     | LCell (x,i) ->
       (* Printf.printf "eval_eq field: %s\n%!" (string_of_var x); *)
       let r = V.get_record (State.get state x) in
       let i = V.get_int (eval_expr prog state i) in
       r.(i) <- e
-    | LState i -> State.set state i e
 
   and eval prog state eqs =
     List.iter (eval_eq prog state) eqs
@@ -1223,15 +1254,6 @@ struct
       types = [];
     }
 
-  let is_ptr t =
-    (* Printf.printf "is_ptr: %s\n%!" (T.to_string t); *)
-    match t with
-    | T.Int | T.Float | T.Bool | T.Unit -> false
-    | T.Record _ | T.Array _ -> true
-
-  let deref t =
-    if is_ptr t then "*" else ""
-
   let rec emit_type c ?(noderef=false) ?(state=false) ?(full=false) t =
     (* Printf.printf "C.emit_type %B: %s\n%!" state (T.to_string t); *)
     match t with
@@ -1239,6 +1261,9 @@ struct
     | T.Float -> c, "double"
     | T.Unit -> c, "void"
     | T.Bool -> c, "int"
+    | T.Ptr t ->
+      let c, t = emit_type c ~noderef ~state ~full t in
+      c, t^"*"
     | T.Record r ->
       if full then
         let c, l = emit_type c ~noderef:true t in
@@ -1247,7 +1272,7 @@ struct
           Array.mapi
             (fun i t ->
               if t = T.Unit then "" else
-                let c', t = emit_type !c t in
+                let c', t = emit_type !c (T.unptr t) in
                 c := c';
                 Printf.sprintf "%s %s_%d;" t l i
             ) r
@@ -1265,21 +1290,21 @@ struct
             let c = { c with types = (t,l)::c.types } in
             c, l
         in
-        c, if is_ptr t && not noderef then typ ^ "*" else typ
+        c, typ
 
   let tab n = String.spaces (2*n)
 
   let rec emit_loc c ~decl ~tabs x =
     match x with
     | LVar x -> c, string_of_var x
-    | LState i ->
+    | LField (RVar a,i) ->
+      let t = typ c.prog (LVar a) in
+      let c, t = emit_type c ~noderef:true (T.unptr t) in
+      c, Printf.sprintf "%s->%s_%d" (string_of_var a) t i
+    | LField (RState,i) ->
       let t = state_t c.prog in
       let c, t = emit_type c ~noderef:true t in
       c, Printf.sprintf "state->%s_%d" t i
-    | LField (a,i) ->
-      let t = typ c.prog (LVar a) in
-      let c, t = emit_type c ~noderef:true t in
-      c, Printf.sprintf "%s->%s_%d" (string_of_var a) t i
     | LCell (a,i) ->
       let c, i = emit_expr c ~decl ~tabs i in
       c, Printf.sprintf "%s[%s]" (string_of_var a) i
@@ -1310,23 +1335,26 @@ struct
         | Eq -> c, Printf.sprintf "(%s == %s)" args.(0) args.(1)
         | Alloc t ->
           let n = if Array.length args = 0 then "1" else args.(0) in
-          assert (is_ptr t);
           let c, tv = emit_type c ~noderef:true t in
-          let c, t = emit_type c t in
+          let c, t = emit_type c (T.Ptr t) in
           c, Printf.sprintf "(%s)malloc(%s * sizeof(%s))" t n tv
         | External ext -> c, ext.ext_c args
       )
     | Return x ->
       c, if typ c.prog (LVar x) = T.Unit then "" else Printf.sprintf "return %s" (string_of_var x)
-    | Field (t, e, i) ->
-      let c, e = emit_expr c e in
-      let c, t = emit_type c ~noderef:true t in
-      c, Printf.sprintf "%s->%s_%d" e t i
+    | Field (x, i) ->
+      let t = typ_rvar c.prog x in
+      let x =
+        match x with
+        | RVar x -> string_of_var x
+        | RState -> "state"
+      in
+      let c, t = emit_type c ~noderef:true (T.unptr t) in
+      c, Printf.sprintf "%s->%s_%d" x t i
     | Cell (e, i) ->
       let c, e = emit_expr c e in
       let c, i = emit_expr c i in
       c, Printf.sprintf "%s[%s]" e i
-    | State -> c, "state"
     | If (b,t,e) ->
       let emit_eqs = emit_eqs ~tabs:(tabs+1) in
       let c, b = emit_expr c b in
@@ -1352,12 +1380,11 @@ struct
             c, decl, ""
           else
             let decl = x::decl in
-            let deref = deref t in
+            (* let deref = deref t in *)
             let c, t = emit_type c t in
             c, decl, (t^" ")
         | LCell _
-        | LField _
-        | LState _ ->
+        | LField _ ->
           c, decl, ""
       in
       let c, l = emit_loc c ~decl ~tabs x in
@@ -1396,7 +1423,7 @@ struct
       match p.proc_state with
       | Some t ->
         (* We emit the state first so that we know its name. *)
-        let c, t = emit_type c ~state:true t in
+        let c, t = emit_type c ~state:true (T.Ptr t) in
         c, (Printf.sprintf "%s state" t)::args
       | None -> c, args
     in

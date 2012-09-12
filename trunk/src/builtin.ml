@@ -404,7 +404,7 @@ let compile =
         let v = arg.(2) in
         let prog, s = BB.alloc_anon prog state_t in
         let prog = BB.eq_anon prog (B.LVar s) state in
-        let prog = BB.eq_anon prog (B.LField(s,n)) v in
+        let prog = BB.eq_anon prog (B.LField(B.RVar s,n)) v in
         prog, B.unit
         (* let prog = BB.eq_alloc prog "_state" state_t state in *)
         (* BB.eq prog "_state" ~field:n v, B.unit *)
