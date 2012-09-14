@@ -79,7 +79,7 @@
 %token CMP LE GE LT GT
 %token BAND BOR BNOT
 %token IF THEN ELSE
-%token STATIC COMPILE WITH TYPE
+%token STATIC COMPILE WITH TYPE EVENT_DEF OF
 %token LPAR RPAR LARR RARR
 %token SEMICOLON COLON COMMA MAYBE
 %token EQ PLUS MINUS TIMES DIV
@@ -89,6 +89,7 @@
 %token <bool> BOOL
 %token <string> IDENT
 %token <string> STRING
+%token <string> EVENT
 
 %nonassoc IN
 %nonassoc ARR
@@ -130,6 +131,8 @@ decl:
     | LET IDENT EQ expr { M.Decl($2,$4) }
     | LET LPAR RPAR EQ expr { M.Expr (mk (Coerce ($5, T.unit))) }
     | TYPE IDENT EQ typ { M.Type ($2,$4) }
+    | TYPE EVENT { M.Event ($2,None) }
+    | TYPE EVENT OF typ { M.Event ($2,Some $4) }
 
 ident:
     | IDENT { mk_ident $1 }

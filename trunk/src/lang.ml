@@ -397,6 +397,56 @@ module Type = struct
     | Var _ -> failwith "Trying to emit type for an universal variable."
     | Arr _ -> failwith "Internal error: cannot emit functional types."
     | State _ -> failwith "Don't know how to emit state, E.emit_type should be used instead..."
+
+  (** Typing environments. *)
+  module Env = struct
+    type typ = t
+
+    type t =
+      {
+        (** Type of free varaibles. *)
+        t : (string * typ) list;
+        (** Type definitions. *)
+        defs : (string * typ) list;
+        (** Type of events. *)
+        events : (string * typ option) list;
+      }
+
+    let empty =
+      {
+        t = [];
+        defs = [];
+        events = [];
+      }
+
+    let typ env x =
+      List.assoc x env.t
+
+    let def env x =
+      List.assoc x env.defs
+
+    let defs env =
+      env.defs
+
+    let events env =
+      Array.of_list (List.rev env.events)
+
+    let add_t env x t =
+      { env with t = (x,t)::env.t }
+
+    let add_def env x t =
+      { env with defs = (x,t)::env.defs }
+
+    let add_event env x t =
+      { env with events = (x,t)::env.events }
+
+    let merge env' env =
+      {
+        t = env'@env.t;
+        defs = env.defs;
+        events = env.events;
+      }
+  end
 end
 
 module T = Type
@@ -461,6 +511,8 @@ module Expr = struct
         rs_procs : (string * B.proc) list;
         (** Types declared. *)
         rs_types : (string * T.t) list;
+        (** Events declared. *)
+        rs_events : (string * T.t option) list
       }
   and let_t =
     {
@@ -470,7 +522,13 @@ module Expr = struct
       body : t
     }
 
-  let reduce_state_empty = { rs_let = []; rs_fresh = -1; rs_procs = []; rs_types = [] }
+  let reduce_state_empty = {
+    rs_let = [];
+    rs_fresh = -1;
+    rs_procs = [];
+    rs_types = [];
+    rs_events = [];
+  }
 
   (** Raised by ext_implems when it is not implemented. *)
   exception Cannot_reduce
@@ -690,10 +748,10 @@ module Expr = struct
   exception Typing of pos * string
 
   (** Infer the type of an expression. *)
-  let rec infer_type ?(annot=fun e -> ()) defs env e =
+  let rec infer_type ?(annot=fun e -> ()) env e =
     (* Printf.printf "infer_type: %s\n%!" (to_string e); *)
-    let infer_type ?(annot=annot) ?(defs=defs) = infer_type ~annot defs in
-    let (<:) = T.subtype defs in
+    let infer_type ?(annot=annot) = infer_type ~annot in
+    let (<:) = T.subtype (T.Env.defs env) in
 
     (* let infer_type env e = *)
     (* let e = infer_type env e in *)
@@ -776,7 +834,7 @@ module Expr = struct
         | Ident x ->
           (
             try
-              let t = List.assoc x env in
+              let t = T.Env.typ env x in
               (* TODO: proper generalization with levels... *)
               let t = if T.is_arr t then T.generalize t else t in
               ret desc t
@@ -801,7 +859,7 @@ module Expr = struct
           in
           let a, ta = List.split a in
           let env' = List.map (fun (l,x,t,o) -> x,t) ta in
-          let env = env'@env in
+          let env = T.Env.merge env' env in
           let e = infer_type env e in
           let ta = List.map (fun (l,x,t,o) -> l,(t,o)) ta in
           ret (Fun (a, e)) (T.arr ta (typ e))
@@ -886,19 +944,21 @@ module Expr = struct
             let x = l.var in
             assert (x <> "dt");
             let t = T.fresh_var () in
-            let env = (x,t)::env in
-            let def = infer_type env l.def in
+            let def =
+              let env = T.Env.add_t env x t in
+              infer_type env l.def
+            in
             if not ((typ def) <: t) then
               failwith "ERROR (TODO) in let rec";
             if not (T.free_vars (typ def) = []) then
               type_error l.def "Expression has type %s but free variables are not allowed in recursive definitions." (T.to_string (typ def));
-            let env = (x,typ def)::(List.tl env) in
+            let env = T.Env.add_t env x (typ def) in
             let body = infer_type env l.body in
             ret (Let { l with def; body }) (typ body)
           else
             let def = infer_type env l.def in
             let def = if l.var = "dt" then coerce def (T.arr [] T.float) else def in
-            let env = (l.var,typ def)::env in
+            let env = T.Env.add_t env l.var (typ def) in
             let body = infer_type env l.body in
             ret (Let { l with def; body }) (typ body)
         | Cst c ->
@@ -959,7 +1019,7 @@ module Expr = struct
               (fun env (l,e) ->
                 let e = infer_type env e in
                 let t = typ e in
-                let env = (l,t)::env in
+                let env = T.Env.add_t env l t in
                 env, (l,e)
               ) env r
           in
@@ -1002,7 +1062,10 @@ module Expr = struct
         | For(i,b,e,f) ->
           let b = infer_type env b in
           let e = infer_type env e in
-          let f = infer_type ((i,T.int)::env) f in
+          let f =
+            let env = T.Env.add_t env i T.int in
+            infer_type env f
+          in
           let b = coerce b T.int in
           let e = coerce e T.int in
           let f = coerce f (T.arrnl [] T.unit) in
@@ -1486,7 +1549,15 @@ module Expr = struct
     let prog = app ~t prog args in
     let state, prog = reduce ~subst ~state prog in
     let prog = List.fold_left (fun e (x,v) -> letin x v e) prog state.rs_let in
-    let state = { rs_let = oldstate.rs_let; rs_fresh = state.rs_fresh; rs_procs = oldstate.rs_procs@state.rs_procs; rs_types = oldstate.rs_types } in
+    let state =
+      {
+        rs_let = oldstate.rs_let;
+        rs_fresh = state.rs_fresh;
+        rs_procs = oldstate.rs_procs@state.rs_procs;
+        rs_types = oldstate.rs_types;
+        rs_events = oldstate.rs_events;
+      }
+    in
     state, prog
 
   (** Emit a quote. *)
@@ -1511,6 +1582,7 @@ module Module = struct
   | Decl of string * E.t
   | Expr of E.t
   | Type of string * T.t
+  | Event of string * T.t option
 
   type t = instr list
 
@@ -1518,6 +1590,13 @@ module Module = struct
     | Decl (x,e) -> Printf.sprintf "%s = %s" x (E.to_string e)
     | Expr e -> Printf.sprintf "%s" (E.to_string e)
     | Type (l,t) -> Printf.sprintf "type %s = %s" l (T.to_string t)
+    | Event (e,t) ->
+      let t =
+        match t with
+        | None -> ""
+        | Some t -> Printf.sprintf " of %s" (T.to_string t)
+      in
+      Printf.sprintf "event `%s%s" e t
 
   let to_string m =
     String.concat_map "\n\n" to_string m
@@ -1525,7 +1604,7 @@ module Module = struct
   let parse_file_fun : (string -> t) ref = ref (fun _ -> assert false)
   let parse_file f = !parse_file_fun f
 
-  let infer_type ?(annot=false) ?(env=[]) m =
+  let infer_type ?(annot=false) ?(env=T.Env.empty) m =
     let annotations = ref [] in
     let out fname x =
       annotations := List.map_assoc ~d:"" (fun y -> y ^ x) fname !annotations
@@ -1560,22 +1639,25 @@ module Module = struct
       else
         (fun _ -> ()), (fun () -> ())
     in
-    let env = ref env in
-    let aux defs = function
+    let aux env = function
       | Decl (x,e) ->
-        let e = E.infer_type ~annot defs !env e in
+        let e = E.infer_type ~annot env e in
         let t = E.typ e in
         Printf.printf "%s : %s\n\n%!" x (T.to_string t);
-        env := (x,t) :: !env;
-        defs, Decl (x, e)
+        let env = T.Env.add_t env x t in
+        env, Decl (x, e)
       | Expr e ->
-        let e = E.infer_type ~annot defs !env e in
-        defs, Expr e
+        let e = E.infer_type ~annot env e in
+        env, Expr e
       | Type (l,t) ->
-        (l,t)::defs, Type (l,t)
+        let env = T.Env.add_def env l t in
+        env, Type (l,t)
+      | Event (x,t) ->
+        let env = T.Env.add_event env x t in
+        env, Event (x,t)
     in
     try
-      let defs, m = List.fold_map aux [] m in
+      let env, m = List.fold_map aux env m in
       annot_final ();
       m
     with
@@ -1616,7 +1698,10 @@ module Module = struct
         let state, m = emit_let state in
         (subst, state), m@[Expr e]
       | Type (l,t) ->
-        let state = { state with E. rs_types = (l,t)::state.E.rs_types } in
+        let state = { state with E.rs_types = (l,t)::state.E.rs_types } in
+        (subst, state), m
+      | Event (l,t) ->
+        let state = { state with E.rs_events = (l,t)::state.E.rs_events } in
         (subst, state), m
     in
     let _, m = List.fold_map (fun (subst,state) d -> aux subst state d) (subst,state) m in

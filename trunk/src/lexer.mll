@@ -30,6 +30,8 @@
       "with", WITH;
       "type", TYPE;
       "include", INCLUDE;
+      "letevent", EVENT_DEF;
+      "of", OF;
     ]
 }
 
@@ -37,7 +39,7 @@ let space = ' ' | '\t' | '\r'
 
 rule token = parse
   (***** Identifiers *****)
-  | (['_''a'-'z']['a'-'z''A'-'Z''0'-'9''_']*['\'']* as str)
+  | (['_''a'-'z''A'-'Z']['a'-'z''A'-'Z''0'-'9''_']*['\'']* as str)
       {
         try
           List.assoc str keywords
@@ -73,6 +75,7 @@ rule token = parse
   | "*" { TIMES }
   | "/" { DIV }
   | "." { DOT }
+  | "`"([^' ']+ as s) { EVENT s }
 
   (***** Non-meaningful characters *****)
   | space+ { token lexbuf }

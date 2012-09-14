@@ -329,3 +329,5 @@ let emit =
       (* let prog = compile(s) in *)
       (* () *)
   end
+
+type `Note_on of int
