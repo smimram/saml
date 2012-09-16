@@ -1,3 +1,5 @@
+(** We support various backend: interpreter, C, OCaml. *)
+
 open Stdlib
 
 (** A backend. *)
@@ -133,12 +135,11 @@ type op =
 | Le | Lt | Eq
 | Print of T.t
 | External of extern
+| Alloc of T.t
 (** Allocate a value. If an argument is given, it should be an integer and an
     array is then allocated. *)
-| Alloc of T.t
 | Free
-(** Call an internal procedure. *)
-| Call of string
+| Call of string (** Call an internal procedure. *)
 
 (** Variable pointing to a record. *)
 type rvar =
@@ -155,15 +156,12 @@ type expr =
 | Op of op * expr array
 | If of expr * eqs * eqs
 | For of var * expr * expr * eqs
-(** Field of a record. *)
-| Field of rvar * int
-(** Cell of an array. *)
-| Cell of var * expr
-(** Return a value. *)
-| Return of var
+| Field of rvar * int (** Field of a record. *)
+| Cell of var * expr (** Cell of an array. *)
+| Return of var (** Return a value. *)
+| Arg of int
 (** The n-th argument. In programs with state, the 0-th argument refers the
     first argument which is not the state (i.e. the second argument). *)
-| Arg of int
 and eq = loc * expr
 and eqs = eq list
 (** A memory location (where things can be written). *)
@@ -279,35 +277,29 @@ and string_of_loc = function
 (** A procedure. *)
 type proc =
   {
-    (** Type of the variables of the procedure. *)
     proc_vars : T.t array;
+    (** Type of the variables of the procedure. *)
+    proc_state : T.t option;
     (** Whether procedure takes the state as first argument (in which case we
         give the type of the state). *)
-    proc_state : T.t option;
-    (** Arguments. *)
     proc_args : T.t list;
-    (** Code. *)
+    (** Arguments. *)
     proc_eqs : eqs;
-    (** Return value. *)
+    (** Code. *)
     proc_ret : T.t;
+    (** Return value. *)
   }
 
+(** A program. *)
 type prog =
   {
-    (** Global procedures. *)
-    procs : (string * proc) list;
-    (** Type of variables. *)
-    vars : T.t array;
-    (** Allocated free variables. *)
-    free_vars : (string * var) list;
-    (** Type of the sate. *)
-    state : T.t option;
-    (** Type of the output. *)
-    output : T.t;
-    (** Initialization of variables. *)
-    init : eqs;
-    (** Main program loop. *)
-    loop : eqs;
+    procs : (string * proc) list; (** Global procedures. *)
+    vars : T.t array; (** Type of variables. *)
+    free_vars : (string * var) list; (** Allocated free variables. *)
+    state : T.t option; (** Type of the sate. *)
+    output : T.t; (** Type of the output. *)
+    init : eqs; (** Initialization of variables. *)
+    loop : eqs; (** Main program loop. *)
   }
 
 let create t =

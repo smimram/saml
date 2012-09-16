@@ -10,8 +10,12 @@ OCAMLFLAGS = -w -8-23
 INCDIRS = +pulseaudio backends/ocaml
 LIBS = pulseaudio samlib
 
+OCAMLDOCFLAGS = -sort -stars
+DOC_FILES = $(filter %.ml, $(SOURCES))
+
 OCAMLC = ocamlc.opt
 OCAMLOPT = ocamlopt.opt
+OCAMLDOC = ocamldoc.opt
 
 test: all
 	OCAMLRUNPARAM=b ./saml test.saml
@@ -43,6 +47,8 @@ saml_dssi.ml: saml_dssi.c
 	echo 'let c = "' > $@
 	cat $^ | sed 's/\\n/\\\\n/g' | sed 's/"/\\"/g' >> $@
 	echo '"' >> $@
+
+doc_html: htdoc
 
 # include Makefile.defs
 # include Makefile.rules

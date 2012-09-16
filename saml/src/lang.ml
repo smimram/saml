@@ -13,20 +13,20 @@ open Common
 
 module B = Backend
 
+(** Operations on types. *)
 module Type = struct
+  (** A type. *)
   type t =
     {
-      desc : desc;
-      (** Whether the expression allocates memory, in which case it will be
-          global. *)
-      alloc : bool;
-      (** Whether the value is statically known at compile-time. *)
-      static : bool;
+      desc : desc; (** The type. *)
+      alloc : bool; (** Whether the expression allocates memory, in which case it will be
+                        global. *)
+      static : bool; (** Whether the value is statically known at compile-time. *)
     }
   and desc =
   | Ident of string
-  (** A universal variable (if [None]) or a link to another type [t] (if [Some t]). *)
   | Var of var
+  (** A universal variable (if [None]) or a link to another type [t] (if [Some t]). *)
   | Int
   | Float
   | String
@@ -36,12 +36,12 @@ module Type = struct
   | Array of t
   (* TODO: possible variants that can appear as in OCaml *)
   | Variant
+  | Record of ((string * (t * bool)) list * var option)
   (** Records may have optional types and have optional row type variables which
       might point to other records. *)
-  | Record of ((string * (t * bool)) list * var option)
+  | State of int
   (** Internal state of a subprogram. The integer is to ensure that two states
       will be different. *)
-  | State of int
   and var = (t option) ref
 
   let make ?pos ?(alloc=false) ?(static=false) t =
@@ -517,7 +517,7 @@ module Expr = struct
   | Array of t list
   | Record of (string * t) list
   (** Modules are basically the same as records except that members can use
-      previously defined values, e.g. { a = 5; b = 2*a }. *)
+      previously defined values, e.g. \{ a = 5; b = 2*a \}. *)
   | Module of (string * t) list
   | Field of t * string
   (** Replace or add some fields in a record. If the bool is true, the value is
