@@ -160,9 +160,14 @@ let print =
     let s = List.assoc "" args in
     match s.E.desc with
     | E.Cst (E.String s) ->
-      Printf.printf "%s\n%!" s;
+      let s = Scanf.sscanf (Printf.sprintf "\"%s\"" s) "%S" id in
+      Printf.printf "%s%!" s;
       raise E.Cannot_reduce
-    | _ ->
+    | E.Cst (E.Float x) ->
+      Printf.printf "%f\n%!" x;
+      raise E.Cannot_reduce
+    | e ->
+      Printf.printf "%s%!" (E.to_string s);
       raise E.Cannot_reduce
   in
   let b t prog args =
@@ -591,6 +596,16 @@ let for_loop =
   mop "for" t b
 *)
 
+let float_of_int =
+  let name = "float" in
+  let t _ = T.arrnl [T.int] T.float in
+  (* TODO: implem? *)
+  let b t prog args =
+    let saml a = B.V.float (float (B.V.get_int a.(0))) in
+    prog, B.Op (B.extern name ~saml, args)
+  in
+  mop name t ~b
+
 (* TODO: use GADT for cleanly handling type especially with backend
    externals. *)
 let impl =
@@ -625,6 +640,9 @@ let impl =
     op "and" bb_b (B.extern ~saml:(fun a -> B.V.bool ((B.V.get_bool a.(0)) && (B.V.get_bool a.(1)))) ~ocaml:"( && )" "and");
     op "or" bb_b (B.extern ~saml:(fun a -> B.V.bool ((B.V.get_bool a.(0)) || (B.V.get_bool a.(1)))) ~ocaml:"( || )" "or");
     op "not" b_b (B.extern ~saml:(fun a -> B.V.bool (not (B.V.get_bool a.(0)))) ~ocaml:"( not )" "not");
+
+    (* Conversions. *)
+    float_of_int;
 
     (* Arrays. *)
     array_create;

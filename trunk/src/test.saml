@@ -32,10 +32,6 @@ let play(duration=-1,s)=
   (* play(s) *)
 
 let () =
-  let x = `Note_on (5) in
-  exit(0)
-
-let () =
   let s() = instrument.adsr(0.01,0.05,0.8,0.5,osc.saw) in
   let c = emit.dssi(s) in
   file.write("dssi_out.c", c);

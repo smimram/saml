@@ -5,6 +5,7 @@ let sin = builtin "sin"
 let cos = builtin "cos"
 let pow = builtin "pow"
 let random = builtin "random"
+let float = builtin "float"
 let print = builtin "print"
 let run = builtin "run"
 let play = builtin "play"
@@ -250,8 +251,9 @@ let effect =
 
 let midi =
   struct
+    (* A4 is 69. *)
     let freq(note) =
-      440*pow(2,((note-69.)/12))
+      440*pow(2,((float(note)-69.)/12))
   end
 
 type instrument =

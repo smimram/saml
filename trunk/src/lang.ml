@@ -1643,7 +1643,6 @@ module Module = struct
         (fun () ->
           List.iter
             (fun (fname,x) ->
-              Printf.printf "fname: %s\n%!" fname;
               if fname <> "" then
                 Common.file_out (Filename.chop_extension fname ^ ".annot") x
             ) !annotations)
