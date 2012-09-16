@@ -64,33 +64,36 @@ module Type = struct
        optional. *)
     List.iter (fun (l,(t,o)) -> if l = "" then assert (not o)) r
 
-  (** Canonize the members of records. *)
-  let rec canonize_record (r,v) =
-    let r', v =
-      let rec aux v =
-        match v with
-        | None -> [], None
-        | Some v ->
-          match !v with
-          | Some t ->
-            (
-              match t.desc with
-              | Record (r,v) -> canonize_record (r,v)
-              | Var v -> aux (Some v)
-            )
-          | None -> [], Some v
+  (** Operations on records. *)
+  module Record = struct
+    (** Canonize the members of records. *)
+    let rec canonize (r,v) =
+      let r', v =
+        let rec aux v =
+          match v with
+          | None -> [], None
+          | Some v ->
+            match !v with
+            | Some t ->
+              (
+                match t.desc with
+                | Record (r,v) -> canonize (r,v)
+                | Var v -> aux (Some v)
+              )
+            | None -> [], Some v
+        in
+        aux v
       in
-      aux v
-    in
-    let r = r@r' in
-    check_record r;
-    r, v
+      let r = r@r' in
+      check_record r;
+      r, v
+  end
 
   let unvar t =
     let rec aux t =
       match t.desc with
       | Var { contents = Some t } -> aux t
-      | Record r -> { t with desc = Record (canonize_record r) }
+      | Record r -> { t with desc = Record (Record.canonize r) }
       | _ -> t
     in
     aux t
@@ -195,7 +198,7 @@ module Type = struct
       | Array t -> pa p (Printf.sprintf "%s array" (to_string false t))
       | Record ([],None) -> "unit"
       | Record r ->
-        let r, v = canonize_record r in
+        let r, v = Record.canonize r in
         let v = if v = None then "" else ">" in
         Printf.sprintf "{%s %s }" v
           (String.concat_map "; "
@@ -349,7 +352,7 @@ module Type = struct
               let v1' = fresh_invar () in
               v := Some (make (Record (r1',Some v1')))
           );
-        let r1,v1 = canonize_record (r1old,v1) in
+        let r1,v1 = Record.canonize (r1old,v1) in
         (
           match v1,v2 with
           | None,None -> ()
