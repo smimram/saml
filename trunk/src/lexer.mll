@@ -59,7 +59,6 @@ rule token = parse
   | "+" { PLUS }
   | "-" { MINUS }
   | "*" { TIMES }
-  | "pow" { POW }
   | "/" { DIV }
   | "." { DOT }
   | "`"([^' ']+ as s) { VARIANT s }

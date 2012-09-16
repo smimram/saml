@@ -112,7 +112,6 @@ let nn_n name fop iop fml iml c =
 
 let add = nn_n "add" (+.) (+) "(+.)" "(+)" "+"
 let sub = nn_n "sub" (-.) (-) "(-.)" "(-)" "-"
-let pow = nn_n "pow" ( ** ) pow "( ** )" "( pow )" "pow"
 
 (* TODO: share code with nn_n *)
 let nn_b name fop iop ocaml c =
@@ -521,7 +520,7 @@ let emit_dssi =
         "#define SAML_synth_reset reset";
         "#define SAML_synth_free unalloc";
         "#define SAML_synth_set_velocity velocity";
-        "#define SAML_synth_set_freq freq";
+        "#define SAML_synth_set_note note";
         "#define SAML_synth_note_off release";
         "#define SAML_synth_is_active is_active";
         "#define SAML_synth_activate activate";
@@ -602,7 +601,22 @@ let float_of_int =
   (* TODO: implem? *)
   let b t prog args =
     let saml a = B.V.float (float (B.V.get_int a.(0))) in
-    prog, B.Op (B.extern name ~saml, args)
+    let c a = a.(0) in
+    prog, B.Op (B.extern name ~saml ~c, args)
+  in
+  mop name t ~b
+
+let pow =
+  let name = "pow" in
+  let t _ = T.arrnl [T.float;T.float] T.float in
+  let b t prog args =
+    let saml a =
+      let x = B.V.get_float a.(0) in
+      let y = B.V.get_float a.(1) in
+      B.V.float (x ** y)
+    in
+    let c a = Printf.sprintf "pow(%s,%s)" a.(0) a.(1) in
+    prog, B.Op (B.extern name ~saml ~c, args)
   in
   mop name t ~b
 

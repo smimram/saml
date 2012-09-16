@@ -136,7 +136,7 @@ int SAML_get_midi_controller(LADSPA_Handle instance, unsigned long port)
 static void SAML_run_synth(LADSPA_Handle instance, unsigned long sample_count, snd_seq_event_t *events, unsigned long event_count)
 {
   SAML_synth_t *h = (SAML_synth_t*)instance;
-  unsigned long pos, event_pos, note, n;
+  unsigned long pos, event_pos, midi_note, n;
 
   if (event_count > 0) {
     //printf("synth: we have %ld events\n", event_count);
@@ -163,22 +163,22 @@ static void SAML_run_synth(LADSPA_Handle instance, unsigned long sample_count, s
 
           if (events[event_pos].type == SND_SEQ_EVENT_NOTEON && h->first_inactive < POLYPHONY)
             {
-              note = events[event_pos].data.note.note;
+              midi_note = events[event_pos].data.note.note;
               n = h->first_inactive;
               h->first_inactive++;
               SAML_synth_reset(h->state[n]);
               SAML_synth_set_velocity(h->state[n], (float)events[event_pos].data.note.velocity / 127.0f);
-              printf("note on : %ld (vel: %d)\n", note, events[event_pos].data.note.velocity);
-              h->note[n] = note;
-              SAML_synth_set_freq(h->state[n], 440. * pow(2.,(note - 69.)/12.));
+              printf("note on : %ld (vel: %d)\n", midi_note, events[event_pos].data.note.velocity);
+              h->note[n] = midi_note;
+              SAML_synth_set_note(h->state[n], midi_note);
               SAML_synth_activate(h->state[n]);
             }
           else if (events[event_pos].type == SND_SEQ_EVENT_NOTEOFF)
             {
-              note = events[event_pos].data.note.note;
-              printf("note off: %ld\n", note);
+              midi_note = events[event_pos].data.note.note;
+              printf("note off: %ld\n", midi_note);
               for (n = 0; n < h->first_inactive; n++)
-                if (h->note[n] == note)
+                if (h->note[n] == midi_note)
                   SAML_synth_note_off(h->state[n]);
             }
           event_pos++;
