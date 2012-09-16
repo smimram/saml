@@ -82,7 +82,7 @@
 %token STATIC COMPILE WITH TYPE
 %token LPAR RPAR LARR RARR
 %token SEMICOLON COLON COMMA MAYBE
-%token EQ PLUS MINUS TIMES DIV
+%token EQ PLUS MINUS TIMES DIV POW
 %token EOF
 %token <int> INT
 %token <float> FLOAT
@@ -196,6 +196,7 @@ expr:
     | expr BAND expr { mk_app (Builtin.get "and") ["",$1; "",$3] }
     | expr BOR expr { mk_app (Builtin.get "or") ["",$1; "",$3] }
     | BNOT expr { mk_app (Builtin.get "not") ["",$2] }
+    | POW LPAR expr COMMA expr RPAR { mk_app (Builtin.get "pow") ["",$3;"",$5] }
     | FOR IDENT EQ expr TO expr DO expr DONE { mk (For($2,$4,$6,E.quote $8)) }
     | simple_expr app_args { mk_app $1 $2 }
     | REF simple_expr { mk_ref $2 }

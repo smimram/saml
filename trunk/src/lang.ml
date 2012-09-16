@@ -100,13 +100,77 @@ module Type = struct
     | Var v -> assert (!v = None); true
     | _ -> false
 
-  let to_string t =
+  (** Typing environments. *)
+  module Env = struct
+    type typ = t
+
+    type t =
+      {
+        (** Type of free varaibles. *)
+        t : (string * typ) list;
+        (** Type definitions. *)
+        defs : (string * typ) list;
+        (** Type of variants. *)
+        variants : (string * typ) list;
+      }
+
+    let empty =
+      {
+        t = [];
+        defs = [];
+        variants = [];
+      }
+
+    let typ env x =
+      List.assoc x env.t
+
+    let def env x =
+      List.assoc x env.defs
+
+    let defs env =
+      env.defs
+
+    let variants env =
+      Array.of_list (List.rev env.variants)
+
+    let add_t env x t =
+      { env with t = (x,t)::env.t }
+
+    let add_def env x t =
+      { env with defs = (x,t)::env.defs }
+
+    let add_variant env x t =
+      { env with variants = (x,t)::env.variants }
+
+    let merge env' env =
+      {
+        t = env'@env.t;
+        defs = env.defs;
+        variants = env.variants;
+      }
+  end
+
+  let to_string ?env t =
     let un = univ_namer () in
     let pa p s = if p then Printf.sprintf "(%s)" s else s in
     (* When p is false we don't need parenthesis. *)
     let rec to_string p t =
       match (unvar t).desc with
-      | Ident s -> s
+      | Ident s ->
+        let s =
+          match env with
+          | Some env ->
+            let s' =
+              try
+                let defs = Env.defs env in
+                to_string false (List.assoc s defs)
+              with
+              | Not_found -> "?"
+            in
+            Printf.sprintf "%s = %s" s s'
+          | None -> s
+        in
+        s
       | Var v ->
         (
           match !v with
@@ -144,6 +208,26 @@ module Type = struct
     in
     to_string false t
 
+  (** Inline idents in a type. *)
+  let expand env t =
+    Printf.printf "expand: %s\n%!" (to_string t);
+    let rec aux t =
+      let d =
+        match (unvar t).desc with
+        | Ident x when List.mem_assoc x env.Env.defs -> (List.assoc x env.Env.defs).desc
+        | Arr (a,t) ->
+          let a = List.map (fun (l,(t,o)) -> l,(aux t,o)) a in
+          let t = aux t in
+          Arr (a,t)
+        | Record (r,v) ->
+          let r = List.map (fun (l,(t,o)) -> l,(aux t,o)) r in
+          Record (r,v)
+        | Float -> t.desc
+      in
+      { t with desc = d }
+    in
+    aux t
+
   let fresh_invar () = ref None
 
   let fresh_var () =
@@ -178,6 +262,7 @@ module Type = struct
         | None -> fv
       )
     | Int | Float | String | Bool | State _ -> []
+    | Ident _ -> []
 
   exception Cannot_unify
 
@@ -307,6 +392,7 @@ module Type = struct
           in
           Record (List.map (fun (x,(t,o)) -> x,(aux t,o)) r, v)
         | Int | Float | String | Bool | State _ as t -> t
+        | Ident _ as t -> t
       in
       { t with desc = t' }
     in
@@ -403,56 +489,6 @@ module Type = struct
     | Var _ -> failwith "Trying to emit type for an universal variable."
     | Arr _ -> failwith "Internal error: cannot emit functional types."
     | State _ -> failwith "Don't know how to emit state, E.emit_type should be used instead..."
-
-  (** Typing environments. *)
-  module Env = struct
-    type typ = t
-
-    type t =
-      {
-        (** Type of free varaibles. *)
-        t : (string * typ) list;
-        (** Type definitions. *)
-        defs : (string * typ) list;
-        (** Type of variants. *)
-        variants : (string * typ) list;
-      }
-
-    let empty =
-      {
-        t = [];
-        defs = [];
-        variants = [];
-      }
-
-    let typ env x =
-      List.assoc x env.t
-
-    let def env x =
-      List.assoc x env.defs
-
-    let defs env =
-      env.defs
-
-    let variants env =
-      Array.of_list (List.rev env.variants)
-
-    let add_t env x t =
-      { env with t = (x,t)::env.t }
-
-    let add_def env x t =
-      { env with defs = (x,t)::env.defs }
-
-    let add_variant env x t =
-      { env with variants = (x,t)::env.variants }
-
-    let merge env' env =
-      {
-        t = env'@env.t;
-        defs = env.defs;
-        variants = env.variants;
-      }
-  end
 end
 
 module T = Type
@@ -828,7 +864,7 @@ module Expr = struct
       with
       | Exit ->
         let te = typ e in
-        type_error e "This expression has type %s but expected to be of type %s." (T.to_string te) (T.to_string t)
+        type_error e "This expression has type %s but expected to be of type %s." (T.to_string te) (T.to_string ~env t)
     in
 
     let ret desc t = { e with desc = desc; t = Some t } in
@@ -996,6 +1032,7 @@ module Expr = struct
           )
         | Coerce (e, t) ->
           let e = infer_type env e in
+          let t = T.expand env t in
           let e = coerce e t in
           e
         | Ref e ->
@@ -1043,7 +1080,7 @@ module Expr = struct
             type_error r "This expression has type %s but expected to be a record." (T.to_string (typ r));
           let t = T.fresh_var () in
           if not (tr <: (T.record ~row:true [l,(t,false)])) then
-            raise (Typing (r.pos, Printf.sprintf "This record does not have a member %s." l));
+            type_error r "This record does not have a member %s." l;
           ret (Field (r,l)) t
         | Replace_fields (r, l) ->
           let r = infer_type env r in

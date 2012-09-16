@@ -3,7 +3,6 @@
 let pi = builtin "pi"
 let sin = builtin "sin"
 let cos = builtin "cos"
-let pow = builtin "pow"
 let random = builtin "random"
 let float = builtin "float"
 let print = builtin "print"
@@ -257,12 +256,12 @@ let midi =
   end
 
 type instrument =
-  ()->(
+  (
     float,
     period:(float)->(),
     freq:(float)->(),
     activate:()->()
-   )
+  )
 
 let instrument =
   struct
@@ -300,13 +299,13 @@ let instrument =
           period = fun(x) -> period := x
         )
       in
-      (* (ans : instrument) *)
-      ans
+      (ans : instrument)
+      (* ans *)
 
     let play(s) =
       let player() =
         let dt() = 1./44100. in
-        let s = (s : instrument) in
+        let s = (s : ()->instrument) in
         let prog = compile(s) in
         let state = prog.alloc() in
         let run() = prog.run(state) in
@@ -330,7 +329,7 @@ let instrument =
 let emit =
   struct
     let dssi(i) =
-      let i = (i:instrument) in
+      let i = (i:()->instrument) in
       (builtin "emit_dssi")(i)
 
     (* let dssi(s) = *)

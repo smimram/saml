@@ -36,18 +36,6 @@
 let space = ' ' | '\t' | '\r'
 
 rule token = parse
-  (***** Identifiers *****)
-  | (['_''a'-'z''A'-'Z']['a'-'z''A'-'Z''0'-'9''_']*['\'']* as str)
-      {
-        try
-          List.assoc str keywords
-        with
-          | Not_found -> IDENT str
-      }
-  | '"'([^'"']* as str)'"' { STRING str }
-  | ['0'-'9']+ as str { INT (int_of_string str) }
-  | ['0'-'9']+"."['0'-'9']* as str { FLOAT (float_of_string str) }
-
   (***** Symbols *****)
   | "?" { MAYBE }
   | "=" { EQ }
@@ -71,9 +59,22 @@ rule token = parse
   | "+" { PLUS }
   | "-" { MINUS }
   | "*" { TIMES }
+  | "pow" { POW }
   | "/" { DIV }
   | "." { DOT }
   | "`"([^' ']+ as s) { VARIANT s }
+
+  (***** Identifiers *****)
+  | (['_''a'-'z''A'-'Z']['a'-'z''A'-'Z''0'-'9''_']*['\'']* as str)
+      {
+        try
+          List.assoc str keywords
+        with
+          | Not_found -> IDENT str
+      }
+  | '"'([^'"']* as str)'"' { STRING str }
+  | ['0'-'9']+ as str { INT (int_of_string str) }
+  | ['0'-'9']+"."['0'-'9']* as str { FLOAT (float_of_string str) }
 
   (***** Non-meaningful characters *****)
   | space+ { token lexbuf }
