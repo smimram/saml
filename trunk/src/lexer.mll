@@ -30,8 +30,6 @@
       "with", WITH;
       "type", TYPE;
       "include", INCLUDE;
-      "letevent", EVENT_DEF;
-      "of", OF;
     ]
 }
 
@@ -75,7 +73,7 @@ rule token = parse
   | "*" { TIMES }
   | "/" { DIV }
   | "." { DOT }
-  | "`"([^' ']+ as s) { EVENT s }
+  | "`"([^' ']+ as s) { VARIANT s }
 
   (***** Non-meaningful characters *****)
   | space+ { token lexbuf }

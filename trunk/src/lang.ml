@@ -34,6 +34,8 @@ module Type = struct
   | Arr of (string * (t * bool)) list * t
   | Ref of t
   | Array of t
+  (* TODO: possible variants that can appear as in OCaml *)
+  | Variant
   (** Records may have optional types and have optional row type variables which
       might point to other records. *)
   | Record of ((string * (t * bool)) list * var option)
@@ -137,6 +139,7 @@ module Type = struct
                let x = if x = "" then "" else x ^ " : " in
                Printf.sprintf "%s%s%s" x (if o then "?" else "") (to_string false t)
              ) r)
+      | Variant -> "variant"
       | State n -> Printf.sprintf "state%d" n
     in
     to_string false t
@@ -229,6 +232,7 @@ module Type = struct
       | Float, Float -> ()
       | String, String -> ()
       | Array t1, Array t2 -> t1 <: t2
+      | Variant, Variant -> ()
       | Record (r1,v1), Record (r2,v2) ->
         let r1old = r1 in
         let r1 = ref r1 in
@@ -341,6 +345,8 @@ module Type = struct
 
   let ref t = make (Ref t)
 
+  let variant () = make (Variant)
+
   (* TODO: is_* should be implemented with subtyping because of type aliases. *)
   let is_unit t =
     match (unvar t).desc with
@@ -408,15 +414,15 @@ module Type = struct
         t : (string * typ) list;
         (** Type definitions. *)
         defs : (string * typ) list;
-        (** Type of events. *)
-        events : (string * typ option) list;
+        (** Type of variants. *)
+        variants : (string * typ) list;
       }
 
     let empty =
       {
         t = [];
         defs = [];
-        events = [];
+        variants = [];
       }
 
     let typ env x =
@@ -428,8 +434,8 @@ module Type = struct
     let defs env =
       env.defs
 
-    let events env =
-      Array.of_list (List.rev env.events)
+    let variants env =
+      Array.of_list (List.rev env.variants)
 
     let add_t env x t =
       { env with t = (x,t)::env.t }
@@ -437,14 +443,14 @@ module Type = struct
     let add_def env x t =
       { env with defs = (x,t)::env.defs }
 
-    let add_event env x t =
-      { env with events = (x,t)::env.events }
+    let add_variant env x t =
+      { env with variants = (x,t)::env.variants }
 
     let merge env' env =
       {
         t = env'@env.t;
         defs = env.defs;
-        events = env.events;
+        variants = env.variants;
       }
   end
 end
@@ -478,6 +484,7 @@ module Expr = struct
   (** Replace or add some fields in a record. If the bool is true, the value is
       optional and replaces the value only if not already present. *)
   | Replace_fields of t * (string * (t * bool)) list
+  | Variant of string * t
   | For of string * t * t * t
   and constant =
   (** Dummy value used internally to declare references. *)
@@ -511,8 +518,8 @@ module Expr = struct
         rs_procs : (string * B.proc) list;
         (** Types declared. *)
         rs_types : (string * T.t) list;
-        (** Events declared. *)
-        rs_events : (string * T.t option) list
+        (** Variants declared. *)
+        rs_variants : (string * T.t) list
       }
   and let_t =
     {
@@ -527,7 +534,7 @@ module Expr = struct
     rs_fresh = -1;
     rs_procs = [];
     rs_types = [];
-    rs_events = [];
+    rs_variants = [];
   }
 
   (** Raised by ext_implems when it is not implemented. *)
@@ -590,6 +597,7 @@ module Expr = struct
       | Replace_fields (r,l) ->
         Printf.sprintf "( %s with %s )" (to_string true r) (String.concat_map ", " (fun (l,(e,o)) -> Printf.sprintf "%s =%s %s" l (if o then "?" else "") (to_string false e)) l)
       | Proc (name,_) -> Printf.sprintf "+%s" name
+      | Variant (l,e) -> Printf.sprintf "`%s(%s)" l (to_string false e)
     in
     to_string false e
 
@@ -652,6 +660,9 @@ module Expr = struct
 
   let record ?pos ?t r =
     make ?pos ?t (Record r)
+
+  let variant ?pos l e =
+    make ?pos (Variant (l,e))
 
   let unit ?pos ?t () =
     record ?pos ?t []
@@ -1070,6 +1081,9 @@ module Expr = struct
           let e = coerce e T.int in
           let f = coerce f (T.arrnl [] T.unit) in
           ret (For(i,b,e,f)) T.unit
+        | Variant(l,e) ->
+          let t = T.variant () in
+          ret (Variant(l,e)) t
     in
     annot ans; ans
 
@@ -1535,6 +1549,9 @@ module Expr = struct
             reduce ~state (record ~t:(typ expr) !r)
           | _ -> assert false
         )
+      | Variant(l,e) ->
+        let state, e = reduce ~state e in
+        state, variant l e
       | Cst _ | External _ | Proc _ -> state, expr
     in
     (* Printf.printf "reduce: %s\n=>\n%s\n\n%!" (to_string expr) (to_string e); *)
@@ -1555,7 +1572,7 @@ module Expr = struct
         rs_fresh = state.rs_fresh;
         rs_procs = oldstate.rs_procs@state.rs_procs;
         rs_types = oldstate.rs_types;
-        rs_events = oldstate.rs_events;
+        rs_variants = oldstate.rs_variants;
       }
     in
     state, prog
@@ -1582,7 +1599,7 @@ module Module = struct
   | Decl of string * E.t
   | Expr of E.t
   | Type of string * T.t
-  | Event of string * T.t option
+  | Variant of string * T.t
 
   type t = instr list
 
@@ -1590,13 +1607,7 @@ module Module = struct
     | Decl (x,e) -> Printf.sprintf "%s = %s" x (E.to_string e)
     | Expr e -> Printf.sprintf "%s" (E.to_string e)
     | Type (l,t) -> Printf.sprintf "type %s = %s" l (T.to_string t)
-    | Event (e,t) ->
-      let t =
-        match t with
-        | None -> ""
-        | Some t -> Printf.sprintf " of %s" (T.to_string t)
-      in
-      Printf.sprintf "event `%s%s" e t
+    | Variant (e,t) -> Printf.sprintf "variant `%s of %s" e (T.to_string t)
 
   let to_string m =
     String.concat_map "\n\n" to_string m
@@ -1652,9 +1663,9 @@ module Module = struct
       | Type (l,t) ->
         let env = T.Env.add_def env l t in
         env, Type (l,t)
-      | Event (x,t) ->
-        let env = T.Env.add_event env x t in
-        env, Event (x,t)
+      | Variant (x,t) ->
+        let env = T.Env.add_variant env x t in
+        env, Variant (x,t)
     in
     try
       let env, m = List.fold_map aux env m in
@@ -1700,8 +1711,8 @@ module Module = struct
       | Type (l,t) ->
         let state = { state with E.rs_types = (l,t)::state.E.rs_types } in
         (subst, state), m
-      | Event (l,t) ->
-        let state = { state with E.rs_events = (l,t)::state.E.rs_events } in
+      | Variant (l,t) ->
+        let state = { state with E.rs_variants = (l,t)::state.E.rs_variants } in
         (subst, state), m
     in
     let _, m = List.fold_map (fun (subst,state) d -> aux subst state d) (subst,state) m in

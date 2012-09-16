@@ -337,4 +337,5 @@ let emit =
       (* () *)
   end
 
-type `Note_on of int
+type `Note_on : int
+type `Note_off : int

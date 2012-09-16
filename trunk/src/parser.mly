@@ -79,7 +79,7 @@
 %token CMP LE GE LT GT
 %token BAND BOR BNOT
 %token IF THEN ELSE
-%token STATIC COMPILE WITH TYPE EVENT_DEF OF
+%token STATIC COMPILE WITH TYPE
 %token LPAR RPAR LARR RARR
 %token SEMICOLON COLON COMMA MAYBE
 %token EQ PLUS MINUS TIMES DIV
@@ -89,7 +89,7 @@
 %token <bool> BOOL
 %token <string> IDENT
 %token <string> STRING
-%token <string> EVENT
+%token <string> VARIANT
 
 %nonassoc IN
 %nonassoc ARR
@@ -131,8 +131,8 @@ decl:
     | LET IDENT EQ expr { M.Decl($2,$4) }
     | LET LPAR RPAR EQ expr { M.Expr (mk (Coerce ($5, T.unit))) }
     | TYPE IDENT EQ typ { M.Type ($2,$4) }
-    | TYPE EVENT { M.Event ($2,None) }
-    | TYPE EVENT OF typ { M.Event ($2,Some $4) }
+    | TYPE VARIANT { M.Variant ($2,T.unit) }
+    | TYPE VARIANT COLON typ { M.Variant ($2,$4) }
 
 ident:
     | IDENT { mk_ident $1 }
@@ -223,6 +223,8 @@ simple_expr:
     | array_field { let a, i = $1 in mk_app (Builtin.get "array_get") ["",a;"",i] }
     | simple_expr DOT IDENT { mk (Field ($1, $3)) }
     | simple_expr DOT { mk (Field ($1, "")) }
+    | VARIANT LPAR expr RPAR { mk (Variant($1,$3)) }
+    | VARIANT LPAR RPAR { mk (Variant ($1, unit ~pos:(defpos None) ())) }
     | MODULE decls END { mk_module $2 }
     | BUILTIN STRING { Builtin.get ~pos:(defpos None) $2 }
     | COMPILE { Builtin.get "compile" }
