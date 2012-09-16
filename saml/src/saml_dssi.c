@@ -57,7 +57,7 @@ static LADSPA_Handle SAML_instantiate(const LADSPA_Descriptor *descriptor, unsig
   for (i = 0; i < POLYPHONY; i++)
     {
       h->state[i] = SAML_synth_alloc();
-      SAML_synth_period(h->state[i], 1. / (float)sample_rate);
+      SAML_synth_period(h->state[i], 1./(float)sample_rate);
     }
   h->first_inactive=0;
 
