@@ -112,6 +112,7 @@ let nn_n name fop iop fml iml c =
 
 let add = nn_n "add" (+.) (+) "(+.)" "(+)" "+"
 let sub = nn_n "sub" (-.) (-) "(-.)" "(-)" "-"
+let pow = nn_n "pow" ( ** ) pow "( ** )" "( pow )" "pow"
 
 (* TODO: share code with nn_n *)
 let nn_b name fop iop ocaml c =
@@ -608,6 +609,7 @@ let impl =
     sub;
     op "mul" ff_f B.Mul;
     op "div" ff_f B.Div;
+    pow;
     op "pi" tf B.Pi;
     op "sin" f_f B.Sin;
     op "cos" f_f B.Cos;

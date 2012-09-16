@@ -2,6 +2,10 @@ let id x = x
 
 let pi = 4. *. atan 1.
 
+let rec pow a b =
+  assert (b >= 0);
+  if b = 0 then 1 else a * (pow a (b-1))
+
 let get_some x =
   match x with
     | Some x -> x

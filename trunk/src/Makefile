@@ -20,6 +20,8 @@ test: all
 dssi: dssi_out.so
 analyze: dssi
 	DSSI_PATH="." dssi_analyse_plugin dssi_out.so
+liq: dssi
+	LIQ_DSSI_PATH="`pwd`" /home/smimram/prog/savonet/liquidsoap/src/liquidsoap -v m.liq
 
 %.so: %.c
 	gcc -fPIC -shared -Wall -Wno-unused-variable -g -lm $^ -o $@

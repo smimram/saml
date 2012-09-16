@@ -218,7 +218,7 @@ __attribute__((constructor)) void init()
       SAML_LADSPA_descriptor->Label = "saml_synth";
       SAML_LADSPA_descriptor->Properties = 0;
       SAML_LADSPA_descriptor->Name = SAML_name;
-      SAML_LADSPA_descriptor->Maker = "SAML/Liquidsoap";
+      SAML_LADSPA_descriptor->Maker = "SAML";
       SAML_LADSPA_descriptor->Copyright = "(c)";
       SAML_LADSPA_descriptor->PortCount = 2;
 

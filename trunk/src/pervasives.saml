@@ -3,6 +3,7 @@
 let pi = builtin "pi"
 let sin = builtin "sin"
 let cos = builtin "cos"
+let pow = builtin "pow"
 let random = builtin "random"
 let print = builtin "print"
 let run = builtin "run"
@@ -245,6 +246,12 @@ let effect =
       i := !i+1;
       if !i > n then i := 0;
       a[!i]
+  end
+
+let midi =
+  struct
+    let freq(note) =
+      440*pow(2,((note-69.)/12))
   end
 
 type instrument =
