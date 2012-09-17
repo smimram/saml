@@ -238,6 +238,26 @@ let filter =
     end
   end
 
+let ringbuffer =
+  struct
+    let create(n,x) =
+      let a = array.create(n+1,x) in
+      (buf=a,read=ref 0,write=ref 0,len=ref n)
+
+    let length(r) = !r.len
+
+    let put(r,x) =
+      r.buf[!r.write] := x;
+      r.write := !r.write+1;
+      if !r.write > length(r) then r.write := 0
+
+    let get(r) =
+      let x = r.buf[!r.read] in
+      r.read := !r.read + 1;
+      if !r.read > length(r) then r.read := 0;
+      x
+  end
+
 let effect =
   struct
     let delay(n,x) =

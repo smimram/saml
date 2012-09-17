@@ -101,7 +101,7 @@
 %nonassoc BNOT
 %nonassoc CMP
 %nonassoc LE GE LT GT
-//%nonassoc LARR
+%nonassoc LARR
 %nonassoc GET
 %nonassoc SET
 //%nonassoc EQ
@@ -171,7 +171,7 @@ app_args:
     | LPAR in_record RPAR { $2 }
 
 array_field:
-    | ident LARR expr RARR { $1,$3 }
+    | simple_expr LARR expr RARR { $1,$3 }
 
 expr:
     | LET IDENT EQ expr IN expr { mk_let $2 $4 $6 }
@@ -182,6 +182,7 @@ expr:
     | IF expr THEN expr ELSE expr { mk_app (mk_cst If) ["",$2; "then",E.quote $4; "else",E.quote $6] }
     | IF expr THEN expr { mk_app (mk_cst If) ["",$2; "then",mk_fun [] $4; "else",mk_fun [] (unit ())] }
     | ident SET expr { mk_app (mk_cst Set) ["",$1; "",$3] }
+    | record_field SET expr { mk_app (mk_cst Set) ["",$1; "",$3] }
     | array_field SET expr { let a,i = $1 in mk_app (Builtin.get "array_set") ["",a;"",i;"",$3] }
     | expr PLUS expr { mk_app (Builtin.get "add") ["",$1; "",$3] }
     | expr MINUS expr { mk_app (Builtin.get "sub") ["",$1; "",$3] }
@@ -207,6 +208,10 @@ expr_list:
     | expr { [$1] }
     | expr COMMA expr_list { $1::$3 }
 
+record_field:
+    | simple_expr DOT IDENT { mk (Field ($1, $3)) }
+    | simple_expr DOT { mk (Field ($1, "")) }
+
 simple_expr:
     | ident { $1 }
     | INT { mk_cst (Int $1) }
@@ -222,8 +227,7 @@ simple_expr:
     | LPAR ident WITH MAYBE in_record RPAR { let r = List.map (fun (l,e) -> l,(e,true)) $5 in mk (Replace_fields($2,r)) }
     | LARR expr_list RARR { mk_array $2 }
     | array_field { let a, i = $1 in mk_app (Builtin.get "array_get") ["",a;"",i] }
-    | simple_expr DOT IDENT { mk (Field ($1, $3)) }
-    | simple_expr DOT { mk (Field ($1, "")) }
+    | record_field { $1 }
     | VARIANT LPAR expr RPAR { mk (Variant($1,$3)) }
     | VARIANT LPAR RPAR { mk (Variant ($1, unit ~pos:(defpos None) ())) }
     | MODULE decls END { mk_module $2 }
