@@ -497,6 +497,7 @@ let emit_dssi =
     let state, prog = E.reduce_quote ~subst ~state prog [] in
     let state, prog = E.emit ~subst ~state ~free_vars:true prog in
     let prog = BB.prog ~state:true prog in
+    let prog = B.map_proc_names prog (fun l -> "SAML_DSSI_"^l) in
     Printf.printf "---\nEmit C prog:\n%s---\n\n%!" (B.to_string prog);
     let c = B.C.emit prog in
     let c = String.concat "\n"
@@ -514,16 +515,9 @@ let emit_dssi =
         "";
         "#define STATE state";
         "#define SAML_name \"saml_syth\"";
-        "#define SAML_synth run";
-        "#define SAML_synth_alloc alloc";
-        "#define SAML_synth_period period";
-        "#define SAML_synth_reset reset";
-        "#define SAML_synth_free unalloc";
-        "#define SAML_synth_set_velocity velocity";
-        "#define SAML_synth_set_note note";
-        "#define SAML_synth_note_off release";
-        "#define SAML_synth_is_active is_active";
-        "#define SAML_synth_activate activate";
+        "#define SAML_DSSI_run run";
+        "#define SAML_DSSI_alloc alloc";
+        "#define SAML_DSSI_free SAML_DSSI_unalloc";
         "";
       ]
     in

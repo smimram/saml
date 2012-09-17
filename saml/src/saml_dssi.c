@@ -46,18 +46,18 @@ typedef struct
   unsigned long note[POLYPHONY];
   /* First inactive voice. */
   int first_inactive;
-} SAML_synth_t;
+} SAML_DSSI_t;
 
 /* Allocate the internal structures of the synth. */
 static LADSPA_Handle SAML_instantiate(const LADSPA_Descriptor *descriptor, unsigned long sample_rate)
 {
-  SAML_synth_t *h = malloc(sizeof(SAML_synth_t));
+  SAML_DSSI_t *h = malloc(sizeof(SAML_DSSI_t));
   int i;
 
   for (i = 0; i < POLYPHONY; i++)
     {
-      h->state[i] = SAML_synth_alloc();
-      SAML_synth_period(h->state[i], 1./(float)sample_rate);
+      h->state[i] = SAML_DSSI_alloc();
+      SAML_DSSI_period(h->state[i], 1./(float)sample_rate);
     }
   h->first_inactive=0;
 
@@ -66,7 +66,7 @@ static LADSPA_Handle SAML_instantiate(const LADSPA_Descriptor *descriptor, unsig
 
 static void SAML_connect_port(LADSPA_Handle instance, unsigned long port, LADSPA_Data *data)
 {
-  SAML_synth_t *h = (SAML_synth_t*)instance;
+  SAML_DSSI_t *h = (SAML_DSSI_t*)instance;
   switch(port)
     {
     case SAML_PORT_OUTPUT_L:
@@ -82,31 +82,31 @@ static void SAML_connect_port(LADSPA_Handle instance, unsigned long port, LADSPA
 /* Reset the synth. */
 static void SAML_activate(LADSPA_Handle instance)
 {
-  SAML_synth_t *h = (SAML_synth_t*)instance;
+  SAML_DSSI_t *h = (SAML_DSSI_t*)instance;
   int i;
 
   for (i = 0; i < h->first_inactive; i++)
-    SAML_synth_reset(h->state[i]);
+    SAML_DSSI_reset(h->state[i]);
 }
 
 /* Mute all voices. */
 void SAML_deactivate(LADSPA_Handle instance)
 {
-  SAML_synth_t *h = (SAML_synth_t*)instance;
+  SAML_DSSI_t *h = (SAML_DSSI_t*)instance;
   int i;
 
   for (i = 0; i < h->first_inactive; i++)
-    SAML_synth_reset(h->state[i]);
+    SAML_DSSI_reset(h->state[i]);
 }
 
 /* Free internal structures of the synth. */
 static void SAML_cleanup(LADSPA_Handle instance)
 {
-  SAML_synth_t *h = (SAML_synth_t*)instance;
+  SAML_DSSI_t *h = (SAML_DSSI_t*)instance;
   int i;
 
   for (i = 0; i < POLYPHONY; i++)
-    SAML_synth_free(h->state[i]);
+    SAML_DSSI_free(h->state[i]);
   free(h);
 }
 
@@ -135,8 +135,8 @@ int SAML_get_midi_controller(LADSPA_Handle instance, unsigned long port)
 
 static void SAML_run_synth(LADSPA_Handle instance, unsigned long sample_count, snd_seq_event_t *events, unsigned long event_count)
 {
-  SAML_synth_t *h = (SAML_synth_t*)instance;
-  unsigned long pos, event_pos, midi_note, n;
+  SAML_DSSI_t *h = (SAML_DSSI_t*)instance;
+  unsigned long pos, event_pos, note, n;
 
   if (event_count > 0) {
     //printf("synth: we have %ld events\n", event_count);
@@ -144,7 +144,7 @@ static void SAML_run_synth(LADSPA_Handle instance, unsigned long sample_count, s
 
   /* Pack notes */
   for (n = 0; n < h->first_inactive; n++)
-    if (!SAML_synth_is_active(h->state[n]))
+    if (!SAML_DSSI_is_active(h->state[n]))
       {
         STATE *tmp;
         unsigned long l = h->first_inactive-1;
@@ -163,23 +163,23 @@ static void SAML_run_synth(LADSPA_Handle instance, unsigned long sample_count, s
 
           if (events[event_pos].type == SND_SEQ_EVENT_NOTEON && h->first_inactive < POLYPHONY)
             {
-              midi_note = events[event_pos].data.note.note;
+              note = events[event_pos].data.note.note;
               n = h->first_inactive;
               h->first_inactive++;
-              SAML_synth_reset(h->state[n]);
-              SAML_synth_set_velocity(h->state[n], (float)events[event_pos].data.note.velocity / 127.0f);
-              printf("note on : %ld (vel: %d)\n", midi_note, events[event_pos].data.note.velocity);
-              h->note[n] = midi_note;
-              SAML_synth_set_note(h->state[n], midi_note);
-              SAML_synth_activate(h->state[n]);
+              SAML_DSSI_reset(h->state[n]);
+              SAML_DSSI_velocity(h->state[n], (float)events[event_pos].data.note.velocity / 127.0f);
+              printf("note on : %ld (vel: %d)\n", note, events[event_pos].data.note.velocity);
+              h->note[n] = note;
+              SAML_DSSI_note(h->state[n], note);
+              SAML_DSSI_activate(h->state[n]);
             }
           else if (events[event_pos].type == SND_SEQ_EVENT_NOTEOFF)
             {
-              midi_note = events[event_pos].data.note.note;
-              printf("note off: %ld\n", midi_note);
+              note = events[event_pos].data.note.note;
+              printf("note off: %ld\n", note);
               for (n = 0; n < h->first_inactive; n++)
-                if (h->note[n] == midi_note)
-                  SAML_synth_note_off(h->state[n]);
+                if (h->note[n] == note)
+                  SAML_DSSI_release(h->state[n]);
             }
           event_pos++;
         }
@@ -187,12 +187,12 @@ static void SAML_run_synth(LADSPA_Handle instance, unsigned long sample_count, s
       h->output_l[pos] = 0.0f;
       h->output_r[pos] = 0.0f;
       for (n = 0; n < h->first_inactive; n++)
-        if (SAML_synth_is_active(h->state[n]))
+        if (SAML_DSSI_is_active(h->state[n]))
           {
-            LADSPA_Data s = SAML_synth(h->state[n]);
+            LADSPA_Data s = SAML_DSSI_run(h->state[n]);
             h->output_l[pos] += s;
             h->output_r[pos] += s;
-            /* pair_double_double s = SAML_synth(h->state[n]); */
+            /* pair_double_double s = SAML_DSSI(h->state[n]); */
             /* h->output_l[pos] += s.x; */
             /* h->output_r[pos] += s.y; */
           }

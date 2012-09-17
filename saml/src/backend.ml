@@ -3,7 +3,10 @@
 open Stdlib
 
 (** A backend. *)
-type backend = LLVM | C | OCaml
+type backend =
+| C
+| OCaml
+| LLVM
 
 module Type = struct
   type t =
@@ -162,16 +165,20 @@ type expr =
 | Arg of int
 (** The n-th argument. In programs with state, the 0-th argument refers the
     first argument which is not the state (i.e. the second argument). *)
+(** An equation of the form x = e. *)
 and eq = loc * expr
+(** A list of equations. *)
 and eqs = eq list
 (** A memory location (where things can be written). *)
 and loc =
-| LVar of var
-| LField of rvar * int
-| LCell of var * expr
+| LVar of var (** A variable. *)
+| LField of rvar * int (** A field of a record. *)
+| LCell of var * expr (** A cell of an array. *)
 
+(** Unit value. *)
 let unit = Unit
 
+(** Create an external operator with given various implementations. *)
 let extern ?saml ?ocaml ?c name =
   let saml = maybe (fun _ -> failwith ("TODO: saml implementation for " ^ name)) saml in
   let c = maybe (fun _ -> failwith ("TODO: C implementation for " ^ name)) c in
@@ -416,6 +423,11 @@ let to_string p =
   let loop = string_of_eqs ~tab:1 p.loop in
   print (Printf.sprintf "loop:\n%s\n\n" loop);
   !ans
+
+(** Rename procedures of the program. *)
+let map_proc_names prog f =
+  let procs = List.map (fun (l,p) -> f l, p) prog.procs in
+  { prog with procs }
 
 (** Helper structure to compute free variables. *)
 module FV = struct
