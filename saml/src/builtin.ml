@@ -514,7 +514,7 @@ let emit_dssi =
       [
         "";
         "#define STATE state";
-        "#define SAML_name \"saml_syth\"";
+        "#define SAML_name \"saml_synth\"";
         "#define SAML_DSSI_run run";
         "#define SAML_DSSI_alloc alloc";
         "#define SAML_DSSI_free SAML_DSSI_unalloc";
