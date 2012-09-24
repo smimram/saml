@@ -1,3 +1,5 @@
+(** Common procedures. *)
+
 open Stdlib
 
 let debug = Printf.printf
@@ -78,6 +80,7 @@ let mapperq f =
     if not (List.mem_assq x !l) then l := (x, f x) :: !l;
     List.assq x !l
 
+(** Write a string on a file. *)
 let file_out fname s =
   let oc = open_out fname in
   output_string oc s;

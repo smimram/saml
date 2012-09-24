@@ -5,6 +5,8 @@ open Lang
 module B = Backend
 module BB = B.Builder
 
+(** { 2 General functions } *)
+
 let may_implem i =
   maybe (fun ~subst ~state _ -> raise E.Cannot_reduce) i
 
@@ -55,6 +57,35 @@ let mop name ?i ?b t =
     ext_implem = may_implem i;
   }
 
+(** Declare an external backend operator. *)
+(*
+let extern name ?saml ?c ?ocaml t =
+  let get, set =
+    let a, t = T.split_arr t in
+    let a = Array.of_list a in
+    let get =
+      Array.map
+        (fun t ->
+          match t.T.desc with
+          | T.Int -> B.V.get_int
+          | T.Float -> B.V.get_float
+        ) a
+    in
+    let set =
+      match t.T.desc with
+      | T.Int -> B.V.int
+      | T.Float -> B.V.float
+    in
+    get, set
+  in
+  let b t prog args =
+    let saml a = B.V.float (float (B.V.get_int a.(0))) in
+    let c a = a.(0) in
+    prog, B.Op (B.extern name ?saml ?c ?ocaml, args)
+  in
+  mop name (fun _ -> t) ~b
+*)
+
 let get_string e =
   match e.E.desc with
   | E.Cst (E.String s) -> s
@@ -72,6 +103,8 @@ let exit =
     exit n
   in
   mop "exit" t ~i
+
+(** {2 Specific implementations } *)
 
 (** Declare a binary operator on either int or floats. *)
 let nn_n name fop iop fml iml c =
@@ -270,6 +303,23 @@ let array_create =
     prog, B.Op(B.Alloc t,[|a.(0)|])
   in
   mop "array_create" t ~b
+
+let array_realloc =
+  let name = "array_realloc" in
+  let t _ =
+    let a = T.fresh_var () in
+    T.arrnl [T.array a; T.int] (T.array a)
+  in
+  let b t prog args =
+    let t =
+      match (T.unvar t).T.desc with
+      | T.Array t -> t
+      | _ -> assert false
+    in
+    let t = T.emit t in
+    prog, B.Op(B.Realloc t, args)
+  in
+  mop name t ~b
 
 let array_set =
   let t _ =
@@ -613,6 +663,16 @@ let pow =
     prog, B.Op (B.extern name ~saml ~c, args)
   in
   mop name t ~b
+
+(* let assertion = *)
+  (* let name = "assert" in *)
+  (* let t _ = *)
+    (* let a = T.fresh_var () in *)
+    (* T.arrnl [T.bool] a *)
+  (* in *)
+  (* let b t prog args = *)
+  (* in *)
+  (* mop name t ~b *)
 
 (* TODO: use GADT for cleanly handling type especially with backend
    externals. *)

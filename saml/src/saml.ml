@@ -1,3 +1,5 @@
+(** Main part of the program. *)
+
 open Stdlib
 open Common
 

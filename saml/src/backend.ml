@@ -140,7 +140,9 @@ type op =
 | External of extern
 | Alloc of T.t
 (** Allocate a value. If an argument is given, it should be an integer and an
-    array is then allocated. *)
+    array is then allocated otherwise a value is allocated. *)
+| Realloc of T.t
+(** Reallocate a value. *)
 | Free
 | Call of string (** Call an internal procedure. *)
 
@@ -217,6 +219,7 @@ let string_of_op = function
   | Print _ -> "print"
   | External ext -> Printf.sprintf "'%s'" ext.ext_name
   | Alloc t  -> Printf.sprintf "alloc[%s]" (T.to_string t)
+  | Realloc t  -> Printf.sprintf "realloc[%s]" (T.to_string t)
   | Free -> "free"
   | Call s -> Printf.sprintf "+%s" s
   | Botop -> "⊥"
@@ -768,6 +771,14 @@ let pack_state prog =
 
 (** Procedures. *)
 
+(** Names for standard procedures. *)
+module Proc_name = struct
+  let alloc = "alloc"
+  let unalloc = "unalloc"
+  let init = "init"
+  let loop = "loop"
+end
+
 let proc_alloc prog =
   let t = T.Ptr (state_t prog) in
   proc prog ~state:false [] t prog.init
@@ -1061,6 +1072,19 @@ module SAML = struct
             default_value t
           else
             V.array (V.get_int a.(0)) t
+        | Realloc t ->
+          if Array.length a = 1 then
+            (* TODO: we should keep the existing value *)
+            (* default_value t *)
+            assert false
+          else
+            let old = V.get_array a.(0) in
+            let a = V.array (V.get_int a.(1)) t in
+            let arr = V.get_array a in
+            for i = 0 to min (Array.length old) (Array.length arr) - 1 do
+              arr.(i) <- old.(i)
+            done;
+            a
         | Call s ->
           (* Printf.printf "call %s\n%!" s; *)
           let p = List.assoc s prog.procs in
@@ -1341,6 +1365,12 @@ struct
           let c, tv = emit_type c ~noderef:true t in
           let c, t = emit_type c (T.Ptr t) in
           c, Printf.sprintf "(%s)malloc(%s * sizeof(%s))" t n tv
+        | Realloc t ->
+          assert (Array.length args = 2);
+          let n = if Array.length args = 1 then "1" else args.(1) in
+          let c, tv = emit_type c ~noderef:true t in
+          let c, t = emit_type c (T.Ptr t) in
+          c, Printf.sprintf "(%s)realloc(%s, %s * sizeof(%s))" args.(0) t n tv
         | External ext -> c, ext.ext_c args
       )
     | Return x ->
