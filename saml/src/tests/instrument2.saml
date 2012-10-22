@@ -1,0 +1,90 @@
+(* -*- tuareg -*- *)
+
+let sin = builtin "sin"
+let run = builtin "run"
+
+let pi = 3.1416
+
+let ignore(x) = ()
+let nact() = ()
+
+type instrument = ()->(float,freq:(float)->(),activate:()->())
+
+let array =
+  struct
+    let create = builtin "array_create"
+
+    let play = builtin "array_play"
+  end
+
+
+let activate(x) =
+  let active = ref false in
+  let x = if !active then x else 0. in
+  (x, activate=fun()->active:=true)
+
+let adsr(a,d,s,r,x) =
+  let f = ref 440. in
+  let x = activate(x(!f)) in
+  let g = ref 1. in
+  let act = ref false in
+  (* let on_die () = act := false in *)
+  (* let x = envelope.adsr(a,d,s,r,on_die=,x.) in *)
+  (
+    !g*x.,
+    freq = fun (x) -> f := x,
+    gain = fun (x) -> g := x,
+    activate =
+    (* fun (x) -> let x = (x:unit) in (), *)
+    fun () -> x.activate(); act := true,
+    is_active = fun () -> !act
+  )
+
+let adsr(a,d,s,r,x) =
+  let f = ref 440. in
+  let x = (x : (float) -> float) in
+  let x = x(!f) in
+  let x = activate(x) in
+  (
+    x.,
+    freq = fun (x) -> f := x,
+    activate = x.activate
+  )
+
+let play(s) =
+  let player() =
+    let dt = 1./44100. in
+    let s = (s : instrument) in
+    let prog = emit(s) in
+    let state = prog.alloc() in
+    let run() = prog.run(state) in
+    let freq(f) = prog.freq(state,f) in
+    let buflen = 1024 in
+    let buf = array.create(buflen,0.) in
+    let t = ref 0. in
+    let f = ref 440. in
+    prog.activate(state);
+    for i = 0 to buflen-1 do
+      buf[i] := run();
+      freq(!t*440);
+      t := !t + dt
+      (* if duration >= 0 then on(!t >= duration, release) *)
+    done;
+    array.play(buf)
+  in
+  run(player)
+
+let () =
+  let s (freq) =
+    let t = ref 0. in
+    let now = !t in
+    t := !t + freq * dt;
+    sin(2*pi*now)
+  in
+  let i () = adsr(0.5,0.4,0.8,1,s) in
+  (* let i() = *)
+    (* let f = ref 440. in *)
+    (* (s(!f),freq=fun(x)->f := x) *)
+  (* in *)
+  play(i);
+  ()

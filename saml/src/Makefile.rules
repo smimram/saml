@@ -1,0 +1,32 @@
+MLY := $(filter %.mly, $(SOURCES))
+MLL := $(filter %.mll, $(SOURCES))
+ML := $(SOURCES:.mly=.ml)
+ML := $(ML:.mll=.ml)
+CMI := $(ML:.ml=.cmi)
+CMX := $(ML:.ml=.cmx)
+
+INCFLAGS := $(INCDIRS:%=-I %)
+ifdef ANNOTATE
+  ANNOT_FLAG := -dtypes
+endif
+
+
+OCAMLOPT := $(OCAMLOPT) $(INCFLAGS) $(OCAMLFLAGS) $(ANNOT_FLAG)
+
+nc: $(CMX)
+	$(OCAMLOPT) $(LIBS:%=%.cmxa) $(CMX) -o $(RESULT)
+
+%.cmx: %.ml
+	$(OCAMLOPT) -c $^
+
+%.ml: %.mly
+	$(OCAMLYACC) $^
+	rm -f $(shell basename $^ .mly).mli
+
+%.ml: %.mll
+	$(OCAMLLEX) $^
+
+cmx: $(CMX)
+
+clean:
+	rm -f $(CMI) $(CMX) $(ML:.ml=.annot) $(ML:.ml=.o) $(MLY:.mly=.ml) $(MLL:.mll=.ml)

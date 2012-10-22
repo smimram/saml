@@ -1,0 +1,33 @@
+# -*- tuareg -*-
+
+let run = builtin "run"
+let print = builtin "print"
+
+let ignore (x) = ()
+
+let s() =
+  let t = ref (-1.) in
+  let x = !t in
+  t := !t + 440 * dt;
+  if !t > 1 then t := !t - 1;
+  x
+
+let s() =
+  let a = ref 0.9 in
+  (!a*s(), release=fun (n,x) -> ignore ((x:string)); print((n:int)); print("RELEASE!\n"); a:=0)
+  (* (!a*s(), release=fun()->a:=0) *)
+
+let () =
+  let a () =
+    let r = ref 2 in
+    !r
+  in
+  let f () = print(a()); print("RAN!\n") in
+  let f () =
+    let dt = 1/44100. in
+    let s = emit(s) in
+    let state = s.alloc() in
+    s.release(state, 5, "toto")
+    (* s.release(state) *)
+  in
+  run(loop=false, f)

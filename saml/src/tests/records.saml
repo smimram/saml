@@ -1,0 +1,7 @@
+# -*- tuareg -*-
+
+let r = (fst = 4, snd = false)
+
+let f(r) = r.field
+
+let s = (r with? fst = 5, x = 2)
