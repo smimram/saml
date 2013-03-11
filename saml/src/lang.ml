@@ -223,7 +223,7 @@ module Type = struct
 
   (** Inline idents in a type. *)
   let expand env t =
-    Printf.printf "expand: %s\n%!" (to_string t);
+    (* Printf.printf "expand: %s\n%!" (to_string t); *)
     let rec aux t =
       let d =
         match (unvar t).desc with
