@@ -6,7 +6,6 @@
 (* TODO: functions can be curryfied as usual now that we have records with
    optional types. *)
 (* TODO: in records we should let ... otherwise {x = !r} does get propagated *)
-(* TODO: proper generalization with levels *)
 
 open Stdlib
 open Common
@@ -19,9 +18,7 @@ module Type = struct
   type t =
     {
       desc : desc; (** The type. *)
-      (* TODO: this is not used for now... *)
-      alloc : bool; (** Whether the expression allocates memory, in which case
-                        it will be global (i.e. in init). *)
+      (* TODO: check whether this is really useful and coherent... *)
       static : bool; (** Whether the value is statically known at compile-time. *)
     }
   and desc =
@@ -51,14 +48,11 @@ module Type = struct
   | Link of t
   (** A link to another variable *)
 
-  let make ?pos ?(alloc=false) ?(static=false) t =
+  let make ?pos ?(static=false) t =
     {
       desc = t;
-      alloc;
       static;
     }
-
-  let allocates t = t.alloc
 
   let arr a r = make (Arr (a, r))
 
@@ -470,8 +464,8 @@ module Type = struct
       incr n;
       make (State !n)
 
-  let array ?alloc ?static a =
-    make ?alloc ?static (Array a)
+  let array ?static a =
+    make ?static (Array a)
 
   let record ?(row=false) r =
     let row = if row then Some (fresh_invar ()) else None in
@@ -606,8 +600,6 @@ module Expr = struct
         (** Let declarations. *)
         rs_fresh : int;
         (** Fresh variable generator. *)
-        rs_procs : (string * B.proc) list;
-        (** Procedures generated. *)
         rs_types : (string * T.t) list;
         (** Types declared. *)
         rs_variants : (string * T.t) list
@@ -625,7 +617,6 @@ module Expr = struct
   let reduce_state_empty = {
     rs_let = [];
     rs_fresh = -1;
-    rs_procs = [];
     rs_types = [];
     rs_variants = [];
   }
@@ -1103,14 +1094,14 @@ module Expr = struct
           let a =
             List.map
               (fun e ->
-                let e =infer_type env e in
+                let e = infer_type env e in
                 let te = typ e in
                 if not (t <: te) then
                   type_error e "This expression has type %s but %s was expected." (T.to_string te) (T.to_string t);
                 e
               ) a
           in
-          ret (Array a) (T.array ~static:true t)
+          ret (Array a) (T.array t)
         | Record r ->
           let r = List.map (fun (l,e) -> l, infer_type env e) r in
           let tr = List.map (fun (l,e) -> l,(typ e,false)) r in
@@ -1200,6 +1191,7 @@ module Expr = struct
 
   module BB = B.Builder
 
+(*
   (** Emit the programs, optionally allowing free variables and generating a
       state. *)
   let rec emit ~subst ~state ?(free_vars=false) ?prog expr =
@@ -1386,10 +1378,11 @@ module Expr = struct
     in
     (* let prog = BB.alloc ~free:true prog "dt" (B.T.Float) in *)
     aux ~subst ~state ~free_vars prog expr
+*)
 
   (** Normalize an expression by performing beta-reductions and
       builtins-reductions. *)
-  and reduce ~subst ~state expr =
+  let rec reduce ~subst ~state expr =
     (* Printf.printf "reduce: %s\n\n%!" (to_string expr); *)
     let reduce ?(subst=subst) ~state expr = reduce ~subst ~state expr in
 
@@ -1630,13 +1623,13 @@ module Expr = struct
       {
         rs_let = oldstate.rs_let;
         rs_fresh = state.rs_fresh;
-        rs_procs = oldstate.rs_procs@state.rs_procs;
         rs_types = oldstate.rs_types;
         rs_variants = oldstate.rs_variants;
       }
     in
     state, prog
 
+(*
   (** Emit a quote. *)
   and emit_quote ~subst ~state prog e args =
     let state, e = reduce_quote ~subst ~state e args in
@@ -1644,6 +1637,7 @@ module Expr = struct
     let state, prog = emit ~subst ~state ~free_vars:true ~prog e in
     let prog, e = BB.pop prog in
     (state, prog), e
+*)
 
   (** Generate a fresh variable name. *)
   and fresh_var state =

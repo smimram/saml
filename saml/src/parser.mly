@@ -79,7 +79,7 @@
 %token CMP LE GE LT GT
 %token BAND BOR BNOT
 %token IF THEN ELSE
-%token STATIC COMPILE WITH TYPE
+%token STATIC WITH TYPE
 %token LPAR RPAR LARR RARR
 %token SEMICOLON COLON COMMA MAYBE
 %token EQ PLUS MINUS TIMES DIV POW
@@ -232,7 +232,6 @@ simple_expr:
     | VARIANT LPAR RPAR { mk (Variant ($1, unit ~pos:(defpos None) ())) }
     | MODULE decls END { mk_module $2 }
     | BUILTIN STRING { Builtin.get ~pos:(defpos None) $2 }
-    | COMPILE { Builtin.get "compile" }
 
 /***** Types *****/
 

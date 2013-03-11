@@ -26,7 +26,6 @@
       "builtin", BUILTIN;
       "static", STATIC;
       "not", BNOT;
-      "compile", COMPILE;
       "with", WITH;
       "type", TYPE;
       "include", INCLUDE;

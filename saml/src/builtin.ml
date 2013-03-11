@@ -290,7 +290,7 @@ let play_song =
 let array_create =
   let t _ =
     let a = T.fresh_var () in
-    T.arrnl [T.int; a] (T.array ~alloc:true a)
+    T.arrnl [T.int; a] (T.array a)
   in
   let b t prog a =
     let _, t = T.split_arr t in
@@ -388,6 +388,7 @@ let array_length =
   in
   mop "array_length" t ~i
 
+(*
 let compile =
   let t args =
     let state = T.state () in
@@ -420,7 +421,7 @@ let compile =
         let a = T.fresh_var () in
         a, (a, [])
     in
-    let t_alloc = T.arrnl [] { state with T.alloc = true } in
+    let t_alloc = T.arrnl [] state in
     let t_run = T.arrnl [state] t_ret in
     let r =
       [
@@ -536,7 +537,9 @@ let compile =
     state, E.record r
   in
   mop "compile" t ~i
+*)
 
+(*
 let emit_dssi =
   let t _ =
     let a = T.fresh_var () in
@@ -575,6 +578,7 @@ let emit_dssi =
     state, E.string c
   in
   mop "emit_dssi" t ~i
+*)
 
 let write_file =
   let t _ = T.arrnl[T.string; T.string] T.unit in
@@ -588,6 +592,7 @@ let write_file =
   in
   mop "write_file" t ~i
 
+(*
 let run =
   let t _ = T.arr ["loop",(T.bool,true); "",(T.arrnl [] T.unit,false)] T.unit in
   let i ~subst ~state args =
@@ -626,6 +631,7 @@ let run =
     state, E.unit ()
   in
   mop "run" t ~i
+*)
 
 (* TODO: we could implement for as an external *)
 (*
@@ -722,9 +728,9 @@ let impl =
 
     (* Actions. *)
     exit;
-    compile;
-    emit_dssi;
-    run;
+    (* compile; *)
+    (* emit_dssi; *)
+    (* run; *)
     print;
     write_file;
 

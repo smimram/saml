@@ -2,122 +2,18 @@
 
 (* Test file *)
 
-include "pervasives.saml"
+(* include "pervasives.saml" *)
+include "builtin.saml"
 
-let play(duration=-1,s)=
-  let player() =
-    let dt() = 1./44100. in
-    let s = (s:()->float) in
-    let prog = compile(s) in
-    let state = prog.alloc() in
-    let run() = prog.run(state) in
-    let buflen = 1024 in
-    let buf = array.create(buflen,0.) in
-    let t = ref 0. in
-    for i = 0 to buflen-1 do
-      buf[i] := run();
-      t := !t + dt
-      (* if duration >= 0 then on(!t >= duration, release) *)
-    done;
-    array.play(buf)
-  in
-  run(player)
+let id(x) = x
 
-(* let () = *)
-  (* let s() = osc.saw(440) in *)
-  (* let s() = *)
-    (* let x = s() in *)
-    (* x+effect.delay(10000,x) *)
-  (* in *)
-  (* play(s) *)
+let euler(reset=id,phase=0.,f') =
+  let x = ref phase in
+  let ans = !x in
+  x := !x + dt * f';
+  x := reset(!x);
+  ans
 
-let () =
-  let s() = instrument.adsr(0.01,0.05,0.8,0.5,osc.saw) in
-  let c = emit.dssi(s) in
-  file.write("dssi_out.c", c);
-  (* print(c); *)
-  exit(0)
+let sine(freq,phase=0.) = sin(2 * pi * euler(freq,phase=))
 
-(* let () = *)
-  (* let s (freq) = osc.sine(freq) in *)
-  (* let i () = instrument.adsr(0.5,0.4,0.8,1,s) in *)
-  (* instrument.play(i) *)
-
-let s() = osc.sine(440,phase=0.777)
-let s() = time.accelerate(440+60*time.accelerate(10*time.now,fun()->osc.sine(1)),fun()->osc.saw(1.))
-let s() = (1+osc.sine(4)*0.1)*(envelope.adsr(0.5,0.4,0.7,1,fun()->osc.triangle(440))).
-(* let s() = *)
-  (* array.iter (print,[1,2,3]); *)
-  (* 0. *)
-(* let s() = osc.saw(freq=440*envelope.tremolo(0.1,4,1)) *)
-(* let s() = filter.first_order.low_pass(1000+1000*osc.sine(freq=0.5),s) *)
-(* let s() = osc.sine(freq=440) *)
-
-(* let s()= *)
-  (* let prev(x) = *)
-    (* let r = ref 0. in *)
-    (* let y = !r in *)
-    (* r := x; *)
-    (* y *)
-  (* in *)
-  (* let rec xrec = prev(xrec) in *)
-  (* xrec *)
-
-(* let s() = instrument.adsr(0.8,0.2,0.8,0.3,osc.sine) *)
-(* let s() = envelope.adsr(0.01,0.04,0.,1,osc.random)+s *)
-let s() = envelope.ad(0.01,2,dfun=fun(x)->x*x,on_die=fun ()->print("DIED!\n"),osc.saw(frequency.vibrato(4,0.01,440))+osc.random*0.1)
-
-(*
-  let s (freq) =
-    let x = s(freq) in
-    x+effect.delay(1000,x)
-  in
-*)
-
-(* let () = play (s) *)
-
-(* let s() = osc.sine(freq=440,phase=12) *)
-(* let () = play_song(s) *)
-
-
-(* let s() = *)
-  (* let t = ref 0. in *)
-  (* let ans = sin(2*pi*!t) in *)
-  (* t := !t + 440 * dt; *)
-  (* ans *)
-
-let play(duration=-1,s)=
-  let player() =
-    let dt() = 1./44100. in
-    let s = (s:()->(float, release:()->())) in
-    let s() =
-      let s = s() in
-      (s with die=fun()->print("DIE!"))
-    in
-    let prog = compile(s) in
-    let state = prog.alloc() in
-    let run() = prog.run(state) in
-    let release() = prog.release(state) in
-    let buflen = 1024 in
-    let buf = array.create(buflen,0.) in
-    let t = ref 0. in
-    for i = 0 to buflen-1 do
-      buf[i] := run();
-      t := !t + dt;
-      if duration >= 0 then on(!t >= duration, release)
-    done;
-    array.play(buf)
-  in
-  run(player)
-
-(* let () = play(s) *)
-
-(* let s() = (1+osc.sine(4)*0.1)*envelope.adsr(0.5,0.4,0.7,1,osc.triangle(440)) *)
-let s() = osc.sine(440)
-let s() =
-  let a = ref 1. in
-  (!a*s(),release=fun () -> print("RELEASE!\n");a:=0)
-
-(* let () = *)
-  (* play(release=s.release,duration=1.,s) *)
-  (* play(duration=1,s) *)
+let s() = sine(440,phase=0.777)

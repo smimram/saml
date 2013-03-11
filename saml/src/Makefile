@@ -19,7 +19,6 @@ OCAMLDOC = ocamldoc.opt
 
 test: all
 	OCAMLRUNPARAM=b ./saml test.saml
-	$(MAKE) dssi
 
 dssi: dssi_out.so
 analyze: dssi
