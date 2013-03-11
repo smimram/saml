@@ -2,7 +2,7 @@
 
 set("log.file",false)
 set("log.level",123)
-set("server.telnet",true)
+#set("server.telnet",true)
 
 def mksafe(s)
   fallback(id="mksafe",track_sensitive=false,[s,blank(id="safe_blank")])

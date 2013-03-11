@@ -27,7 +27,7 @@ module Type = struct
   and desc =
   | Ident of string
   | Var of var
-  (** A universal variable (if [None]) or a link to another type [t] (if [Some t]). *)
+  (** A type variable. *)
   | Int
   | Float
   | String
@@ -37,13 +37,19 @@ module Type = struct
   | Array of t
   (* TODO: possible variants that can appear as in OCaml *)
   | Variant
+  (** A polymorphic variant. *)
   | Record of ((string * (t * bool)) list * var option)
   (** Records may have optional types and have optional row type variables which
       might point to other records. *)
   | State of int
   (** Internal state of a subprogram. The integer is to ensure that two states
       will be different. *)
-  and var = (t option) ref
+  and var = var_contents ref
+  and var_contents =
+  | EVar of int
+  (** A free variable at given level. *)
+  | Link of t
+  (** A link to another variable *)
 
   let make ?pos ?(alloc=false) ?(static=false) t =
     {
@@ -75,13 +81,13 @@ module Type = struct
           | None -> [], None
           | Some v ->
             match !v with
-            | Some t ->
+            | Link t ->
               (
                 match t.desc with
                 | Record (r,v) -> canonize (r,v)
                 | Var v -> aux (Some v)
               )
-            | None -> [], Some v
+            | EVar _ -> [], Some v
         in
         aux v
       in
@@ -93,7 +99,7 @@ module Type = struct
   let unvar t =
     let rec aux t =
       match t.desc with
-      | Var { contents = Some t } -> aux t
+      | Var { contents = Link t } -> aux t
       | Record r -> { t with desc = Record (Record.canonize r) }
       | _ -> t
     in
@@ -101,7 +107,7 @@ module Type = struct
 
   let is_var t =
     match (unvar t).desc with
-    | Var v -> assert (!v = None); true
+    | Var v -> true
     | _ -> false
 
   (** Typing environments. *)
@@ -178,8 +184,8 @@ module Type = struct
       | Var v ->
         (
           match !v with
-          | Some t -> Printf.sprintf "[%s]" (to_string false t)
-          | None -> un v
+          | Link t -> Printf.sprintf "[%s]" (to_string false t)
+          | EVar _ -> un v
         )
       | Int -> "int"
       | Float -> "float"
@@ -232,7 +238,12 @@ module Type = struct
     in
     aux t
 
-  let fresh_invar () = ref None
+  (** Current level for generalization. *)
+  let current_level = ref 0
+  let enter_level () = incr current_level
+  let leave_level () = decr current_level
+
+  let fresh_invar () = ref (EVar !current_level)
 
   let fresh_var () =
     make (Var (fresh_invar ()))
@@ -255,6 +266,7 @@ module Type = struct
     let fv = free_vars in
     match t.desc with
     | Arr (a, t) -> List.fold_left (fun v (_,(t,_)) -> u (fv t) v) (fv t) a
+    | Var { contents = Link t } -> fv t
     | Var v -> [v]
     | Ref t -> fv t
     | Array t -> fv t
@@ -267,6 +279,31 @@ module Type = struct
       )
     | Int | Float | String | Bool | State _ -> []
     | Ident _ -> []
+
+  (** Update the level of variables by lowering them to [l]. *)
+  let rec update_level l t =
+    let rec aux t =
+      let update_var v =
+        match !v with
+        | Link t -> aux t
+        | EVar l' -> v := EVar (min l l')
+      in
+      match t.desc with
+      | Arr (a, t) -> aux t
+      | Var v -> update_var v
+      | Ref t -> aux t
+      | Array t -> aux t
+      | Record (r,v) ->
+        List.iter (fun (x,(t,o)) -> aux t) r;
+        (
+          match v with
+          | Some v -> update_var v
+          | None -> ()
+        )
+      | Int | Float | String | Bool | State _ -> ()
+      | Ident _ -> ()
+    in
+    aux t
 
   exception Cannot_unify
 
@@ -290,16 +327,22 @@ module Type = struct
       | Ident a, _ -> def a <: t2
       | _, Ident b -> t1 <: def b
       | Var v1, Var v2 when v1 == v2 -> ()
-      | Var v1, _ ->
+      | Var ({ contents = EVar l } as v1), _ ->
         if List.memq v1 (free_vars t2) then
           raise Cannot_unify
         else
-          v1 := Some t2
-      | _, Var v2 when !v2 = None ->
+          (
+            update_level l t2;
+            v1 := Link t2
+          )
+      | _, Var ({ contents = EVar l } as v2) ->
         if List.memq v2 (free_vars t1) then
           raise Cannot_unify
         else
-          v2 := Some t1
+          (
+            update_level l t1;
+            v2 := Link t1
+          )
       | Arr (t1', t1''), Arr (t2', t2'') ->
         t1'' <: t2'';
         let a2 = ref t2' in
@@ -351,15 +394,15 @@ module Type = struct
             | None -> raise Cannot_unify
             | Some v ->
               let v1' = fresh_invar () in
-              v := Some (make (Record (r1',Some v1')))
+              v := Link (make (Record (r1',Some v1')))
           );
         let r1,v1 = Record.canonize (r1old,v1) in
         (
           match v1,v2 with
           | None,None -> ()
           | Some v1,None -> ()
-          | None,Some v2 -> v2 := Some (make (Record ([],None)))
-          | Some v1,Some v2 -> if v1 != v2 then v1 := Some (make (Var v2))
+          | None,Some v2 -> v2 := Link (make (Record ([],None)))
+          | Some v1,Some v2 -> if v1 != v2 then v1 := Link (make (Var v2))
         )
       | State m, State n ->
         if m <> n then raise Cannot_unify
@@ -371,9 +414,9 @@ module Type = struct
     with
     | Cannot_unify -> false
 
-  (* let unify t1 t2 = *)
-    (* let ans = unify t1 t2 in *)
-    (* Printf.printf "unify %s and %s : %B\n%!" (to_string t1) (to_string t2) ans; *)
+  (* let subtype defs t1 t2 = *)
+    (* let ans = subtype defs t1 t2 in *)
+    (* Printf.printf "subtype %s and %s : %B\n%!" (to_string t1) (to_string t2) ans; *)
     (* ans *)
 
   (* TODO: use levels for generalizing *)
@@ -400,7 +443,7 @@ module Type = struct
       in
       { t with desc = t' }
     in
-    aux (unvar t)
+    aux t
 
   let int = make Int
 
@@ -551,7 +594,7 @@ module Expr = struct
   and reduce_state =
       {
         rs_let : (string * t) list;
-        (** Let declarations (optionally recursive). *)
+        (** Let declarations. *)
         rs_fresh : int;
         (** Fresh variable generator. *)
         rs_procs : (string * B.proc) list;
@@ -934,7 +977,7 @@ module Expr = struct
             | T.Var v ->
               let a = List.map (fun (l,e) -> l,(typ e,false)) a in
               let t = T.fresh_var () in
-              v := Some (T.arr a t)
+              v := T.Link (T.arr a t)
             | _ -> ()
           );
           if not (T.is_arr t) then
@@ -1448,37 +1491,6 @@ module Expr = struct
             Printf.printf "print: %s [ %s ]\n" (to_string (List.assoc "" args)) s;
             state, app e args
           *)
-          (* | External ext when ext.ext_name = "play" || ext.ext_name = "save" -> *)
-            (* Printf.printf "PLAY\n%!"; *)
-            (* let prog = List.assoc "" args in *)
-            (* let state, prog = reduce_quote ~subst ~state prog [] in *)
-            (* file_out "out/output.prog" (to_string prog ^ "\n"); *)
-            (* let state, prog = emit ~subst ~state prog in *)
-            (* let sr = 44100 in *)
-            (* let dt = 1. /. (float_of_int sr) in *)
-            (* let prog = BB.eq prog ~init:true "dt" (B.Float dt) in *)
-            (* let prog = BB.prog prog in *)
-            (* (\* This is a test. *\) *)
-            (* (\* let prog = B.pack_state prog "state" in *\) *)
-            (* file_out "out/output.saml" (B.to_string prog); *)
-            (* (\* Emit OCaml. *\) *)
-            (* if true then *)
-              (* ( *)
-                (* let ml = B.OCaml.emit prog in *)
-                (* let cmd = ext.ext_name in *)
-                (* let cmd = if cmd = "save" then "save \"output.wav\"" else cmd in *)
-                (* let ml = Printf.sprintf "%s\n\nlet () = Samlib.%s %d (program ())\n" ml cmd sr in *)
-                (* file_out "out/output.ml" ml; *)
-              (* ); *)
-            (* (\* Emit SAML. *\) *)
-            (* if true then *)
-              (* ( *)
-                (* Printf.printf "%s\n%!" (B.to_string prog); *)
-                (* let prog = B.SAML.emit prog in *)
-                (* let prog () = B.V.get_float (prog ()) in *)
-                (* (if ext.ext_name = "save" then Samlib.save "output.wav" else Samlib.play) 44100 prog; *)
-              (* ); *)
-            (* state, unit () *)
           | External ext when not (T.is_arr (typ expr)) ->
             (* Printf.printf "EXT %s\n%!" (to_string expr); *)
             (* TODO: better when and reduce partial applications. *)

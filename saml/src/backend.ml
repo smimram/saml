@@ -15,7 +15,7 @@ module Type = struct
   | Bool
   | Unit
   | String
-  | Ptr of t
+  | Ptr of t (** A pointer. *)
   | Record of t array
   | Array of t
 

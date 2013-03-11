@@ -16,6 +16,11 @@ let may f x =
   | Some x -> Some (f x)
   | None -> None
 
+let may_do f x =
+  match x with
+  | Some x -> f x
+  | None -> ()
+
 let maybe d = function
   | Some x -> x
   | None -> d
