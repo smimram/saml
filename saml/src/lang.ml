@@ -114,10 +114,13 @@ module Type = struct
   module Env = struct
     type typ = t
 
+    (** A type scheme create an instantiates each time it is called. *)
+    type scheme = unit -> t
+
     type t =
       {
-        (** Type of free varaibles. *)
-        t : (string * typ) list;
+        (** Type of free variables. *)
+        t : (string * scheme) list;
         (** Type definitions. *)
         defs : (string * typ) list;
         (** Type of variants. *)
@@ -144,7 +147,7 @@ module Type = struct
       Array.of_list (List.rev env.variants)
 
     let add_t env x t =
-      { env with t = (x,t)::env.t }
+      { env with t = (x,fun () -> t)::env.t }
 
     let add_def env x t =
       { env with defs = (x,t)::env.defs }
@@ -419,31 +422,37 @@ module Type = struct
     (* Printf.printf "subtype %s and %s : %B\n%!" (to_string t1) (to_string t2) ans; *)
     (* ans *)
 
-  (* TODO: use levels for generalizing *)
   let generalize t =
-    let m = mapperq (fun _ -> fresh_var ()) in
-    let rec aux t =
-      let t' =
-        match (unvar t).desc with
-        | Var v -> (m v).desc
-        | Arr (a, t) ->
-          let a = List.map (fun (l,(t,o)) -> l,(aux t,o)) a in
-          Arr (a, aux t)
-        | Ref t -> Ref (aux t)
-        | Array t -> Array (aux t)
-        | Record (r,v) ->
-          let v =
-            match v with
-            | Some v -> Some (get_var (m v))
-            | None -> None
-          in
-          Record (List.map (fun (x,(t,o)) -> x,(aux t,o)) r, v)
-        | Int | Float | String | Bool | State _ as t -> t
-        | Ident _ as t -> t
+    let current_level = !current_level in
+    fun () ->
+      let m = mapperq (fun _ -> fresh_invar ()) in
+      let rec aux t =
+        let generalize_var v =
+          match !v with
+          | EVar l -> if l > current_level then m v else v
+          | Link _ -> assert false
+        in
+        let t' =
+          match (unvar t).desc with
+          | Var v -> Var (generalize_var v)
+          | Arr (a, t) ->
+            let a = List.map (fun (l,(t,o)) -> l,(aux t,o)) a in
+            Arr (a, aux t)
+          | Ref t -> Ref (aux t)
+          | Array t -> Array (aux t)
+          | Record (r,v) ->
+            let v =
+              match v with
+              | Some v -> Some (generalize_var v)
+              | None -> None
+            in
+            Record (List.map (fun (x,(t,o)) -> x,(aux t,o)) r, v)
+          | Int | Float | String | Bool | State _ as t -> t
+          | Ident _ as t -> t
+        in
+        { t with desc = t' }
       in
-      { t with desc = t' }
-    in
-    aux t
+      aux t
 
   let int = make Int
 
@@ -929,9 +938,7 @@ module Expr = struct
         | Ident x ->
           (
             try
-              let t = T.Env.typ env x in
-              (* TODO: proper generalization with levels... *)
-              let t = if T.is_arr t then T.generalize t else t in
+              let t = T.Env.typ env x () in
               ret desc t
             with
             | Not_found -> type_error e "Unbound value %s." x
@@ -953,7 +960,7 @@ module Expr = struct
               ) a
           in
           let a, ta = List.split a in
-          let env' = List.map (fun (l,x,t,o) -> x,t) ta in
+          let env' = List.map (fun (l,x,t,o) -> x,(fun () -> t)) ta in
           let env = T.Env.merge env' env in
           let e = infer_type env e in
           let ta = List.map (fun (l,x,t,o) -> l,(t,o)) ta in
@@ -966,7 +973,6 @@ module Expr = struct
               (* Printf.printf "external app: %s\n%!" (to_string expr); *)
               let a = List.map (fun (l,e) -> l, typ e) a in
               let t = ext.ext_t a in
-              let t = T.generalize t in
               ret e.desc t
             | _ -> infer_type env e
           in
@@ -1091,7 +1097,7 @@ module Expr = struct
           let t = T.ref t in
           ret (Ref e) t
         | External ext ->
-          ret desc (T.generalize (ext.ext_t []))
+          ret desc (ext.ext_t [])
         | Array a ->
           let t = T.fresh_var () in
           let a =

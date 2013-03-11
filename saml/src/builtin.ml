@@ -42,7 +42,7 @@ let op name t ?i b =
   {
     E.
     ext_name = name;
-    ext_t = (fun _ -> t);
+    ext_t = t;
     ext_backend = (fun _ prog a -> prog, B.Op(b,a));
     ext_implem = may_implem i;
   }
@@ -231,7 +231,7 @@ let array_play =
     B.V.unit
   in
   let extern = B.extern ~saml "array_play" in
-  op "array_play" (T.arrnl [T.fresh_var()] T.unit) extern
+  op "array_play" (fun _ -> T.arrnl [T.fresh_var()] T.unit) extern
   (* extern *)
 
 (* TODO: remove this debug *)
@@ -679,11 +679,11 @@ let pow =
 let impl =
   let tf = T.float in
   let tb = T.bool in
-  let f_f = T.arrnl [tf] tf in
-  let ff_f = T.arrnl [tf;tf] tf in
-  let bb_b = T.arrnl [tb;tb] tb in
-  let b_b = T.arrnl [tb] tb in
-  let aa_b () = let a = T.fresh_var () in T.arrnl [a;a] tb in
+  let f_f _ = T.arrnl [tf] tf in
+  let ff_f _ = T.arrnl [tf;tf] tf in
+  let bb_b _ = T.arrnl [tb;tb] tb in
+  let b_b _ = T.arrnl [tb] tb in
+  let aa_b _ = let a = T.fresh_var () in T.arrnl [a;a] tb in
   [
     (* Arithmetic. *)
     (* op "add" ff_f B.Add; *)
@@ -693,7 +693,7 @@ let impl =
     op "mul" ff_f B.Mul;
     op "div" ff_f B.Div;
     pow;
-    op "pi" tf B.Pi;
+    op "pi" (fun _ -> tf) B.Pi;
     op "sin" f_f B.Sin;
     op "cos" f_f B.Cos;
     op "exp" f_f B.Exp;
@@ -704,7 +704,7 @@ let impl =
     le;
     (* op "lt" ff_b B.Lt; *)
     lt;
-    op "eq" (aa_b()) B.Eq;
+    op "eq" aa_b B.Eq;
     op "and" bb_b (B.extern ~saml:(fun a -> B.V.bool ((B.V.get_bool a.(0)) && (B.V.get_bool a.(1)))) ~ocaml:"( && )" "and");
     op "or" bb_b (B.extern ~saml:(fun a -> B.V.bool ((B.V.get_bool a.(0)) || (B.V.get_bool a.(1)))) ~ocaml:"( || )" "or");
     op "not" b_b (B.extern ~saml:(fun a -> B.V.bool (not (B.V.get_bool a.(0)))) ~ocaml:"( not )" "not");
@@ -732,8 +732,8 @@ let impl =
     (* play_buffer_mono; *)
 
     (* Debug. *)
-    op "play" (T.arrnl [T.arr [] T.float] T.unit) B.Botop;
-    op "save" (T.arrnl [T.arr [] T.float] T.unit) B.Botop;
+    op "play" (fun _ -> T.arrnl [T.arr [] T.float] T.unit) B.Botop;
+    op "save" (fun _ -> T.arrnl [T.arr [] T.float] T.unit) B.Botop;
     (* dssi; *)
   ]
 

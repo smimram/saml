@@ -24,7 +24,7 @@ let ignore (x) = ()
 
 let prev(init, x) =
   (* TODO: proper type generalization *)
-  let init = (init : float) in
+  (* let init = (init : float) in *)
   let y = ref init in
   let ans = !y in
   y := x;
