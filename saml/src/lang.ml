@@ -106,7 +106,7 @@ module Type = struct
   module Env = struct
     type typ = t
 
-    (** A type scheme create an instantiates each time it is called. *)
+    (** A type scheme create an instantiation each time it is called. *)
     type scheme = unit -> t
 
     type t =
@@ -562,7 +562,6 @@ module Expr = struct
       optional and replaces the value only if not already present. *)
   | Variant of string * t
   | For of string * t * t * t
-  | Expand of t (** Expand the monad implementation. *)
   and constant =
   | Bot (** Dummy value used internally to declare references. *)
   | Int of int
@@ -572,6 +571,7 @@ module Expr = struct
   | Get
   | Set
   | If (* takes 3 arguments : "",then,?else *)
+  | Expand (** Expand the monad implementation. *)
   (** External values. *)
   and extern =
     {
@@ -639,6 +639,7 @@ module Expr = struct
           | Get -> "get"
           | Set -> "set"
           | If -> "if"
+          | Expand -> "expand"
         )
       | Coerce (e,t) ->
         Printf.sprintf "(%s : %s)" (to_string false e) (T.to_string t)
@@ -653,7 +654,6 @@ module Expr = struct
       | Replace_fields (r,l) ->
         Printf.sprintf "( %s with %s )" (to_string true r) (String.concat_map ", " (fun (l,(e,o)) -> Printf.sprintf "%s =%s %s" l (if o then "?" else "") (to_string false e)) l)
       | Variant (l,e) -> Printf.sprintf "`%s(%s)" l (to_string false e)
-      | Expand e -> Printf.sprintf "expand(%s)" (to_string false e)
     in
     to_string false e
 
@@ -1037,6 +1037,12 @@ module Expr = struct
               let a = T.fresh_var () in
               let arg = T.arr [] a in
               let t = T.arr ["",(T.bool,false); "then",(arg,false); "else",(arg,false)] a in
+              ret t
+            | Expand ->
+              let a = T.fresh_var () in
+              let s = T.state () in
+              let r = T.record ["state",(s,false); "f",(T.arr ["",(s,false)] a,false)] in
+              let t = T.arr ["",(a,false)] r in
               ret t
           )
         | Coerce (e, t) ->

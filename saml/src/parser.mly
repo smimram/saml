@@ -83,6 +83,7 @@
 %token LPAR RPAR LARR RARR
 %token SEMICOLON COLON COMMA MAYBE
 %token EQ PLUS MINUS TIMES DIV POW
+%token EXPAND
 %token EOF
 %token <int> INT
 %token <float> FLOAT
@@ -218,6 +219,7 @@ simple_expr:
     | FLOAT { mk_cst (Float $1) }
     | BOOL { mk_cst (Bool $1) }
     | STRING { mk_cst (String $1) }
+    | EXPAND { mk_cst Expand }
     | LPAR expr RPAR { $2 }
     | LPAR expr COLON typ RPAR { mk (Coerce ($2, $4)) }
     | GET simple_expr { mk_app (mk_cst Get) ["",$2] }

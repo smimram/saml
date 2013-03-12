@@ -17,3 +17,5 @@ let euler(reset=id,phase=0.,f') =
 let sine(freq,phase=0.) = sin(2 * pi * euler(freq,phase=))
 
 let s() = sine(440,phase=0.777)
+
+let r = expand(s)

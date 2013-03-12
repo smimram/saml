@@ -29,6 +29,7 @@
       "with", WITH;
       "type", TYPE;
       "include", INCLUDE;
+      "expand", EXPAND;
     ]
 }
 
