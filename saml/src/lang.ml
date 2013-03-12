@@ -1619,6 +1619,8 @@ module Expr = struct
     let prog = app ~t prog args in
     let state, prog = reduce ~subst ~state prog in
     let prog = List.fold_left (fun e (x,v) -> letin x v e) prog state.rs_let in
+    assert (state.rs_types = []);
+    assert (state.rs_variants = []);
     let state =
       {
         rs_let = oldstate.rs_let;
