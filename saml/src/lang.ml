@@ -580,7 +580,7 @@ module Expr = struct
       (** Type given the type of its arguments. *)
       ext_backend : T.t -> Backend.Builder.t -> Backend.expr array -> Backend.Builder.t * Backend.expr;
       (** Backend implementation depending on its type. *)
-      ext_implem : subst:(string * t) list -> state:reduce_state -> (string * t) list -> reduce_state * t;
+      ext_implem : (string * t) list -> t;
       (** Implementation. *)
     }
   (** State for beta-reduction. *)
@@ -1476,7 +1476,7 @@ module Expr = struct
             (* TODO: better when and reduce partial applications. *)
             (
               try
-                let state, e = ext.ext_implem ~subst ~state args in
+                let e = ext.ext_implem args in
                 reduce ~subst ~state e
               with
               | Cannot_reduce -> state, app e args

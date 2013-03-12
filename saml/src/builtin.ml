@@ -8,7 +8,7 @@ module BB = B.Builder
 (** { 2 General functions } *)
 
 let may_implem i =
-  maybe (fun ~subst ~state _ -> raise E.Cannot_reduce) i
+  maybe (fun _ -> raise E.Cannot_reduce) i
 
 let may_backend b =
   maybe (fun _ -> assert false) b
@@ -93,7 +93,7 @@ let get_string e =
 
 let exit =
   let t _ = T.arrnl [T.int] (T.fresh_var ()) in
-  let i ~subst ~state args =
+  let i args =
     let n = List.assoc "" args in
     let n =
       match n.E.desc with
@@ -122,12 +122,12 @@ let nn_n name fop iop fml iml c =
     else
       T.arrnl [T.float; T.float] T.float
   in
-  let i ~subst ~state args =
+  let i args =
     let x = List.assoc "" args in
     let y = List.assoc_nth 1 "" args in
     match x.E.desc, y.E.desc with
-    | E.Cst (E.Int x), E.Cst (E.Int y) -> state, E.int (iop x y)
-    | E.Cst (E.Float x), E.Cst (E.Float y) -> state, E.float (fop x y)
+    | E.Cst (E.Int x), E.Cst (E.Int y) -> E.int (iop x y)
+    | E.Cst (E.Float x), E.Cst (E.Float y) -> E.float (fop x y)
     | _ -> raise E.Cannot_reduce
   in
   let b t prog args =
@@ -162,12 +162,12 @@ let nn_b name fop iop ocaml c =
     else
       T.arrnl [T.float; T.float] T.bool
   in
-  let i ~subst ~state args =
+  let i args =
     let x = List.assoc "" args in
     let y = List.assoc_nth 1 "" args in
     match x.E.desc, y.E.desc with
-    | E.Cst (E.Int x), E.Cst (E.Int y) -> state, E.bool (iop x y)
-    | E.Cst (E.Float x), E.Cst (E.Float y) -> state, E.bool (fop x y)
+    | E.Cst (E.Int x), E.Cst (E.Int y) -> E.bool (iop x y)
+    | E.Cst (E.Float x), E.Cst (E.Float y) -> E.bool (fop x y)
     | _ -> raise E.Cannot_reduce
   in
   let b t prog args =
@@ -188,7 +188,7 @@ let lt = nn_b "lt" (<) (<) "(<)" "<"
 
 let print =
   let t _ = (T.arrnl [T.fresh_var ()] T.unit) in
-  let i ~subst ~state args =
+  let i args =
     let s = List.assoc "" args in
     match s.E.desc with
     | E.Cst (E.String s) ->
@@ -340,12 +340,12 @@ let array_get =
     let a = T.fresh_var () in
     T.arrnl [T.array a; T.int] a
   in
-  let i ~subst ~state arg =
+  let i arg =
     (* Printf.printf "array_get impl\n%!"; *)
     let array = List.assoc "" arg in
     let n = List.assoc_nth 1 "" arg in
     match array.E.desc, n.E.desc with
-    | E.Array a, E.Cst (E.Int n) -> state, List.nth n a
+    | E.Array a, E.Cst (E.Int n) -> List.nth n a
     | _ -> raise E.Cannot_reduce
   in
   let b t prog a =
@@ -364,12 +364,12 @@ let array_tail =
     let a = T.array ~static:true v in
     T.arrnl [a] a
   in
-  let i ~subst ~state a =
+  let i a =
     let array = List.assoc "" a in
     match array.E.desc with
     | E.Array a ->
       let a = List.tl a in
-      state, E.array ~t:(E.typ array) a
+      E.array ~t:(E.typ array) a
     | _ -> raise E.Cannot_reduce
   in
   mop "array_tail" t ~i
@@ -380,10 +380,10 @@ let array_length =
     let a = T.array ~static:true v in
     T.arrnl [a] T.int
   in
-  let i ~subst ~state a =
+  let i a =
     let array = List.assoc "" a in
     match array.E.desc with
-    | E.Array a -> state, E.int (List.length a)
+    | E.Array a -> E.int (List.length a)
     | _ -> raise E.Cannot_reduce
   in
   mop "array_length" t ~i
@@ -582,13 +582,13 @@ let emit_dssi =
 
 let write_file =
   let t _ = T.arrnl[T.string; T.string] T.unit in
-  let i ~subst ~state args =
+  let i args =
     let fname = List.assoc "" args in
     let fname = get_string fname in
     let s = List.assoc_nth 1 "" args in
     let s = get_string s in
     file_out fname s;
-    state, E.unit ()
+    E.unit ()
   in
   mop "write_file" t ~i
 
