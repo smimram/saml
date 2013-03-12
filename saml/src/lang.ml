@@ -562,6 +562,7 @@ module Expr = struct
       optional and replaces the value only if not already present. *)
   | Variant of string * t
   | For of string * t * t * t
+  | Expand of t (** Expand the monad implementation. *)
   and constant =
   | Bot (** Dummy value used internally to declare references. *)
   | Int of int
@@ -583,18 +584,6 @@ module Expr = struct
       ext_implem : (string * t) list -> t;
       (** Implementation. *)
     }
-  (** State for beta-reduction. *)
-  and reduce_state =
-      {
-        rs_let : (string * t) list;
-        (** Let declarations. *)
-        rs_fresh : int;
-        (** Fresh variable generator. *)
-        rs_types : (string * T.t) list;
-        (** Types declared. *)
-        rs_variants : (string * T.t) list
-        (** Variants declared. *)
-      }
   (** Let declarations. *)
   and let_t =
     {
@@ -603,13 +592,6 @@ module Expr = struct
       def : t;
       body : t
     }
-
-  let reduce_state_empty = {
-    rs_let = [];
-    rs_fresh = -1;
-    rs_types = [];
-    rs_variants = [];
-  }
 
   (** Raised by ext_implems when it is not implemented. *)
   exception Cannot_reduce
@@ -671,6 +653,7 @@ module Expr = struct
       | Replace_fields (r,l) ->
         Printf.sprintf "( %s with %s )" (to_string true r) (String.concat_map ", " (fun (l,(e,o)) -> Printf.sprintf "%s =%s %s" l (if o then "?" else "") (to_string false e)) l)
       | Variant (l,e) -> Printf.sprintf "`%s(%s)" l (to_string false e)
+      | Expand e -> Printf.sprintf "expand(%s)" (to_string false e)
     in
     to_string false e
 
@@ -1360,6 +1343,27 @@ module Expr = struct
     (* let prog = BB.alloc ~free:true prog "dt" (B.T.Float) in *)
     aux ~subst ~state ~free_vars prog expr
 *)
+
+  (** State for beta-reduction. *)
+  type reduce_state =
+    {
+      rs_let : (string * t) list;
+      (** Let declarations. *)
+      rs_fresh : int;
+      (** Fresh variable generator. *)
+      rs_types : (string * T.t) list;
+      (** Types declared. *)
+      rs_variants : (string * T.t) list
+      (** Variants declared. *)
+    }
+
+  (** Empty state for beta-reduction. *)
+  let reduce_state_empty = {
+    rs_let = [];
+    rs_fresh = -1;
+    rs_types = [];
+    rs_variants = [];
+  }
 
   (** Normalize an expression by performing beta-reductions and
       builtins-reductions. *)
