@@ -23,6 +23,7 @@ module Type = struct
     }
   and desc =
   | Ident of string
+  (** A variable identifier. *)
   | Var of var
   (** A type variable. *)
   | Int
@@ -38,9 +39,6 @@ module Type = struct
   | Record of ((string * (t * bool)) list * var option)
   (** Records may have optional types and have optional row type variables which
       might point to other records. *)
-  | State of int
-  (** Internal state of a subprogram. The integer is to ensure that two states
-      will be different. *)
   and var = var_contents ref
   and var_contents =
   | EVar of int
@@ -211,7 +209,6 @@ module Type = struct
                Printf.sprintf "%s%s%s" x (if o then "?" else "") (to_string false t)
              ) r)
       | Variant -> "variant"
-      | State n -> Printf.sprintf "state%d" n
     in
     to_string false t
 
@@ -274,8 +271,7 @@ module Type = struct
         | Some v -> v::fv
         | None -> fv
       )
-    | Int | Float | String | Bool | State _ -> []
-    | Ident _ -> []
+    | Int | Float | String | Bool | Ident _ -> []
 
   (** Update the level of variables by lowering them to [l]. *)
   let rec update_level l t =
@@ -297,8 +293,7 @@ module Type = struct
           | Some v -> update_var v
           | None -> ()
         )
-      | Int | Float | String | Bool | State _ -> ()
-      | Ident _ -> ()
+      | Int | Float | String | Bool | Ident _ -> ()
     in
     aux t
 
@@ -321,6 +316,7 @@ module Type = struct
           raise Cannot_unify
         );
       match t1.desc, t2.desc with
+      | Ident a, Ident b when b = a -> ()
       | Ident a, _ -> def a <: t2
       | _, Ident b -> t1 <: def b
       | Var v1, Var v2 when v1 == v2 -> ()
@@ -401,8 +397,6 @@ module Type = struct
           | None,Some v2 -> v2 := Link (make (Record ([],None)))
           | Some v1,Some v2 -> if v1 != v2 then v1 := Link (make (Var v2))
         )
-      | State m, State n ->
-        if m <> n then raise Cannot_unify
       | _, _ -> raise Cannot_unify
     in
     try
@@ -441,8 +435,7 @@ module Type = struct
               | None -> None
             in
             Record (List.map (fun (x,(t,o)) -> x,(aux t,o)) r, v)
-          | Int | Float | String | Bool | State _ as t -> t
-          | Ident _ as t -> t
+          | Int | Float | String | Bool | Ident _ as t -> t
         in
         { t with desc = t' }
       in
@@ -462,7 +455,7 @@ module Type = struct
     let n = ref (-1) in
     fun () ->
       incr n;
-      make (State !n)
+      make (Ident (Printf.sprintf "state%d" !n))
 
   let array ?static a =
     make ?static (Array a)
@@ -538,7 +531,6 @@ module Type = struct
     | Array t -> B.T.Array (emit t)
     | Var _ -> failwith "Trying to emit type for an universal variable."
     | Arr _ -> failwith "Internal error: cannot emit functional types."
-    | State _ -> failwith "Don't know how to emit state, E.emit_type should be used instead..."
 end
 
 module T = Type
