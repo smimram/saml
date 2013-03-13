@@ -817,6 +817,17 @@ module Builder = struct
   let pop b =
     { b with stack = List.tl b.stack }, List.hd b.stack
 
+  let stack b f =
+    let b = push b in
+    let b = f b in
+    pop b
+
+  let stack_res b f =
+    let b = push b in
+    let ans, b = f b in
+    let b, eqs = pop b in
+    ans, b, eqs
+
   let alloc_anon b t =
     let prog, v = alloc b.prog t in
     { b with prog }, v

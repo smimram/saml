@@ -436,8 +436,6 @@ let compile =
     let ret_t = E.emit_type (E.unquote prog) in
     let state, prog = E.reduce_quote ~subst ~state prog [] in
     let state, prog = E.emit ~subst ~state ~free_vars:true prog in
-    (* let dt = 1. /. 44100. in *)
-    (* let prog = BB.init prog "dt" (B.Float dt) in *)
     let prog = BB.prog ~state:true prog in
     Printf.printf "---\nEmit prog:\n%s---\n\n%!" (B.to_string prog);
     let state_t = B.state_t prog in
@@ -515,17 +513,6 @@ let compile =
       quick_external t_ret reduce
     in
     let run = implem (name^"_run") (B.proc_run prog) in
-    (* let run = *)
-    (* let run ~subst ~state arg = *)
-    (* let st = List.assoc "" arg in *)
-    (* (\* TODO: store afterwards *\) *)
-    (* let load = B.map_fv prog (fun x v -> set_state st v (E.ident x)) in *)
-    (* let run = E.app (E.proc ~t:t_alloc (name^"_run",([state_t],ret_t))) arg in *)
-    (* let run = E.seqs (load@[run]) in *)
-    (* state, run *)
-    (* in *)
-    (* quick_external t_ret run *)
-    (* in *)
     let proc_implem = List.map (fun (l,p) -> l, implem l p) (B.procs prog) in
     let r =
       [
