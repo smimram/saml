@@ -1350,7 +1350,8 @@ module Expr = struct
     aux ~subst ~state ~free_vars prog expr
 *)
 
-  (** State for beta-reduction. *)
+  (** State for beta-reduction. All lists are in "reversed" order, i.e. most
+      recent declaration at the top (including [rs_let]). *)
   type reduce_state =
     {
       rs_let : (string * t) list;
@@ -1358,9 +1359,9 @@ module Expr = struct
       rs_fresh : int;
       (** Fresh variable generator. *)
       rs_types : (string * T.t) list;
-      (** Types declared. *)
+      (** Types declared (declarations are only allowed at toplevel). *)
       rs_variants : (string * T.t) list
-      (** Variants declared. *)
+      (** Variants declared (declarations are only allowed at toplevel). *)
     }
 
   (** Empty state for beta-reduction. *)
@@ -1475,6 +1476,20 @@ module Expr = struct
             let state, th = reduce_quote ~subst ~state th [] in
             let state, el = reduce_quote ~subst ~state el [] in
             state, app e ["",b; "then", quote th; "else", quote el]
+          | Cst Expand ->
+            let ts =
+              match (typ e).T.desc with
+              | T.Arr (_, ts) -> ts
+              | _ -> assert false
+            in
+            let ts =
+              match (T.unvar ts).T.desc with
+              | T.Record (r,_) -> fst (List.assoc "state" r)
+              | _ -> assert false
+            in
+            let e = List.assoc "" args in
+            let state', e = reduce ~subst ~state:reduce_state_empty e in
+            failwith "TODO"
           (*
             | External ext when ext.ext_name = "print" ->
             let s = String.concat_map "; " (fun (x,v) -> Printf.sprintf "%s/%s" (to_string v) x) subst) in
