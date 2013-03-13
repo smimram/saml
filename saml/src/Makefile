@@ -1,5 +1,5 @@
 SOURCES = stdlib.ml saml_dssi.ml common.ml config.ml \
-	backend.ml lang.ml builtin.ml \
+	backend.ml lang_types.ml lang.ml builtin.ml \
 	parser.mly lexer.mll saml.ml
 RESULT = saml
 #PACKS = llvm-2_8 llvm-2_8.analysis llvm-2_8.bitwriter
