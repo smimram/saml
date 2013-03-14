@@ -40,9 +40,6 @@ conflicts:
 	menhir --explain parser.mly
 	less parser.conflicts
 
-ci:
-	svn ci -m ""
-
 saml_dssi.ml: saml_dssi.c
 	echo 'let c = "' > $@
 	cat $^ | sed 's/\\n/\\\\n/g' | sed 's/"/\\"/g' >> $@
