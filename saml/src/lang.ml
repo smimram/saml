@@ -1161,6 +1161,279 @@ module Expr = struct
 
   module BB = B.Builder
 
+  (** State for beta-reduction. All lists are in "reversed" order, i.e. most
+      recent declaration at the top (including [rs_let]). *)
+  type reduce_state =
+    {
+      rs_let : (string * t) list;
+      (** Let declarations. *)
+      rs_fresh : int;
+      (** Fresh variable generator. *)
+      rs_types : (string * T.t) list;
+      (** Types declared (declarations are only allowed at toplevel). *)
+      rs_variants : (string * T.t) list
+      (** Variants declared (declarations are only allowed at toplevel). *)
+    }
+
+  (** Empty state for beta-reduction. *)
+  let reduce_state_empty = {
+    rs_let = [];
+    rs_fresh = -1;
+    rs_types = [];
+    rs_variants = [];
+  }
+
+  (** Normalize an expression by performing beta-reductions and
+      builtins-reductions. *)
+  let rec reduce ~subst ~state expr =
+    (* Printf.printf "reduce: %s\n\n%!" (to_string expr); *)
+    let reduce ?(subst=subst) ~state expr = reduce ~subst ~state expr in
+
+    (** Perform a substitution. *)
+    let rec substs ss e =
+      let d =
+        match e.desc with
+        | Ident x ->
+          let rec aux = function
+            | (y,e)::ss when y = x -> (substs ss e).desc
+            | (y,e)::ss -> aux ss
+            | [] -> e.desc
+          in
+          aux ss
+        | Fun (x,e) ->
+          let bv = List.map (fun (l,(x,o)) -> x) x in
+          let ss = List.remove_all_assocs bv ss in
+          Fun (x, substs ss e)
+        | Let l ->
+          (* l.var is supposed to be already alpha-converted so that there is no
+             capture. *)
+          let ss' = List.remove_all_assoc l.var ss in
+          let def = substs (if l.recursive then ss' else ss) l.def in
+          let ss = ss' in
+          let body = substs ss l.body in
+          Let { l with def; body }
+        | App (e, a) ->
+          let a = List.map (fun (l,e) -> l, substs ss e) a in
+          App (substs ss e, a)
+        | Ref e ->
+          Ref (substs ss e)
+        | Array a ->
+          let a = List.map (substs ss) a in
+          Array a
+        | Record r ->
+          let r = List.map (fun (l,e) -> l, substs ss e) r in
+          Record r
+        | Field (e, l) ->
+          let e = substs ss e in
+          Field (e, l)
+        | Replace_fields (r,l) ->
+          let r = substs ss r in
+          let l = List.map (fun (l,(e,o)) -> l,(substs ss e,o)) l in
+          Replace_fields (r, l)
+        | Cst _ | External _ as e -> e
+        | Module _ -> assert false
+        | For (i,b,e,f) ->
+          let ss = List.remove_all_assoc i ss in
+          let s = substs ss in
+          For (i, s b, s e, s f)
+      in
+      { e with desc = d }
+    in
+    let s = substs subst in
+    let state, e =
+      match expr.desc with
+      | Ident x -> state, s expr
+      | Fun (a, e) ->
+        (* We have to substitute optionals and rename variables for substitution
+           to avoid captures. *)
+        let state, a =
+          List.fold_map
+            (fun state (l,(x,o)) ->
+              let o = may s o in
+              let state, y = fresh_var state in
+              state, ((x,ident y), (l,(y,o)))
+            ) state a
+        in
+        let s, a = List.split a in
+        let subst = s@subst in
+        let s = substs subst in
+        state, fct a (s e)
+      | App (e, args) ->
+        let state, e = reduce ~state e in
+        let state, args = List.fold_map (fun state (l,e) -> let state, e = reduce ~state e in state, (l,e)) state args in
+        (
+          match e.desc with
+          | Fun (a,e) ->
+            let rec aux a e = function
+              | ((l:string),v)::args ->
+                let (x,_),a = List.assoc_rm l a in
+                let e = letin x v e in
+                aux a e args
+              | [] ->
+                (* Printf.printf "app: %s\n%!" (to_string expr); *)
+                if List.for_all (fun (l,(x,o)) -> o <> None) a then
+                  List.fold_left (fun e (l,(x,o)) -> letin x (get_some o) e) e a
+                else
+                  fct a e
+            in
+            reduce ~state (aux a e args)
+          | Cst If ->
+            let b,th,el =
+              List.assoc "" args,
+              List.assoc "then" args,
+              List.assoc "else" args
+            in
+            let state, b = reduce ~subst ~state b in
+            let state, th = reduce_quote ~subst ~state th [] in
+            let state, el = reduce_quote ~subst ~state el [] in
+            state, app e ["",b; "then", quote th; "else", quote el]
+          (*
+            | External ext when ext.ext_name = "print" ->
+            let s = String.concat_map "; " (fun (x,v) -> Printf.sprintf "%s/%s" (to_string v) x) subst) in
+            Printf.printf "print: %s [ %s ]\n" (to_string (List.assoc "" args)) s;
+            state, app e args
+          *)
+          | External ext when not (T.is_arr (typ expr)) ->
+            (* Printf.printf "EXT %s\n%!" (to_string expr); *)
+            (* TODO: better when and reduce partial applications. *)
+            (
+              try
+                let e = ext.ext_implem args in
+                reduce ~subst ~state e
+              with
+              | Cannot_reduce -> state, app e args
+            )
+          | _ -> state, app e args
+        )
+      | For(i,b,e,f) ->
+        let state, i' = fresh_var state in
+        let subst = (i,ident i')::subst in
+        let i = i' in
+        let state, b = reduce ~subst ~state b in
+        let state, e = reduce ~subst ~state e in
+        let state, f = reduce_quote ~subst ~state f [] in
+        (
+          match b.desc, e.desc with
+          (* | Cst (Int b), Cst (Int n) when n-b <= 10 -> *)
+          (* Inline statically known for loops. *)
+          (* TODO: this is really ugly since if f contains free variables it
+             can override them... (but this is actually useful for
+             prevn...) Maybe should we introduce a meta-for... *)
+          (* let e = List.init (n-b+1) (fun k -> letin i (int (b+k)) f) in *)
+          (* let e = seqs e in *)
+          (* reduce ~state e *)
+          | _ ->
+            let f = quote f in
+            state, make (For(i,b,e,f))
+        )
+      | Let l ->
+        if l.recursive then
+          (* Create a reference (on bot) for the recursive value. *)
+          let t = typ l.def in
+          let tref = T.ref t in
+          let r = bot ~t:t () in
+          let r = reference ~t:tref r in
+          let state, rx = fresh_var state in
+          let irx = ident ~t:tref rx in
+          let state = { state with rs_let = (rx,r)::state.rs_let } in
+          let def = l.def in
+          let state, def = reduce ~subst:((l.var,get_ref ~t irx)::subst) ~state def in
+          let body = l.body in
+          let body = letin l.var (get_ref ~t irx) body in
+          let e = seq (set_ref irx def) body in
+          (* Printf.printf "RECURSIVE: %s\n=>\n%s\n%!" (to_string expr) (to_string e); *)
+          reduce ~subst ~state e
+        else
+          let state, def = reduce ~subst ~state l.def in
+          if is_value def then
+            let subst = (l.var,def)::subst in
+            reduce ~subst ~state l.body
+          else
+            (* We have to rename x in order for substitution to be capture-free. *)
+            let state, y = fresh_var state in
+            let subst = (l.var,ident y)::subst in
+            let state = { state with rs_let = (y,def)::state.rs_let } in
+            reduce ~subst ~state l.body
+      | Ref e ->
+        let state, e = reduce ~state e in
+        state, reference e
+      | Array a ->
+        let state, a = List.fold_map (fun state e -> reduce ~state e) state a in
+        state, array a
+      | Record r ->
+        let state, r = List.fold_map (fun state (v,e) -> let state, e = reduce ~state e in state,(v,e)) state r in
+        state, record r
+      | Module m ->
+        (* TODO: this is a hack... *)
+        (* TODO: remove duplicate labels. *)
+        let beg = ref [] in
+        let r =
+          List.map
+            (fun (l,e) ->
+              let lete = List.fold_left (fun v (l,e) -> letin l e v) e !beg in
+              beg := (l,e) :: !beg;
+              l,lete
+            ) m
+        in
+        reduce ~state (record ~t:(typ expr) r)
+      | Field (r, l) ->
+        let state, r = reduce ~state r in
+        (
+          match r.desc with
+          | Record r ->
+            (* The value should aleardy be reduced at this point *)
+            state, List.assoc l r
+          | _ ->
+            (* let s = String.concat_map "\n" (fun (l,e) -> Printf.sprintf "*** %s = %s" l (to_string e)) subst in *)
+            (* Printf.printf "%s\n%!" s; *)
+            failwith (Printf.sprintf "Cannot reduce field \"%s\" of %s : %s." l (to_string r) (T.to_string (typ r)))
+        )
+      | Replace_fields (r, l) ->
+        let state, r = reduce ~state r in
+        (
+          match r.desc with
+          | Record r ->
+            let r = ref r in
+            List.iter
+              (fun (l,(e,o)) ->
+                if o && List.mem_assoc l !r then () else
+                  (
+                    r := List.remove_all_assoc l !r;
+                    r := (!r)@[l,e]
+                  )
+              ) l;
+            reduce ~state (record ~t:(typ expr) !r)
+          | _ -> assert false
+        )
+      | Variant(l,e) ->
+        let state, e = reduce ~state e in
+        state, variant l e
+      | Cst _ | External _ -> state, expr
+    in
+    (* Printf.printf "reduce: %s\n=>\n%s\n\n%!" (to_string expr) (to_string e); *)
+    (* Ensure that types and locations are preserved. *)
+    state, { expr with desc = e.desc }
+
+  (** Reduce a quote (of type (args) -> 'a). *)
+  and reduce_quote ~subst ~state prog args =
+    let oldstate = state in
+    let state = { reduce_state_empty with rs_fresh = state.rs_fresh; rs_types = state.rs_types } in
+    let t = snd (T.split_arr (typ prog)) in
+    let prog = app ~t prog args in
+    let state, prog = reduce ~subst ~state prog in
+    let prog = List.fold_left (fun e (x,v) -> letin x v e) prog state.rs_let in
+    assert (state.rs_types = []);
+    assert (state.rs_variants = []);
+    let state =
+      {
+        rs_let = oldstate.rs_let;
+        rs_fresh = state.rs_fresh;
+        rs_types = oldstate.rs_types;
+        rs_variants = oldstate.rs_variants;
+      }
+    in
+    state, prog
+
 (*
   (** Emit the programs, optionally allowing free variables and generating a
       state. *)
@@ -1349,293 +1622,6 @@ module Expr = struct
     (* let prog = BB.alloc ~free:true prog "dt" (B.T.Float) in *)
     aux ~subst ~state ~free_vars prog expr
 *)
-
-  (** State for beta-reduction. All lists are in "reversed" order, i.e. most
-      recent declaration at the top (including [rs_let]). *)
-  type reduce_state =
-    {
-      rs_let : (string * t) list;
-      (** Let declarations. *)
-      rs_fresh : int;
-      (** Fresh variable generator. *)
-      rs_types : (string * T.t) list;
-      (** Types declared (declarations are only allowed at toplevel). *)
-      rs_variants : (string * T.t) list
-      (** Variants declared (declarations are only allowed at toplevel). *)
-    }
-
-  (** Empty state for beta-reduction. *)
-  let reduce_state_empty = {
-    rs_let = [];
-    rs_fresh = -1;
-    rs_types = [];
-    rs_variants = [];
-  }
-
-  (** Normalize an expression by performing beta-reductions and
-      builtins-reductions. *)
-  let rec reduce ~subst ~state expr =
-    (* Printf.printf "reduce: %s\n\n%!" (to_string expr); *)
-    let reduce ?(subst=subst) ~state expr = reduce ~subst ~state expr in
-
-    (** Perform a substitution. *)
-    let rec substs ss e =
-      let d =
-        match e.desc with
-        | Ident x ->
-          let rec aux = function
-            | (y,e)::ss when y = x -> (substs ss e).desc
-            | (y,e)::ss -> aux ss
-            | [] -> e.desc
-          in
-          aux ss
-        | Fun (x,e) ->
-          let bv = List.map (fun (l,(x,o)) -> x) x in
-          let ss = List.remove_all_assocs bv ss in
-          Fun (x, substs ss e)
-        | Let l ->
-          (* l.var is supposed to be already alpha-converted so that there is no
-             capture. *)
-          let ss' = List.remove_all_assoc l.var ss in
-          let def = substs (if l.recursive then ss' else ss) l.def in
-          let ss = ss' in
-          let body = substs ss l.body in
-          Let { l with def; body }
-        | App (e, a) ->
-          let a = List.map (fun (l,e) -> l, substs ss e) a in
-          App (substs ss e, a)
-        | Ref e ->
-          Ref (substs ss e)
-        | Array a ->
-          let a = List.map (substs ss) a in
-          Array a
-        | Record r ->
-          let r = List.map (fun (l,e) -> l, substs ss e) r in
-          Record r
-        | Field (e, l) ->
-          let e = substs ss e in
-          Field (e, l)
-        | Replace_fields (r,l) ->
-          let r = substs ss r in
-          let l = List.map (fun (l,(e,o)) -> l,(substs ss e,o)) l in
-          Replace_fields (r, l)
-        | Cst _ | External _ as e -> e
-        | Module _ -> assert false
-        | For (i,b,e,f) ->
-          let ss = List.remove_all_assoc i ss in
-          let s = substs ss in
-          For (i, s b, s e, s f)
-      in
-      { e with desc = d }
-    in
-    let s = substs subst in
-    let state, e =
-      match expr.desc with
-      | Ident x -> state, s expr
-      | Fun (a, e) ->
-        (* We have to substitute optionals and rename variables for substitution
-           to avoid captures. *)
-        let state, a =
-          List.fold_map
-            (fun state (l,(x,o)) ->
-              let o = may s o in
-              let state, y = fresh_var state in
-              state, ((x,ident y), (l,(y,o)))
-            ) state a
-        in
-        let s, a = List.split a in
-        let subst = s@subst in
-        let s = substs subst in
-        state, fct a (s e)
-      | App (e, args) ->
-        let state, e = reduce ~state e in
-        let state, args = List.fold_map (fun state (l,e) -> let state, e = reduce ~state e in state, (l,e)) state args in
-        (
-          match e.desc with
-          | Fun (a,e) ->
-            let rec aux a e = function
-              | ((l:string),v)::args ->
-                let (x,_),a = List.assoc_rm l a in
-                let e = letin x v e in
-                aux a e args
-              | [] ->
-                (* Printf.printf "app: %s\n%!" (to_string expr); *)
-                if List.for_all (fun (l,(x,o)) -> o <> None) a then
-                  List.fold_left (fun e (l,(x,o)) -> letin x (get_some o) e) e a
-                else
-                  fct a e
-            in
-            reduce ~state (aux a e args)
-          | Cst If ->
-            let b,th,el =
-              List.assoc "" args,
-              List.assoc "then" args,
-              List.assoc "else" args
-            in
-            let state, b = reduce ~subst ~state b in
-            let state, th = reduce_quote ~subst ~state th [] in
-            let state, el = reduce_quote ~subst ~state el [] in
-            state, app e ["",b; "then", quote th; "else", quote el]
-          | Cst Expand ->
-            let ts =
-              match (typ e).T.desc with
-              | T.Arr (_, ts) -> ts
-              | _ -> assert false
-            in
-            let ts =
-              match (T.unvar ts).T.desc with
-              | T.Record (r,_) -> fst (List.assoc "state" r)
-              | _ -> assert false
-            in
-            let e = List.assoc "" args in
-            let state', e = reduce ~subst ~state:reduce_state_empty e in
-            failwith "TODO"
-          (*
-            | External ext when ext.ext_name = "print" ->
-            let s = String.concat_map "; " (fun (x,v) -> Printf.sprintf "%s/%s" (to_string v) x) subst) in
-            Printf.printf "print: %s [ %s ]\n" (to_string (List.assoc "" args)) s;
-            state, app e args
-          *)
-          | External ext when not (T.is_arr (typ expr)) ->
-            (* Printf.printf "EXT %s\n%!" (to_string expr); *)
-            (* TODO: better when and reduce partial applications. *)
-            (
-              try
-                let e = ext.ext_implem args in
-                reduce ~subst ~state e
-              with
-              | Cannot_reduce -> state, app e args
-            )
-          | _ -> state, app e args
-        )
-      | For(i,b,e,f) ->
-        let state, i' = fresh_var state in
-        let subst = (i,ident i')::subst in
-        let i = i' in
-        let state, b = reduce ~subst ~state b in
-        let state, e = reduce ~subst ~state e in
-        let state, f = reduce_quote ~subst ~state f [] in
-        (
-          match b.desc, e.desc with
-          (* | Cst (Int b), Cst (Int n) when n-b <= 10 -> *)
-          (* Inline statically known for loops. *)
-          (* TODO: this is really ugly since if f contains free variables it
-             can override them... (but this is actually useful for
-             prevn...) Maybe should we introduce a meta-for... *)
-          (* let e = List.init (n-b+1) (fun k -> letin i (int (b+k)) f) in *)
-          (* let e = seqs e in *)
-          (* reduce ~state e *)
-          | _ ->
-            let f = quote f in
-            state, make (For(i,b,e,f))
-        )
-      | Let l ->
-        if l.recursive then
-          (* Create a reference (on bot) for the recursive value. *)
-          let t = typ l.def in
-          let tref = T.ref t in
-          let r = bot ~t:t () in
-          let r = reference ~t:tref r in
-          let state, rx = fresh_var state in
-          let irx = ident ~t:tref rx in
-          let state = { state with rs_let = (rx,r)::state.rs_let } in
-          let def = l.def in
-          let state, def = reduce ~subst:((l.var,get_ref ~t irx)::subst) ~state def in
-          let body = l.body in
-          let body = letin l.var (get_ref ~t irx) body in
-          let e = seq (set_ref irx def) body in
-          (* Printf.printf "RECURSIVE: %s\n=>\n%s\n%!" (to_string expr) (to_string e); *)
-          reduce ~subst ~state e
-        else
-          let state, def = reduce ~subst ~state l.def in
-          if is_value def then
-            let subst = (l.var,def)::subst in
-            reduce ~subst ~state l.body
-          else
-            (* We have to rename x in order for substitution to be capture-free. *)
-            let state, y = fresh_var state in
-            let subst = (l.var,ident y)::subst in
-            let state = { state with rs_let = (y,def)::state.rs_let } in
-            reduce ~subst ~state l.body
-      | Ref e ->
-        let state, e = reduce ~state e in
-        state, reference e
-      | Array a ->
-        let state, a = List.fold_map (fun state e -> reduce ~state e) state a in
-        state, array a
-      | Record r ->
-        let state, r = List.fold_map (fun state (v,e) -> let state, e = reduce ~state e in state,(v,e)) state r in
-        state, record r
-      | Module m ->
-        (* TODO: this is a hack... *)
-        (* TODO: remove duplicate labels. *)
-        let beg = ref [] in
-        let r =
-          List.map
-            (fun (l,e) ->
-              let lete = List.fold_left (fun v (l,e) -> letin l e v) e !beg in
-              beg := (l,e) :: !beg;
-              l,lete
-            ) m
-        in
-        reduce ~state (record ~t:(typ expr) r)
-      | Field (r, l) ->
-        let state, r = reduce ~state r in
-        (
-          match r.desc with
-          | Record r ->
-            (* The value should aleardy be reduced at this point *)
-            state, List.assoc l r
-          | _ ->
-            (* let s = String.concat_map "\n" (fun (l,e) -> Printf.sprintf "*** %s = %s" l (to_string e)) subst in *)
-            (* Printf.printf "%s\n%!" s; *)
-            failwith (Printf.sprintf "Cannot reduce field \"%s\" of %s : %s." l (to_string r) (T.to_string (typ r)))
-        )
-      | Replace_fields (r, l) ->
-        let state, r = reduce ~state r in
-        (
-          match r.desc with
-          | Record r ->
-            let r = ref r in
-            List.iter
-              (fun (l,(e,o)) ->
-                if o && List.mem_assoc l !r then () else
-                  (
-                    r := List.remove_all_assoc l !r;
-                    r := (!r)@[l,e]
-                  )
-              ) l;
-            reduce ~state (record ~t:(typ expr) !r)
-          | _ -> assert false
-        )
-      | Variant(l,e) ->
-        let state, e = reduce ~state e in
-        state, variant l e
-      | Cst _ | External _ -> state, expr
-    in
-    (* Printf.printf "reduce: %s\n=>\n%s\n\n%!" (to_string expr) (to_string e); *)
-    (* Ensure that types and locations are preserved. *)
-    state, { expr with desc = e.desc }
-
-  (** Reduce a quote (of type (args) -> 'a). *)
-  and reduce_quote ~subst ~state prog args =
-    let oldstate = state in
-    let state = { reduce_state_empty with rs_fresh = state.rs_fresh; rs_types = state.rs_types } in
-    let t = snd (T.split_arr (typ prog)) in
-    let prog = app ~t prog args in
-    let state, prog = reduce ~subst ~state prog in
-    let prog = List.fold_left (fun e (x,v) -> letin x v e) prog state.rs_let in
-    assert (state.rs_types = []);
-    assert (state.rs_variants = []);
-    let state =
-      {
-        rs_let = oldstate.rs_let;
-        rs_fresh = state.rs_fresh;
-        rs_types = oldstate.rs_types;
-        rs_variants = oldstate.rs_variants;
-      }
-    in
-    state, prog
 
 (*
   (** Emit a quote. *)
