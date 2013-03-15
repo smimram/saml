@@ -115,7 +115,7 @@ module V = Value
 (** A variable. *)
 type var = int
 
-(** An external function along with its implementations in various languages. *)
+(** An external function along with its implementations in various backends. *)
 type extern =
   {
     ext_name : string;
@@ -140,11 +140,6 @@ type op =
 | Free
 | Call of string (** Call an internal procedure. *)
 
-(** Variable pointing to a record. *)
-type rvar =
-| RVar of var
-| RState
-
 type expr =
 | Unit
 | Bool of bool
@@ -155,7 +150,7 @@ type expr =
 | Op of op * expr array
 | If of expr * eqs * eqs
 | For of var * expr * expr * eqs
-| Field of rvar * int (** Field of a record. *)
+| Field of var * int (** Field of a record. *)
 | Cell of var * expr (** Cell of an array. *)
 | Return of var (** Return a value. *)
 | Arg of int
@@ -168,7 +163,7 @@ and eqs = eq list
 (** A memory location (where things can be written). *)
 and loc =
 | LVar of var (** A variable. *)
-| LField of rvar * int (** A field of a record. *)
+| LField of var * int (** A field of a record. *)
 | LCell of var * expr (** A cell of an array. *)
 
 (** Unit value. *)
@@ -191,9 +186,6 @@ let extern ?saml ?ocaml ?c name =
   }
 
 let string_of_var n = Printf.sprintf "x%d" n
-let string_of_rvar = function
-  | RVar v -> string_of_var v
-  | RState -> "state"
 let string_of_arg n = Printf.sprintf "arg[%d]" n
 
 (* TODO: many of them can go external (we only need those with partial
@@ -229,7 +221,7 @@ let rec string_of_expr ?(tab=0) e =
   | String s -> Printf.sprintf "\"%s\"" s
   | Var v -> string_of_var v
   | Arg n -> string_of_arg n
-  | Field (x,i) -> Printf.sprintf "%s.%d" (string_of_rvar x) i
+  | Field (x,i) -> Printf.sprintf "%s.%d" (string_of_var x) i
   | Cell (x,i) -> Printf.sprintf "%s[%s]" (string_of_var x) (string_of_expr i)
   | Op (o, a) ->
     if Array.length a = 0 then
@@ -275,7 +267,7 @@ and string_of_eqs ?(tab=0) eqs =
 
 and string_of_loc = function
   | LVar v -> string_of_var v
-  | LField (v,i) -> Printf.sprintf "%s.%d" (string_of_rvar v) i
+  | LField (v,i) -> Printf.sprintf "%s.%d" (string_of_var v) i
   | LCell (v,i) -> Printf.sprintf "%s[%s]" (string_of_var v) (string_of_expr i)
 
 (** A procedure. *)
@@ -323,7 +315,7 @@ type field =
 
 let loc x field =
   match field with
-  | Some (FField n) -> LField (RVar x,n)
+  | Some (FField n) -> LField (x,n)
   | Some (FCell e) -> LCell (x,e)
   | None -> LVar x
 
@@ -358,16 +350,9 @@ let rec typ prog x =
   (* Printf.printf "typ: %s\n%!" (string_of_loc x); *)
   match x with
   | LVar x -> prog.vars.(x)
-  | LField (RVar x, n) ->
+  | LField (x, n) ->
     (
       match T.unptr (typ prog (LVar x)) with
-      | T.Record r -> r.(n)
-      | _ -> assert false
-    )
-  | LField (RState, n) ->
-    let t = T.unptr (state_t prog) in
-    (
-      match t with
       | T.Record r -> r.(n)
       | _ -> assert false
     )
@@ -377,10 +362,6 @@ let rec typ prog x =
       | T.Array t -> t
       | _ -> assert false
     )
-
-let typ_rvar prog = function
-  | RVar x -> typ prog (LVar x)
-  | RState -> state_t prog
 
 let to_string p =
   let ans = ref "" in
@@ -465,8 +446,7 @@ module FV = struct
     | Op (o,a) -> Array.fold_left expr fv a
     | If (b,t,e) -> union (expr fv b) (max (eqs fv t) (eqs fv e))
     | Var v -> incr fv v
-    | Field (RVar x,_) -> incr fv x
-    | Field (RState,_) -> fv
+    | Field (x,_) -> incr fv x
     | Cell (x,i) -> incr (expr fv i) x
     | Bool _ | Int _ | Float _ | String _ -> fv
 
@@ -486,8 +466,7 @@ module FV = struct
   let written fv eqs =
     let aux fv = function
       | LVar x -> incr fv x
-      | LField (RVar x,_) -> incr fv x
-      | LField (RState,_) -> fv
+      | LField (x,_) -> incr fv x
       | LCell (x,_) -> incr fv x
     in
     List.fold_left (fun fv (x,e) -> aux fv x) fv eqs
@@ -508,8 +487,7 @@ let rec subst_expr ((x',e',fve') as s) e =
   (* Printf.printf "B.subst_expr: %s\n%!" (string_of_expr e); *)
   match e with
   | Var x -> if x = x' then e' else e
-  | Field(RVar x,i) -> assert (x <> x'); Field (RVar x, i)
-  | Field(RState,i) -> Field (RState, i)
+  | Field(x,i) -> assert (x <> x'); Field (x, i)
   | Cell(x,i) -> assert (x <> x'); Cell (x, subst_expr s i)
   | Op(op,a) -> Op(op, Array.map (subst_expr s) a)
   | If(b,t,e) -> If(subst_expr s b, subst_eqs s t, subst_eqs s e)
@@ -628,7 +606,7 @@ module Opt = struct
       let x =
         match x with
         | LVar x -> x
-        | LField (RVar x,_) -> x
+        | LField (x,_) -> x
       in
       FV.union (FV.incr fv x) (FV.expr ~masking:false (FV.create prog) e)
     in
@@ -717,8 +695,11 @@ let proc prog ?(state=false) args t eqs =
 let pack_state prog =
   let t = T.Record prog.vars in
   let n = Array.length prog.vars in
-  let load = List.init n (fun i -> LVar i, Field(RState, i)) in
-  let store = List.init n (fun i -> LField(RState, i), Var i) in
+  (* TODO *)
+  (* let load = List.init n (fun i -> LVar i, Field(RState, i)) in *)
+  (* let store = List.init n (fun i -> LField(RState, i), Var i) in *)
+  let load = [] in
+  let store = [] in
   let ls eqs =
     let eqs, ret = split_ret eqs in
     load@eqs@store@ret
@@ -728,7 +709,7 @@ let pack_state prog =
     let prog, x = alloc prog (T.Ptr t) in
     let prog, ret = alloc prog T.Unit in
     let written = FV.written (FV.create prog) prog.init in
-    let store = List.may_init n (fun i -> if FV.has written i then Some (LField(RVar x,i), Var i) else None) in
+    let store = List.may_init n (fun i -> if FV.has written i then Some (LField(x,i), Var i) else None) in
     prog, [(LVar x), (Op(Alloc t,[||]))]@prog.init@store@[(LVar ret), Return x]
   in
   let proc_reset =
@@ -848,16 +829,7 @@ module Builder = struct
       b, free_var b.prog x
 
   let loc b x field =
-    if x = "state" then
-      let field = get_some field in
-      let field =
-        match field with
-        | FField n -> n
-        | _ -> assert false
-      in
-      LField (RState, field)
-    else
-      loc (var b x) field
+    loc (var b x) field
 
   (* let init b x ?field e = *)
     (* let x = loc b x field in *)

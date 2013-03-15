@@ -83,11 +83,7 @@ let rec eval_expr prog state e =
   | Var v -> State.get state v
   | Arg n -> State.get_arg state n
   | Field (v,i) ->
-    let v =
-      match v with
-      | RVar v -> State.get state v
-      | RState -> State.to_record state
-    in
+    let v = State.get state v in
     (V.get_record v).(i)
   | Cell (v,i) ->
     let v = State.get state v in
@@ -196,12 +192,10 @@ and eval_eq prog state (x,e) =
   | LVar x ->
     (* Printf.printf "eval_eq var: %s\n%!" (string_of_var x); *)
     State.set state x e
-  | LField (RVar x,i) ->
+  | LField (x,i) ->
     (* Printf.printf "eval_eq field: %s\n%!" (string_of_var x); *)
     let r = V.get_record (State.get state x) in
     r.(i) <- e
-  | LField (RState,i) ->
-    State.set state i e
   | LCell (x,i) ->
     (* Printf.printf "eval_eq field: %s\n%!" (string_of_var x); *)
     let r = V.get_record (State.get state x) in
