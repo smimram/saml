@@ -1,17 +1,20 @@
+(** Interpreter. *)
+
 open Stdlib
 open Backend
 
 let default_value t = V.default ~bot:true t
 
+(** Operations on state for interpreter. *)
 module State = struct
   type state =
     {
-      (** Main memory. *)
       state_mem : V.t array;
-      (** Arguments (for functions). *)
+      (** Main memory. *)
       state_args : V.t array;
-      (** Output (for functions). *)
+      (** Arguments (for functions). *)
       mutable state_out : V.t;
+      (** Output (for functions). *)
     }
 
   let to_string state =

@@ -1183,6 +1183,12 @@ module Expr = struct
     rs_variants = [];
   }
 
+  (** Generate a fresh variable name. *)
+  let fresh_var state =
+    let state = { state with rs_fresh = state.rs_fresh + 1 } in
+    (* Printf.printf "fresh var: _x%d\n%!" state.rs_fresh; *)
+    state, Printf.sprintf "_x%d" state.rs_fresh
+
   (** Normalize an expression by performing beta-reductions and
       builtins-reductions. *)
   let rec reduce ~subst ~state expr =
@@ -1434,61 +1440,54 @@ module Expr = struct
     in
     state, prog
 
-(*
-  (** Emit the programs, optionally allowing free variables and generating a
-      state. *)
-  let rec emit ~subst ~state ?(free_vars=false) ?prog expr =
+  (** Emit the programs. *)
+  let rec emit prog expr =
     Printf.printf "emit: %s\n\n" (to_string expr);
-    let rec aux ~subst ~state ~free_vars prog expr =
+    let rec aux prog expr =
       (* Printf.printf "emit: %s\n\n" (to_string expr); *)
-      let emit ?(subst=subst) ~state prog expr = aux ~subst ~state ~free_vars prog expr in
-      let emit_eqs ?(subst=subst) ~state  prog expr =
+      let emit prog expr = aux prog expr in
+      let emit_eqs prog expr =
         let prog = BB.push prog in
-        let state, prog = emit ~subst ~state prog expr in
+        let prog = emit prog expr in
         let prog, e = BB.pop prog in
-        state, prog, e
+        prog, e
       in
       let etyp e = emit_type e in
-      let rec emit_expr ?(subst=subst) ~state prog expr =
+      let rec emit_expr prog expr =
         (* Printf.printf "emit_expr: %s\n\n%!" (to_string expr); *)
         match expr.desc with
         | Ident x ->
-          let prog, v =
-            if free_vars then
-              BB.var_create prog x (etyp expr)
-            else
-              prog, BB.var prog x
-          in
-          state, prog, B.Var v
-        | App ({ desc = Cst Get }, ["", { desc = Ident x }]) -> state, prog, B.Var (BB.var prog x)
+          let v = BB.var prog x in
+          prog, B.Var v
+        | App ({ desc = Cst Get }, ["", { desc = Ident x }]) -> prog, B.Var (BB.var prog x)
         | App ({ desc = External e } as ext, a) ->
-          let (state, prog), a =
+          let prog, a =
             List.fold_map
-              (fun (state,prog) (l,e) ->
+              (fun prog (l,e) ->
                 assert (l = "");
-                let state, prog, e = emit_expr ~state prog e in
-                (state,prog), e
-              ) (state,prog) a
+                let prog, e = emit_expr prog e in
+                prog, e
+              ) prog a
           in
           let a = Array.of_list a in
-          let prog, e = e.ext_backend (typ ext) prog a in
-          state, prog, e
+          e.ext_backend (typ ext) prog a
         (* prog, B.Op (op,a) *)
         | App ({ desc = Cst If }, a) ->
           let b,t,e = bte a in
           let t = unquote t in
           let e = unquote e in
-          let state, prog, b = emit_expr ~state prog b in
-          let state, prog, t = emit_eqs ~state prog t in
-          let state, prog, e = emit_eqs ~state prog e in
-          state, prog, B.If (b,t,e)
+          let prog, b = emit_expr prog b in
+          let prog, t = emit_eqs prog t in
+          let prog, e = emit_eqs prog e in
+          prog, B.If (b,t,e)
         | For (i,b,e,f) ->
           let f = unquote f in
-          let state, prog, b = emit_expr ~state prog b in
-          let state, prog, e = emit_expr ~state prog e in
+          let prog, b = emit_expr prog b in
+          let prog, e = emit_expr prog e in
           let prog = BB.alloc prog i B.T.Int in
-          let state, prog, f = emit_eqs ~state prog f in
-          state, prog, B.For(BB.var prog i,b,e,f)
+          let prog, f = emit_eqs prog f in
+          prog, B.For(BB.var prog i,b,e,f)
+(*
         | App ({ desc = Proc(p,_)}, a) ->
           let a = List.map snd a in
           let (state,prog), a =
@@ -1500,20 +1499,21 @@ module Expr = struct
           in
           let a = Array.of_list a in
           state, prog, B.Op (B.Call p, a)
+*)
         | Cst c ->
           (
             match c with
-            | String s -> state, prog, B.String s
-            | Float x -> state, prog, B.Float x
-            | Int x -> state, prog, B.Int x
-            | Bool b -> state, prog, B.Bool b
+            | String s -> prog, B.String s
+            | Float x -> prog, B.Float x
+            | Int x -> prog, B.Int x
+            | Bool b -> prog, B.Bool b
           )
         | External e ->
           (* For constants such as pi. *)
-          let prog, e = e.ext_backend (typ expr) prog [||] in
-          state, prog, e
+          e.ext_backend (typ expr) prog [||]
         | Record [] ->
-          state, prog, B.unit
+          prog, B.unit
+(*
         | Record r ->
           (* Printf.printf "emit record: %s : %s\n%!" (to_string expr) (T.to_string (typ expr)); *)
           (* Records are handled in a (very) special way: functional fields are
@@ -1561,6 +1561,7 @@ module Expr = struct
             emit_expr ~state prog e
           else
             failwith "TODO: emit records"
+*)
         | Array _ ->
           failwith "Trying to emit constructed array."
       in
@@ -1568,20 +1569,19 @@ module Expr = struct
       match expr.desc with
       | Let ({ def = { desc = Ref v } } as l) ->
         let prog = BB.alloc prog l.var (etyp v) in
-        let state, prog =
+        let prog =
           (* Bot is only used for declaring the reference. *)
           if v.desc = Cst Bot then
-            state, prog
+            prog
           else
-            let state, prog, v = emit_expr ~state prog v in
-            let prog = BB.eq prog ~init:true l.var v in
-            state, prog
+            let prog, v = emit_expr prog v in
+            BB.eq prog ~init:true l.var v
         in
-        emit ~state prog l.body
+        emit prog l.body
       | Let ({ def = { desc = App ({ desc = Cst Set }, ["", { desc = Ident x }; "", e]) } } as l) ->
-        let state, prog, e = emit_expr ~state prog e in
+        let prog, e = emit_expr prog e in
         let prog = BB.eq prog x e in
-        emit ~state prog l.body
+        emit prog l.body
       | Let l ->
         assert (l.var <> "dt");
         let t = etyp l.def in
@@ -1594,34 +1594,30 @@ module Expr = struct
           else
         *)
         assert (not l.recursive);
-        let state, prog, def = emit_expr ~state prog l.def in
-        let prog = BB.eq_alloc prog ~init:(T.allocates (typ l.def)) l.var t def in
-        emit ~state prog l.body
+        let prog, def = emit_expr prog l.def in
+        (* TODO *)
+        (* let prog = BB.eq_alloc prog ~init:(T.allocates (typ l.def)) l.var t def in *)
+        emit prog l.body
       | Record [] ->
         (* This case is used for return values (which have to be unit) of
            subprograms (if, while, etc). *)
-        state, prog
+        prog
+(*
       | _ when T.is_unit (typ expr) ->
         let e = expr in
-        let state, x = fresh_var state in
+        let x = fresh_var state in
         let e = letin x e (unit ()) in
-        emit ~state prog e
+        emit prog e
+*)
       | _ ->
         let e = expr in
         let t = typ e in
         (* Printf.printf "emit output: %s\n%!" (to_string e); *)
-        let state, prog, e = emit_expr ~state prog e in
-        let prog = BB.output prog (T.emit t) e in
-        state, prog
-    in
-    let prog =
-      match prog with
-      | Some prog -> prog
-      | None -> BB.create (emit_type expr)
+        let prog, e = emit_expr prog e in
+        BB.output prog (T.emit t) e
     in
     (* let prog = BB.alloc ~free:true prog "dt" (B.T.Float) in *)
-    aux ~subst ~state ~free_vars prog expr
-*)
+    aux prog expr
 
 (*
   (** Emit a quote. *)
@@ -1632,12 +1628,6 @@ module Expr = struct
     let prog, e = BB.pop prog in
     (state, prog), e
 *)
-
-  (** Generate a fresh variable name. *)
-  and fresh_var state =
-    let state = { state with rs_fresh = state.rs_fresh + 1 } in
-    (* Printf.printf "fresh var: _x%d\n%!" state.rs_fresh; *)
-    state, Printf.sprintf "_x%d" state.rs_fresh
 end
 
 module E = Expr

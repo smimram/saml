@@ -5,7 +5,7 @@ open Lang
 module B = Backend
 module BB = B.Builder
 
-(** { 2 General functions } *)
+(** {2 General functions} *)
 
 let may_implem i =
   maybe (fun _ -> raise E.Cannot_reduce) i
