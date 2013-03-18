@@ -75,6 +75,15 @@ module Array = struct
       true
     with
     | Exit -> false
+
+  let may_map f a =
+    let ans = ref [] in
+    for i = 0 to Array.length a - 1 do
+      match f a.(i) with
+      | Some x -> ans := x :: !ans
+      | None -> ()
+    done;
+    Array.of_list (List.rev !ans)
 end
 
 module List = struct

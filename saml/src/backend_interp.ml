@@ -20,7 +20,7 @@ module State = struct
 
   let create prog =
     {
-      state_mem = Array.map default_value prog.vars;
+      state_mem = Array.map (fun (t,_) -> default_value t) prog.vars;
       state_out = V.U;
       state_args = [||];
     }
@@ -50,18 +50,6 @@ module State = struct
 
   let set state x v =
     let mem = state.state_mem in
-    (* let mem = *)
-    (* We have to do this because in init the allocated state is outside the
-       state. *)
-    (* if x >= Array.length mem then *)
-    (* ( *)
-    (* Printf.printf "Interpreter: extending state for %s...\n%!" (string_of_var x); *)
-    (* Array.init (x+1) (fun i -> if i < Array.length mem then mem.(i) else V.Z) *)
-    (* ) *)
-    (* else *)
-    (* mem *)
-    (* in *)
-    (* state.state_mem <- mem; *)
     mem.(x) <- v
 
   let get state x =
@@ -82,9 +70,10 @@ let rec eval_expr prog state e =
   match e with
   | Var v -> State.get state v
   | Arg n -> State.get_arg state n
-  | Field (v,i) ->
-    let v = State.get state v in
-    (V.get_record v).(i)
+  | Field (e,i) ->
+    let e = eval_expr prog state e in
+    let e = V.get_record e in
+    e.(i)
   | Cell (v,i) ->
     let v = State.get state v in
     let i = eval_expr prog state i in
@@ -147,20 +136,9 @@ let rec eval_expr prog state e =
           let n = Array.length a - 1 in
           if n < 0 then [||] else Array.init (Array.length a-1) (fun i -> a.(i+1))
         in
-        let tmp_state =
-          match p.proc_state with
-          | Some _ ->
-            let state = State.of_record ~args a.(0) in
-            (* Printf.printf "call: %s\n  B: %s\n" s (State.to_string state); *)
-            eval prog state p.proc_eqs;
-            (* Printf.printf "  A: %s\n" (State.to_string state); *)
-            state
-          | None ->
-            let state = State.of_t ~args (T.Record p.proc_vars) in
-            eval prog state p.proc_eqs;
-            state
-        in
-        State.get_out tmp_state
+        let state = State.of_t ~args (T.Record p.proc_vars) in
+        eval prog state p.proc_eqs;
+        State.get_out state
     )
   | If(b,t,e) ->
     let b = eval_expr prog state b in
@@ -194,7 +172,8 @@ and eval_eq prog state (x,e) =
     State.set state x e
   | LField (x,i) ->
     (* Printf.printf "eval_eq field: %s\n%!" (string_of_var x); *)
-    let r = V.get_record (State.get state x) in
+    let x = eval_expr prog state x in
+    let r = V.get_record x in
     r.(i) <- e
   | LCell (x,i) ->
     (* Printf.printf "eval_eq field: %s\n%!" (string_of_var x); *)

@@ -9,7 +9,6 @@ module Type = struct
   | Bool
   | Unit
   | String
-  | Ptr of t (** A pointer. *)
   | Record of t array
   | Array of t
 
@@ -19,20 +18,11 @@ module Type = struct
     | Bool -> "bool"
     | Unit -> "unit"
     | String -> "string"
-    | Ptr t -> Printf.sprintf "*%s" (to_string t)
     | Record t ->
       let t = Array.to_list t in
       let t = String.concat_map ", " to_string t in
       Printf.sprintf "{ %s }" t
     | Array t -> Printf.sprintf "%s array" (to_string t)
-
-  let is_ptr = function
-    | Ptr _ -> true
-    | _ -> false
-
-  let rec unptr = function
-    | Ptr t -> unptr t
-    | t -> t
 end
 
 module T = Type
@@ -126,7 +116,8 @@ type extern =
 
 (** Operators. Non-prefixed operators operate on floats. *)
 type op =
-| Botop (** This value is used as a stub and should never occur. *)
+| Botop
+(** This value is used as a stub and should never occur. *)
 | Add | Sub | Mul | Div
 | Pi | Sin | Cos | Exp
 | Le | Lt | Eq
@@ -138,7 +129,8 @@ type op =
 | Realloc of T.t
 (** Reallocate a value. *)
 | Free
-| Call of string (** Call an internal procedure. *)
+| Call of string
+(** Call an internal procedure. *)
 
 type expr =
 | Unit
@@ -150,12 +142,10 @@ type expr =
 | Op of op * expr array
 | If of expr * eqs * eqs
 | For of var * expr * expr * eqs
-| Field of var * int (** Field of a record. *)
+| Field of expr * int (** Field of a record. *)
 | Cell of var * expr (** Cell of an array. *)
 | Return of var (** Return a value. *)
-| Arg of int
-(** The n-th argument. In programs with state, the 0-th argument refers the
-    first argument which is not the state (i.e. the second argument). *)
+| Arg of int (** The n-th argument. *)
 (** An equation of the form x = e. *)
 and eq = loc * expr
 (** A list of equations. *)
@@ -163,7 +153,7 @@ and eqs = eq list
 (** A memory location (where things can be written). *)
 and loc =
 | LVar of var (** A variable. *)
-| LField of var * int (** A field of a record. *)
+| LField of expr * int (** A field of a record. *)
 | LCell of var * expr (** A cell of an array. *)
 
 (** Unit value. *)
@@ -221,7 +211,7 @@ let rec string_of_expr ?(tab=0) e =
   | String s -> Printf.sprintf "\"%s\"" s
   | Var v -> string_of_var v
   | Arg n -> string_of_arg n
-  | Field (x,i) -> Printf.sprintf "%s.%d" (string_of_var x) i
+  | Field (x,i) -> Printf.sprintf "%s.%d" (string_of_expr x) i
   | Cell (x,i) -> Printf.sprintf "%s[%s]" (string_of_var x) (string_of_expr i)
   | Op (o, a) ->
     if Array.length a = 0 then
@@ -267,89 +257,82 @@ and string_of_eqs ?(tab=0) eqs =
 
 and string_of_loc = function
   | LVar v -> string_of_var v
-  | LField (v,i) -> Printf.sprintf "%s.%d" (string_of_var v) i
+  | LField (v,i) -> Printf.sprintf "%s.%d" (string_of_expr v) i
   | LCell (v,i) -> Printf.sprintf "%s[%s]" (string_of_var v) (string_of_expr i)
 
 (** A procedure. *)
 type proc =
   {
-    proc_vars : T.t array;
-    (** Type of the variables of the procedure. *)
-    proc_state : T.t option;
-    (** Whether procedure takes the state as first argument (in which case we
-        give the type of the state). *)
     proc_args : T.t list;
     (** Arguments. *)
+    proc_ret : T.t;
+    (** Return type. *)
+    proc_vars : T.t array;
+    (** Local variables. *)
     proc_eqs : eqs;
     (** Code. *)
-    proc_ret : T.t;
-    (** Return value. *)
   }
 
 (** A program. *)
 type prog =
   {
-    procs : (string * proc) list; (** Global procedures. *)
-    vars : T.t array; (** Type of variables. *)
-    free_vars : (string * var) list; (** Allocated free variables. *)
-    state : T.t option; (** Type of the sate. *)
-    output : T.t; (** Type of the output. *)
-    init : eqs; (** Initialization of variables. *)
-    loop : eqs; (** Main program loop. *)
+    procs : (string * proc) list;
+    (** Global procedures. *)
+    vars : (T.t * bool) array;
+    (** Variables. When the boolean is [true] the variable is a global (static)
+        reference, otherwise it is a local variable (usually written once and
+        then read). *)
+    output : T.t;
+    (** Type of the output. *)
+    init : eqs;
+    (** Initialization of variables. *)
+    loop : eqs;
+    (** Main program loop. *)
   }
 
+(** Create an empty program. *)
 let create t =
   {
     procs = [];
     vars = [||];
-    free_vars = [];
     output = t;
     init = [];
     loop = [];
-    state = None;
   }
 
+(** Either a field of a record of a cell of an array. *)
 type field =
 | FField of int
 | FCell of expr
 
+(** Variable with an optional field. *)
 let loc x field =
   match field with
-  | Some (FField n) -> LField (x,n)
+  | Some (FField n) -> LField (Var x,n)
   | Some (FCell e) -> LCell (x,e)
   | None -> LVar x
 
-let free_var prog x = List.assoc x prog.free_vars
-
-let alloc prog ?free t =
+(** Allocate a variable of given type. *)
+let alloc prog ?(global=false) t =
   let v = Array.length prog.vars in
-  let prog = { prog with vars = Array.append prog.vars [|t|] } in
-  let prog =
-    match free with
-    | Some x -> { prog with free_vars = (x,v)::prog.free_vars }
-    | None -> prog
-  in
+  let prog = { prog with vars = Array.append prog.vars [|t,global|] } in
   prog, v
 
+(** Add an initial equation. *)
 let init prog x e =
   { prog with init = prog.init@[x,e] }
 let prog_init = init
 
+(** Add an equation. *)
 let eq prog x e =
   { prog with loop = prog.loop@[x,e] }
 
-let init_free prog x ?field e =
-  let x = List.assoc x prog.free_vars in
-  init prog (loc x field) e
-
-(** Type of the state of a program. *)
-let state_t prog = get_some prog.state
-
+(*
 (** Type of a loc *)
 let rec typ prog x =
   (* Printf.printf "typ: %s\n%!" (string_of_loc x); *)
   match x with
-  | LVar x -> prog.vars.(x)
+  | LVar x -> fst prog.vars.(x)
   | LField (x, n) ->
     (
       match T.unptr (typ prog (LVar x)) with
@@ -362,16 +345,16 @@ let rec typ prog x =
       | T.Array t -> t
       | _ -> assert false
     )
+*)
 
+(** String representation of a program. *)
 let to_string p =
   let ans = ref "" in
   let print s = ans := !ans ^ s in
-  let vars = Array.mapi (fun i t -> Printf.sprintf "%s:%s" (string_of_var i) (T.to_string t)) p.vars in
+  let vars = Array.mapi (fun i (t,g) -> Printf.sprintf "%s:%s%s" (string_of_var i) (T.to_string t) (if g then " ref" else "")) p.vars in
   let vars = Array.to_list vars in
   let vars = String.concat ", " vars in
   print (Printf.sprintf "variables:\n  %s\n\n" vars);
-  let fv = String.concat_map ", " (fun (x,v) -> Printf.sprintf "%s=x%d" x v) p.free_vars in
-  print (Printf.sprintf "free variables:\n  %s\n\n" fv);
   (
     if p.procs <> [] then
       let procs =
@@ -380,14 +363,6 @@ let to_string p =
             let tret = p.proc_ret in
             let tret = T.to_string tret in
             let args = List.map T.to_string p.proc_args in
-            let args =
-              match p.proc_state with
-              | Some state ->
-                let a = Printf.sprintf "%s state" (T.to_string state) in
-                a::args
-              | None ->
-                args
-            in
             let args = String.concat ", " args in
             let eqs = if p.proc_eqs = [] then "" else string_of_eqs ~tab:2 p.proc_eqs ^ "\n" in
             Printf.sprintf "  %s %s(%s) {\n%s  }" tret name args eqs
@@ -407,6 +382,7 @@ let map_proc_names prog f =
   let procs = List.map (fun (l,p) -> f l, p) prog.procs in
   { prog with procs }
 
+(*
 (** Helper structure to compute free variables. *)
 module FV = struct
   let create p =
@@ -473,14 +449,14 @@ module FV = struct
 
   let bound prog =
     let bound = create prog in
-    let bound = List.fold_left incr bound (List.map snd prog.free_vars) in
     bound
 
   let iter fv f =
     Array.iteri f fv
 end
+*)
 
-
+(*
 exception Substitution
 
 let rec subst_expr ((x',e',fve') as s) e =
@@ -524,6 +500,7 @@ and subst_eqs ((x',e',fve') as s) = function
   | [] -> []
 
 let subst_eqs prog (x,e) = subst_eqs (x,e,FV.expr (FV.create prog) e)
+*)
 
 (** Optimizations on the code. *)
 module Opt = struct
@@ -560,6 +537,7 @@ module Opt = struct
       init = simpl_eqs p.init;
       loop = simpl_eqs p.loop }
 
+(*
   (** Inline linearly used variables and eliminate dead code. *)
   (* TODO: inline the end first! *)
   let inline prog =
@@ -659,6 +637,7 @@ module Opt = struct
       loop = subst_eqs prog.loop;
       state = prog.state;
     }
+*)
 
 (* TODO *)
 (* Inline events. *)
@@ -668,8 +647,7 @@ module Opt = struct
 (* Merge common subexpressions. *)
 end
 
-(** {3 Operations on state.} *)
-
+(** Split the last return of a list of equations. *)
 (* TODO: we should maybe define eqs = eq list * expr and remove Return... *)
 let split_ret eqs =
   let rec aux h = function
@@ -681,70 +659,7 @@ let split_ret eqs =
   let eqs, eq = aux [] eqs in
   List.rev eqs, eq
 
-let proc prog ?(state=false) args t eqs =
-  let state = if state then Some (state_t prog) else None in
-  {
-    proc_vars = prog.vars;
-    proc_state = state;
-    proc_args = args;
-    proc_eqs = eqs;
-    proc_ret = t;
-  }
-
-(* TODO: alloc and run should be handled as other procs. *)
-let pack_state prog =
-  let t = T.Record prog.vars in
-  let n = Array.length prog.vars in
-  (* TODO *)
-  (* let load = List.init n (fun i -> LVar i, Field(RState, i)) in *)
-  (* let store = List.init n (fun i -> LField(RState, i), Var i) in *)
-  let load = [] in
-  let store = [] in
-  let ls eqs =
-    let eqs, ret = split_ret eqs in
-    load@eqs@store@ret
-  in
-  let loop = ls prog.loop in
-  let prog, init =
-    let prog, x = alloc prog (T.Ptr t) in
-    let prog, ret = alloc prog T.Unit in
-    let written = FV.written (FV.create prog) prog.init in
-    let store = List.may_init n (fun i -> if FV.has written i then Some (LField(x,i), Var i) else None) in
-    prog, [(LVar x), (Op(Alloc t,[||]))]@prog.init@store@[(LVar ret), Return x]
-  in
-  let proc_reset =
-    {
-      proc_vars = prog.vars;
-      proc_state = Some t;
-      proc_args = [];
-      proc_eqs = prog.init;
-      proc_ret = T.Unit;
-    }
-  in
-  let procs = ("reset", proc_reset)::prog.procs in
-  let procs =
-    List.map
-      (fun (l,p) ->
-        l, { p with
-          proc_eqs = ls p.proc_eqs;
-          (* We add a lot of vars but it should be correct. *)
-          proc_vars = prog.vars;
-          proc_state = Some t }
-      ) procs
-  in
-  let proc_unalloc =
-    {
-      proc_vars = prog.vars;
-      proc_state = Some t;
-      proc_args = [];
-      proc_eqs = load; (* TODO *)
-      proc_ret = T.Unit;
-    }
-  in
-  let procs = ("unalloc", proc_unalloc)::procs in
-  { prog with init; loop; state = Some t; procs }
-
-(** Procedures. *)
+(** {3 Procedures} *)
 
 (** Names for standard procedures. *)
 module Proc_name = struct
@@ -752,20 +667,86 @@ module Proc_name = struct
   let unalloc = "unalloc"
   let init = "init"
   let loop = "loop"
+  let reset = "reset"
 end
 
-let proc_alloc prog =
-  let t = T.Ptr (state_t prog) in
-  proc prog ~state:false [] t prog.init
+(** Generate procedures from a program. The state is last argument (in order not
+    to change preexisting arguments. *)
+(* TODO: optimize first in order to generate smallest state as possible. *)
+let pack_state prefix prog =
+  let vars = Array.may_map (fun (v,r) -> if not r then Some v else None) prog.vars in
+  let refs = Array.may_map (fun (v,r) -> if r then Some v else None) prog.vars in
+  let state_t = T.Record refs in
+  let n = Array.length refs in
+  let load arg = List.init n (fun i -> LVar i, Field(Arg arg, i)) in
+  let store arg = List.init n (fun i -> LField(Arg arg, i), Var i) in
+  let ls arg eqs =
+    let eqs, ret = split_ret eqs in
+    (load arg)@eqs@(store arg)@ret
+  in
+  let reset state =
+    let eqs, ret = split_ret prog.init in
+    let store = List.init n (fun i -> LField(state, i), Var i) in
+    eqs@store@ret
+  in
+  let prog, init =
+    let prog, state = alloc prog state_t in
+    prog, [LVar state, (Op(Alloc state_t,[||]))]@(reset (Var state))
+  in
+  let proc_init =
+    {
+      proc_vars = vars;
+      proc_args = [];
+      proc_ret = prog.output;
+      proc_eqs = init;
+    }
+  in
+  let proc_loop =
+    {
+      proc_vars = vars;
+      proc_args = [state_t];
+      proc_ret = prog.output;
+      proc_eqs = ls 0 prog.loop;
+    }
+  in
+  let proc_reset =
+    {
+      proc_vars = vars;
+      proc_args = [state_t];
+      proc_ret = prog.output;
+      proc_eqs = reset (Arg 0);
+    }
+  in
+  let proc_unalloc =
+    {
+      proc_vars = vars;
+      proc_args = [state_t];
+      proc_eqs = []; (* TODO *)
+      proc_ret = T.Unit;
+    }
+  in
+  let procs =
+    List.map
+      (fun (l,p) ->
+        l,
+        {
+          proc_vars = p.proc_vars;
+          proc_args = p.proc_args@[state_t];
+          proc_ret = p.proc_ret;
+          proc_eqs = ls (List.length p.proc_args) p.proc_eqs;
+        }
+      ) prog.procs
+  in
+  [
+    Proc_name.init, proc_init;
+    Proc_name.reset, proc_reset;
+    Proc_name.loop, proc_loop;
+    Proc_name.unalloc, proc_unalloc;
+  ]@procs
 
-let proc_run prog =
-  proc prog ~state:true [] prog.output prog.loop
-
+(** Procedures of a program. *)
 let procs prog =
   prog.procs
-
-let map_fv prog f =
-  List.map (fun (x,v) -> f x v) prog.free_vars
 
 (** Helper functions to create programs. *)
 module Builder = struct
@@ -796,14 +777,13 @@ module Builder = struct
     let prog, v = alloc b.prog t in
     { b with prog }, v
 
-  let alloc b ?(free=false) x t =
+  let alloc b x t =
     (* Printf.printf "alloc: %s\n%!" x; *)
     (* In theory, we could have masking but in practice we rename all the
        variables, so it's safer this way for now. *)
     if List.exists (fun (y,_) -> x = y) b.var_pos then
       failwith (Printf.sprintf "Backend: trying to reallocate %s." x);
-    let free = if free then Some x else None in
-    let prog, v = alloc b.prog ?free t in
+    let prog, v = alloc b.prog t in
     { b with
       prog;
       var_pos = (x,v)::b.var_pos }
@@ -813,20 +793,12 @@ module Builder = struct
     let prog = { prog with procs = prog.procs@procs } in
     { b with prog }
 
-  let var b ?(free=false) x =
+  let var b x =
     try
-      List.assoc x (if free then b.prog.free_vars else b.var_pos)
+      List.assoc x b.var_pos
     with
     | Not_found ->
       failwith (Printf.sprintf "Internal error: variable %s not found in backend builder." x)
-
-  let var_create b x t =
-    try
-      b, var b x
-    with
-    | _ ->
-      let b = alloc b ~free:true x t in
-      b, free_var b.prog x
 
   let loc b x field =
     loc (var b x) field
@@ -879,13 +851,6 @@ module Builder = struct
   let output b t e =
     return b t e
 
-  (** Add a procedure. *)
-  let proc b name args ret e =
-    let prog = b.prog in
-    let p = proc prog args ret e in
-    let prog = { prog with procs = prog.procs@[name,p] } in
-    { b with prog }
-
   (** Produce the resulting program. *)
   let prog ?(state=false) b =
     let prog = b.prog in
@@ -893,15 +858,13 @@ module Builder = struct
     let prog =
       if !Config.Compiler.optimize then
         let prog = Opt.simpl prog in
-        let prog = Opt.dead_code prog in
-        let prog = Opt.inline prog in
-        let prog = Opt.simpl prog in
+        (* let prog = Opt.dead_code prog in *)
+        (* let prog = Opt.inline prog in *)
+        (* let prog = Opt.simpl prog in *)
         (* let prog = compact prog in *)
         prog
       else
         prog
     in
-    (* Emit the state. *)
-    let prog = if state then pack_state prog else prog in
     prog
 end
