@@ -232,7 +232,30 @@ let array_play =
   in
   let extern = B.extern ~saml "array_play" in
   op "array_play" (fun _ -> T.arrnl [T.fresh_var()] T.unit) extern
-  (* extern *)
+
+(* TODO: reimplement using array_play *)
+let play =
+  let channels = 1 in
+  let sr = 44100 in
+  let writer = ref None in
+  let saml a =
+    let buf = a.(0) in
+    let buf = B.V.get_array buf in
+    let buf = Array.map B.V.get_float buf in
+    let writer =
+      match !writer with
+      | Some w -> w
+      | None ->
+        let w = new Samlib.pulseaudio_writer "SAML" "sound" channels sr in
+        (* let w = new Audio.IO.Writer.to_wav_file channels sr "output.wav" in *)
+        writer := Some w;
+        w
+    in
+    writer#write [|buf|] 0 (Array.length buf);
+    B.V.unit
+  in
+  let extern = B.extern ~saml "play" in
+  op "play" (fun _ -> T.arrnl [T.fresh_var()] T.unit) extern
 
 (* TODO: remove this debug *)
 (*

@@ -71,6 +71,7 @@ let () =
   let prog = pass "Parsing program" id prog in
   let prog = pass "Infering type" (Lang.M.infer_type ~annot:true) prog in
   let prog = pass "Reducing program" Lang.M.reduce prog in
-  ignore prog
-  (* Printf.printf "* Emitting program:\n%!"; *)
-  (* Lang.M.emit prog *)
+  (* ignore prog *)
+  Printf.printf "* Emitting program:\n%!";
+  let prog = Lang.M.emit prog in
+  ()
