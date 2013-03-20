@@ -51,6 +51,7 @@ module Expr = struct
   | Set
   | If (* takes 3 arguments : "",then,?else *)
   | Expand (** Expand the monad implementation. *)
+  | Alloc of T.t (** Allocate a value. *)
   (** External values. *)
   and extern =
     {
@@ -119,6 +120,7 @@ module Expr = struct
           | Set -> "set"
           | If -> "if"
           | Expand -> "expand"
+          | Alloc t -> Printf.sprintf "alloc(%s)" (T.to_string t)
         )
       | Coerce (e,t) ->
         Printf.sprintf "(%s : %s)" (to_string false e) (T.to_string t)
@@ -240,6 +242,9 @@ module Expr = struct
         )
     in
     make ?pos ?t (Ref e)
+
+  let alloc ?pos t =
+    app ?pos ~t (make (Cst (Alloc t))) []
 
   let get_ref ?t r =
     app ?t (make (Cst Get)) ["",r]
@@ -769,7 +774,27 @@ module Expr = struct
             state, app e ["",b; "then", quote th; "else", quote el]
           | Cst Expand ->
             let f = List.assoc "" args in
-            let state, f = reduce_quote ~subst ~state f [] in
+            let t = snd (T.split_arr (typ e)) in
+            let f = app ~t f [] in
+            let oldstate = state in
+            let state = { reduce_state_empty with rs_fresh = state.rs_fresh; rs_types = state.rs_types } in
+            let state, prog = reduce ~subst ~state f in
+            assert (state.rs_types = []);
+            assert (state.rs_variants = []);
+            let state =
+              {
+                rs_let = oldstate.rs_let;
+                rs_fresh = state.rs_fresh;
+                rs_types = oldstate.rs_types;
+                rs_variants = oldstate.rs_variants;
+              }
+            in
+            List.iter (fun (x,v) -> match v.desc with Fun _ -> assert false | _ -> ()) state.rs_let;
+            let refs = List.filter (fun (x,v) -> match v.desc with Ref _ -> true | _ -> false) state.rs_let in
+            let refs = List.rev refs in
+            let refs_t = T.record (List.map (fun (x,v) -> x,(typ v,false)) refs) in
+            let f_alloc = fct [] (alloc refs_t) in
+            (* let state, f = reduce_quote ~subst ~state f [] in *)
             state, app e ["",quote f]
           (*
             | External ext when ext.ext_name = "print" ->
@@ -962,19 +987,6 @@ module Expr = struct
           let prog, t = emit_eqs prog t in
           let prog, e = emit_eqs prog e in
           prog, B.If (b,t,e)
-        | App ({ desc = Cst Expand }, a) ->
-          let e = List.assoc "" a in
-          let _, t = T.split_arr (typ e) in
-          let t = T.emit t in
-          let e = unquote e in
-          let prog' = BB.create t in
-          let prog' = emit prog' e in
-          (* TODO: generate a new prefix each time *)
-          let prefix = "exp0_" in
-          let procs = BB.pack_state prefix prog' in
-          let prog = BB.procs prog procs in
-          let e = B.E.record [|B.V.proc (prefix^B.Proc_name.alloc); B.V.proc (prefix^B.Proc_name.init); B.V.proc (prefix^B.Proc_name.loop)|] in
-          prog, e
 (*
         | For (i,b,e,f) ->
           let f = unquote f in
