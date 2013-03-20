@@ -255,7 +255,7 @@ let play =
     B.V.unit
   in
   let extern = B.extern ~saml "play" in
-  op "play" (fun _ -> T.arrnl [T.fresh_var()] T.unit) extern
+  op "play" (fun _ -> T.arrnl [T.monad (T.fresh_var ()) T.float] T.unit) extern
 
 (* TODO: remove this debug *)
 (*
@@ -753,7 +753,7 @@ let impl =
     (* play_buffer_mono; *)
 
     (* Debug. *)
-    op "play" (fun _ -> T.arrnl [T.arr [] T.float] T.unit) B.Botop;
+    play;
     op "save" (fun _ -> T.arrnl [T.arr [] T.float] T.unit) B.Botop;
     (* dssi; *)
   ]

@@ -37,6 +37,7 @@ module Value = struct
   | B of bool
   | R of t array
   | S of string
+  | P of string (** A procedure *)
   | U (** Unit *)
   | Z (** Bottom *)
 
@@ -50,6 +51,7 @@ module Value = struct
       let r = Array.to_list r in
       let r = String.concat_map ", " to_string r in
       Printf.sprintf "{ %s }" r
+    | P f -> Printf.sprintf "`%s" f
     | Z -> "⊥"
 
   (** Default value for a given type. The bot argument ensures that values are
@@ -79,6 +81,8 @@ module Value = struct
 
   let array n t =
     R (Array.init n (fun _ -> default t))
+
+  let proc s = P s
 
   let get_float = function
     | F x -> x
@@ -138,7 +142,7 @@ type op =
 (** Call an internal procedure. *)
 
 type expr =
-| Val of value
+| Val of V.t
 | Var of var (** A local variable. *)
 | Ref of int (** A reference. *)
 | Arg of int (** The n-th argument of a function. *)
@@ -149,13 +153,6 @@ type expr =
 | Cell of expr * expr (** Cell of an array. *)
 | Return of expr (** Return a value. *)
 (** An equation of the form x = e. *)
-(** A value. *)
-and value =
-| Unit
-| Bool of bool
-| Int of int
-| Float of float
-| String of string
 and eq = var * expr
 (** A list of equations. *)
 and eqs = eq list
@@ -194,6 +191,8 @@ let string_of_op = function
   | Lt -> "<"
   | Eq -> "="
   | Exp -> "exp"
+  | Set -> "set"
+  | Get -> "get"
   | Print _ -> "print"
   | External ext -> Printf.sprintf "'%s'" ext.ext_name
   | Alloc t  -> Printf.sprintf "alloc[%s]" (T.to_string t)
@@ -206,15 +205,7 @@ let rec string_of_expr ?(tab=0) e =
   let string_of_expr ?(tab=tab) = string_of_expr ~tab in
   let string_of_eqs ?(tab=tab) = string_of_eqs ~tab in
   match e with
-  | Val v ->
-    (
-      match v with
-      |  Unit -> "⊤"
-      | Bool b -> Printf.sprintf "%B" b
-      | Int n -> Printf.sprintf "%d" n
-      | Float f -> Printf.sprintf "%F" f
-      | String s -> Printf.sprintf "\"%s\"" s
-    )
+  | Val v -> V.to_string v
   | Var v -> string_of_var v
   | Ref v -> string_of_ref v
   | Arg n -> string_of_arg n
@@ -263,7 +254,9 @@ and string_of_eqs ?(tab=0) eqs =
   String.concat "\n" eqs
 
 module Expr = struct
-  let unit = Val Unit
+  let to_string = string_of_expr
+
+  let unit = Val V.U
 
   let get x =
     Op(Get, [|x|])
@@ -273,6 +266,9 @@ module Expr = struct
 
   let return e =
     Return e
+
+  let record r =
+    Val (V.R r)
 end
 module E = Expr
 
@@ -406,10 +402,13 @@ module Subst = struct
   module Ref = struct
     let rec eqs s ee = List.map (eq s) ee
     and eq s (x,e) = x, expr s e
-    and expr s = function
+    and expr s e =
+      (* Printf.printf "Subst.Ref.expr: %s\n%!" (E.to_string e); *)
+      match e with
       | Ref x -> (try s x with Not_found -> Ref x)
       | Val _ | Var _ | Arg _ as e -> e
       | Op(o,a) -> Op(o, Array.map (expr s) a)
+      | Return e -> Return (expr s e)
 
     let eqs_list s ee =
       let s x = List.assoc x s in
@@ -546,16 +545,16 @@ module Opt = struct
         let a = Array.map simpl_expr a in
         (
           match op,a with
-          | Pi,[||] -> Val (Float pi)
-          | Add,[|Val (Float x); Val (Float y)|] -> Val (Float (x +. y))
-          | Sub,[|Val (Float x); Val (Float y)|] -> Val (Float (x -. y))
-          | Mul,[|Val (Float x); Val (Float y)|] -> Val (Float (x *. y))
-          | Div,[|Val (Float x); Val (Float y)|] -> Val (Float (x /. y))
-          | Add,[|x; Val (Float 0.)|] -> x
-          | Mul,[|x; Val (Float 1.)|] -> x
-          | Mul,[|x; Val (Float 0.)|] -> Val (Float 0.)
-          | Mul,[|Val (Float 1.); x|] -> x
-          | Eq,[|Val (Float x); Val (Float y)|] -> Val (Bool (x=y))
+          | Pi,[||] -> Val (V.F pi)
+          | Add,[|Val (V.F x); Val (V.F y)|] -> Val (V.F (x +. y))
+          | Sub,[|Val (V.F x); Val (V.F y)|] -> Val (V.F (x -. y))
+          | Mul,[|Val (V.F x); Val (V.F y)|] -> Val (V.F (x *. y))
+          | Div,[|Val (V.F x); Val (V.F y)|] -> Val (V.F (x /. y))
+          | Add,[|x; Val (V.F 0.)|] -> x
+          | Mul,[|x; Val (V.F 1.)|] -> x
+          | Mul,[|x; Val (V.F 0.)|] -> Val (V.F 0.)
+          | Mul,[|Val (V.F 1.); x|] -> x
+          | Eq,[|Val (V.F x); Val (V.F y)|] -> Val (V.B (x=y))
           | _ -> Op(op,a)
         )
       | If (b,t,e) ->
@@ -757,7 +756,7 @@ let pack_state prefix prog =
     List.map
       (fun (l,p) ->
         let state_arg = List.length p.proc_args in
-        l,
+        prefix^l,
         {
           proc_vars = p.proc_vars;
           proc_args = p.proc_args@[state_t];
@@ -767,10 +766,10 @@ let pack_state prefix prog =
       ) prog.procs
   in
   [
-    Proc_name.alloc, proc_alloc;
-    Proc_name.init, proc_init;
-    Proc_name.loop, proc_loop;
-    Proc_name.unalloc, proc_unalloc;
+    prefix^Proc_name.alloc, proc_alloc;
+    prefix^Proc_name.init, proc_init;
+    prefix^Proc_name.loop, proc_loop;
+    prefix^Proc_name.unalloc, proc_unalloc;
   ]@procs
 
 (** Helper functions to create programs. *)
@@ -833,7 +832,12 @@ module Builder = struct
     | Not_found ->
       failwith (Printf.sprintf "Internal error: variable %s not found in backend builder." x)
 
-  let eq_anon b ?(init=false) x e =
+  let var b x =
+    match ident b x with
+    | Var v -> v
+    | _ -> assert false
+
+  let eq b ?(init=false) x e =
     (* Equations are always performed at init. *)
     let b =
       let prog = prog_init b.prog x e in
@@ -851,19 +855,16 @@ module Builder = struct
         let prog = eq b.prog x e in
         { b with prog }
 
-  let eq b ?init x e =
-    eq_anon b ?init x e
-
   (** Perform a command. *)
   let cmd ?init b e =
     let b, x = alloc_var_anon b T.Unit in
-    eq_anon ?init b x e
+    eq ?init b x e
 
   let return b e =
     cmd b (Return e)
 
   (** Produce the resulting program. *)
-  let prog ?(state=false) b =
+  let prog b =
     let prog = b.prog in
     (* Optimize the program. *)
     let prog =
@@ -878,4 +879,7 @@ module Builder = struct
         prog
     in
     prog
+
+  let pack_state prefix b =
+    pack_state prefix (prog b)
 end

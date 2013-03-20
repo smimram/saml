@@ -291,12 +291,7 @@ let rec update_level l t =
 exception Cannot_unify
 
 let subtype defs t1 t2 =
-  let def l =
-    try
-      List.assoc l defs
-    with
-    | Not_found -> failwith (Printf.sprintf "Type identifier \"%s\" not unknown." l)
-  in
+  let def l = List.assoc l defs in
   let rec ( <: ) t1 t2 =
     (* Printf.printf "unify: %s with %s\n%!" (to_string t1) (to_string t2); *)
     let t1 = unvar t1 in
@@ -307,9 +302,6 @@ let subtype defs t1 t2 =
         raise Cannot_unify
       );
     match t1.desc, t2.desc with
-    | Ident a, Ident b when b = a -> ()
-    | Ident a, _ -> def a <: t2
-    | _, Ident b -> t1 <: def b
     | Var v1, Var v2 when v1 == v2 -> ()
     | Var ({ contents = EVar l } as v1), _ ->
       if List.memq v1 (free_vars t2) then
@@ -327,6 +319,9 @@ let subtype defs t1 t2 =
           update_level l t1;
           v2 := Link t1
         )
+    | Ident a, Ident b when b = a -> ()
+    | Ident a, _ -> (try def a <: t2 with Not_found -> raise Cannot_unify)
+    | _, Ident b -> (try t1 <: def b with Not_found -> raise Cannot_unify)
     | Arr (t1', t1''), Arr (t2', t2'') ->
       t1'' <: t2'';
       let a2 = ref t2' in
@@ -514,9 +509,15 @@ let monad state t =
     ]
   in
   let r = List.map (fun (l,t) -> l,(t,false)) r in
-  let r = record r in
-  let arg = arr [] t in
-  arr ["",(arg,false)] r
+  record r
+
+let monad_state t =
+  match (unvar t).desc with
+  | Record (r,_) ->
+    let a,_ = List.assoc "alloc" r in
+    let _, t = split_arr a in
+    t
+  | _ -> assert false
 
 (** Emit a type. This should not be used directly but rather E.emit_type. *)
 let rec emit t =
@@ -535,3 +536,9 @@ let rec emit t =
   | Array t -> B.T.Array (emit t)
   | Var _ -> failwith "Trying to emit type for an universal variable."
   | Arr _ -> failwith "Internal error: cannot emit functional types."
+
+(** This indicates whether the function allocates memory and should thus be
+    executed only at init. *)
+let allocates t =
+  (* TODO *)
+  false

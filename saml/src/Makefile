@@ -30,7 +30,7 @@ liq: dssi
 %.so: %.c
 	gcc -fPIC -shared -Wall -Wno-unused-variable -g -lm $^ -o $@
 
-all: backends saml_dssi.ml nc
+all: backends saml_dssi.ml dnc
 
 backends:
 	$(MAKE) -C backends

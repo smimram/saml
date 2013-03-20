@@ -303,11 +303,6 @@ module Expr = struct
 
     (** Try to coerce e into a value of type t. *)
     let coerce e t =
-      let is_unary_record t =
-        match (T.unvar t).T.desc with
-        | T.Record (["",_],None) -> true
-        | _ -> false
-      in
       (* Printf.printf "...coerce: %s : %s\n%!" (to_string e) (T.to_string t); *)
       let rec test e t =
         (* Printf.printf "test: %s : %s <: %s\n%!" (to_string e) (T.to_string (typ e)) (T.to_string t); *)
@@ -360,7 +355,6 @@ module Expr = struct
 
     let ret desc t = { e with desc = desc; t = Some t } in
     let ans =
-      let expr = e in
       match e.t with
       | Some t -> e
       | None ->
@@ -520,7 +514,9 @@ module Expr = struct
             | Expand ->
               let a = T.fresh_var () in
               let s = T.state () in
-              let t = T.monad s a in
+              let m = T.monad s a in
+              let arg = T.arr [] a in
+              let t = T.arr ["",(arg,false)] m in
               ret t
           )
         | Coerce (e, t) ->
@@ -771,6 +767,10 @@ module Expr = struct
             let state, th = reduce_quote ~subst ~state th [] in
             let state, el = reduce_quote ~subst ~state el [] in
             state, app e ["",b; "then", quote th; "else", quote el]
+          | Cst Expand ->
+            let f = List.assoc "" args in
+            let state, f = reduce_quote ~subst ~state f [] in
+            state, app e ["",quote f]
           (*
             | External ext when ext.ext_name = "print" ->
             let s = String.concat_map "; " (fun (x,v) -> Printf.sprintf "%s/%s" (to_string v) x) subst) in
@@ -920,7 +920,7 @@ module Expr = struct
 
   (** Emit the programs. *)
   let rec emit prog expr =
-    Printf.printf "emit: %s\n\n" (to_string expr);
+    (* Printf.printf "emit: %s\n\n" (to_string expr); *)
     let rec aux prog expr =
       (* Printf.printf "emit: %s\n\n" (to_string expr); *)
       let emit prog expr = aux prog expr in
@@ -938,6 +938,10 @@ module Expr = struct
           let e = BB.ident prog x in
           prog, e
         | App ({ desc = Cst Get }, ["", { desc = Ident x }]) -> prog, B.E.get (BB.ident prog x)
+        | App ({ desc = Cst Set }, ["", { desc = Ident x }; "", e]) ->
+          let x = BB.ident prog x in
+          let prog, e = emit_expr prog e in
+          prog, B.E.set x e
         | App ({ desc = External e } as ext, a) ->
           let prog, a =
             List.fold_map
@@ -958,6 +962,19 @@ module Expr = struct
           let prog, t = emit_eqs prog t in
           let prog, e = emit_eqs prog e in
           prog, B.If (b,t,e)
+        | App ({ desc = Cst Expand }, a) ->
+          let e = List.assoc "" a in
+          let _, t = T.split_arr (typ e) in
+          let t = T.emit t in
+          let e = unquote e in
+          let prog' = BB.create t in
+          let prog' = emit prog' e in
+          (* TODO: generate a new prefix each time *)
+          let prefix = "exp0_" in
+          let procs = BB.pack_state prefix prog' in
+          let prog = BB.procs prog procs in
+          let e = B.E.record [|B.V.proc (prefix^B.Proc_name.alloc); B.V.proc (prefix^B.Proc_name.init); B.V.proc (prefix^B.Proc_name.loop)|] in
+          prog, e
 (*
         | For (i,b,e,f) ->
           let f = unquote f in
@@ -983,10 +1000,10 @@ module Expr = struct
         | Cst c ->
           (
             match c with
-            | String s -> prog, B.Val (B.String s)
-            | Float x -> prog, B.Val (B.Float x)
-            | Int x -> prog, B.Val (B.Int x)
-            | Bool b -> prog, B.Val (B.Bool b)
+            | String s -> prog, B.Val (B.V.string s)
+            | Float x -> prog, B.Val (B.V.float x)
+            | Int x -> prog, B.Val (B.V.int x)
+            | Bool b -> prog, B.Val (B.V.bool b)
           )
         | External e ->
           (* For constants such as pi. *)
@@ -1058,13 +1075,8 @@ module Expr = struct
             BB.cmd prog ~init:true (B.E.set (BB.ident prog l.var) e)
         in
         emit prog l.body
-      | Let ({ def = { desc = App ({ desc = Cst Set }, ["", { desc = Ident x }; "", e]) } } as l) ->
-        let prog, e = emit_expr prog e in
-        let prog = BB.cmd prog (B.E.set (BB.ident prog x) e) in
-        emit prog l.body
       | Let l ->
         assert (l.var <> "dt");
-        let t = etyp l.def in
         (*
           if l.recursive then
           let prog = BB.alloc prog l.var t in
@@ -1075,8 +1087,8 @@ module Expr = struct
         *)
         assert (not l.recursive);
         let prog, def = emit_expr prog l.def in
-        (* TODO *)
-        (* let prog = BB.eq_alloc prog ~init:(T.allocates (typ l.def)) l.var t def in *)
+        let prog = BB.alloc_var prog l.var (etyp l.def) in
+        let prog = BB.eq prog ~init:(T.allocates (typ l.def)) (BB.var prog l.var) def in
         emit prog l.body
       | Record [] ->
         (* This case is used for return values (which have to be unit) of
@@ -1091,8 +1103,6 @@ module Expr = struct
 *)
       | _ ->
         let e = expr in
-        let t = typ e in
-        (* Printf.printf "emit output: %s\n%!" (to_string e); *)
         let prog, e = emit_expr prog e in
         BB.cmd prog (B.E.return e)
     in

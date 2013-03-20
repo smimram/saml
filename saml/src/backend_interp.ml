@@ -52,15 +52,7 @@ end
 let rec eval_expr prog state e =
   (* Printf.printf "SAML.eval_expr: %s\n" (string_of_expr e); *)
   match e with
-  | Val v ->
-    (
-      match v with
-      | Float x -> V.float x
-      | Int n -> V.int n
-      | Bool b -> V.bool b
-      | String s -> V.string s
-      | Unit -> V.unit
-    )
+  | Val v -> v
   | Var v -> State.get state v
   | Arg n -> State.get_arg state n
   | Field (e,i) ->

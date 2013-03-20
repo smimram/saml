@@ -5,6 +5,8 @@
 (* include "pervasives.saml" *)
 include "builtin.saml"
 
+let play = builtin "play"
+
 let id(x) = x
 
 let euler(reset=id,phase=0.,f') =
@@ -16,8 +18,11 @@ let euler(reset=id,phase=0.,f') =
 
 let sine(freq,phase=0.) = sin(2 * pi * euler(freq,phase=))
 
-let s() = sine(440,phase=0.777)
+let s() =
+  let dt() = 1. / 44100. in
+  sine(440,phase=0.777)
 
-let () = play(s())
+let () =
+  play(expand(s))
 
-let r = expand(s)
+(* let r = expand(s) *)
