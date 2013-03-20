@@ -505,6 +505,19 @@ let split_arr t =
   | Arr (a,t) -> a, unvar t
   | _ -> assert false
 
+let monad state t =
+  let r =
+    [
+      "alloc", arr [] state;
+      "init", arr ["",(state,false)] t;
+      "loop", arr ["",(state,false)] t;
+    ]
+  in
+  let r = List.map (fun (l,t) -> l,(t,false)) r in
+  let r = record r in
+  let arg = arr [] t in
+  arr ["",(arg,false)] r
+
 (** Emit a type. This should not be used directly but rather E.emit_type. *)
 let rec emit t =
   (* Printf.printf "T.emit: %s\n" (to_string t); *)

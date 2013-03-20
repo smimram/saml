@@ -350,11 +350,8 @@ let array_set =
     T.arrnl [T.array a; T.int; a] T.unit
   in
   let b t prog a =
-    let t, _ = T.split_arr t in
-    let t, _ = List.assoc_nth 2 "" t in
-    let prog, x = BB.eq_alloc_anon prog (T.emit t) a.(0) in
-    let prog = BB.eq_anon prog (B.LCell(x,a.(1))) a.(2) in
-    prog, B.Unit
+    let cmd = B.E.set (B.Cell (a.(0), a.(1))) a.(2) in
+    prog, cmd
   in
   mop "array_set" t ~b
 
@@ -372,12 +369,7 @@ let array_get =
     | _ -> raise E.Cannot_reduce
   in
   let b t prog a =
-    let x =
-      match a.(0) with
-      | B.Var x -> x
-      | _ -> assert false
-    in
-    prog, B.Cell(x, a.(1))
+    prog, B.Cell(a.(0), a.(1))
   in
   mop "array_get" t ~i ~b
 

@@ -520,8 +520,7 @@ module Expr = struct
             | Expand ->
               let a = T.fresh_var () in
               let s = T.state () in
-              let r = T.record ["state",(s,false); "f",(T.arr ["",(s,false)] a,false)] in
-              let t = T.arr ["",(a,false)] r in
+              let t = T.monad s a in
               ret t
           )
         | Coerce (e, t) ->
@@ -936,9 +935,9 @@ module Expr = struct
         (* Printf.printf "emit_expr: %s\n\n%!" (to_string expr); *)
         match expr.desc with
         | Ident x ->
-          let v = BB.var prog x in
-          prog, B.Var v
-        | App ({ desc = Cst Get }, ["", { desc = Ident x }]) -> prog, B.Var (BB.var prog x)
+          let e = BB.ident prog x in
+          prog, e
+        | App ({ desc = Cst Get }, ["", { desc = Ident x }]) -> prog, B.E.get (BB.ident prog x)
         | App ({ desc = External e } as ext, a) ->
           let prog, a =
             List.fold_map
@@ -959,6 +958,7 @@ module Expr = struct
           let prog, t = emit_eqs prog t in
           let prog, e = emit_eqs prog e in
           prog, B.If (b,t,e)
+(*
         | For (i,b,e,f) ->
           let f = unquote f in
           let prog, b = emit_expr prog b in
@@ -966,6 +966,7 @@ module Expr = struct
           let prog = BB.alloc prog i B.T.Int in
           let prog, f = emit_eqs prog f in
           prog, B.For(BB.var prog i,b,e,f)
+*)
 (*
         | App ({ desc = Proc(p,_)}, a) ->
           let a = List.map snd a in
@@ -982,16 +983,16 @@ module Expr = struct
         | Cst c ->
           (
             match c with
-            | String s -> prog, B.String s
-            | Float x -> prog, B.Float x
-            | Int x -> prog, B.Int x
-            | Bool b -> prog, B.Bool b
+            | String s -> prog, B.Val (B.String s)
+            | Float x -> prog, B.Val (B.Float x)
+            | Int x -> prog, B.Val (B.Int x)
+            | Bool b -> prog, B.Val (B.Bool b)
           )
         | External e ->
           (* For constants such as pi. *)
           e.ext_backend (typ expr) prog [||]
         | Record [] ->
-          prog, B.unit
+          prog, B.E.unit
 (*
         | Record r ->
           (* Printf.printf "emit record: %s : %s\n%!" (to_string expr) (T.to_string (typ expr)); *)
@@ -1047,19 +1048,19 @@ module Expr = struct
       (* Printf.printf "emit: %s\n\n%!" (to_string expr); *)
       match expr.desc with
       | Let ({ def = { desc = Ref v } } as l) ->
-        let prog = BB.alloc prog l.var (etyp v) in
+        let prog = BB.alloc_ref prog l.var (etyp v) in
         let prog =
           (* Bot is only used for declaring the reference. *)
           if v.desc = Cst Bot then
             prog
           else
-            let prog, v = emit_expr prog v in
-            BB.eq prog ~init:true l.var v
+            let prog, e = emit_expr prog v in
+            BB.cmd prog ~init:true (B.E.set (BB.ident prog l.var) e)
         in
         emit prog l.body
       | Let ({ def = { desc = App ({ desc = Cst Set }, ["", { desc = Ident x }; "", e]) } } as l) ->
         let prog, e = emit_expr prog e in
-        let prog = BB.eq prog x e in
+        let prog = BB.cmd prog (B.E.set (BB.ident prog x) e) in
         emit prog l.body
       | Let l ->
         assert (l.var <> "dt");
@@ -1093,7 +1094,7 @@ module Expr = struct
         let t = typ e in
         (* Printf.printf "emit output: %s\n%!" (to_string e); *)
         let prog, e = emit_expr prog e in
-        BB.output prog (T.emit t) e
+        BB.cmd prog (B.E.return e)
     in
     (* let prog = BB.alloc ~free:true prog "dt" (B.T.Float) in *)
     aux prog expr

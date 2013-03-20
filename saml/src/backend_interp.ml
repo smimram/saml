@@ -9,79 +9,69 @@ let default_value t = V.default ~bot:true t
 module State = struct
   type state =
     {
-      state_mem : V.t array;
-      (** Main memory. *)
+      state_vars : V.t array;
+      (** Variables. *)
+      state_refs : V.t array;
+      (** References. *)
+      state_proc_vars : (string * V.t array) list;
+      (** Local variables for procedures. *)
       state_args : V.t array;
       (** Arguments (for functions). *)
-      mutable state_out : V.t;
-      (** Output (for functions). *)
+      mutable state_return : V.t;
+      (** Returned value for functions calls. *)
     }
 
   let to_string state =
-    let mem = String.concat_map ", " V.to_string (Array.to_list state.state_mem) in
-    Printf.sprintf "%s [%s]" (V.to_string state.state_out) mem
+    (* let mem = String.concat_map ", " V.to_string (Array.to_list state.state_mem) in *)
+    (* Printf.sprintf "%s [%s]" (V.to_string state.state_out) mem *)
+    "TODO: State.to_string"
 
   let create prog =
+    let alloc vars = Array.map (fun t -> default_value t) vars in
     {
-      state_mem = Array.map (fun (t,_) -> default_value t) prog.vars;
-      state_out = V.U;
+      state_vars = alloc prog.vars;
+      state_refs = alloc prog.refs;
+      state_proc_vars = List.map (fun (l,p) -> l, alloc p.proc_vars) prog.procs;
       state_args = [||];
+      state_return = V.Z;
     }
-
-  let of_t ?(args=[||]) t =
-    let t =
-      match t with
-      | T.Record t -> t
-      | _ -> assert false
-    in
-    {
-      state_mem = Array.map default_value t;
-      state_out = V.U;
-      state_args = args;
-    }
-
-  let of_record ?(args=[||]) r =
-    let r = V.get_record r in
-    {
-      state_mem = r;
-      state_out = V.U;
-      state_args = args;
-    }
-
-  let to_record state =
-    V.R state.state_mem
 
   let set state x v =
-    let mem = state.state_mem in
-    mem.(x) <- v
+    state.state_refs.(x) <- v
 
   let get state x =
-    state.state_mem.(x)
-
-  let get_out state =
-    state.state_out
+    state.state_refs.(x)
 
   let get_arg state n =
     state.state_args.(n)
 
-  let set_out state v =
-    state.state_out <- v
+  let get_return state =
+    state.state_return
 end
 
 let rec eval_expr prog state e =
   (* Printf.printf "SAML.eval_expr: %s\n" (string_of_expr e); *)
   match e with
+  | Val v ->
+    (
+      match v with
+      | Float x -> V.float x
+      | Int n -> V.int n
+      | Bool b -> V.bool b
+      | String s -> V.string s
+      | Unit -> V.unit
+    )
   | Var v -> State.get state v
   | Arg n -> State.get_arg state n
   | Field (e,i) ->
     let e = eval_expr prog state e in
     let e = V.get_record e in
     e.(i)
-  | Cell (v,i) ->
-    let v = State.get state v in
+  | Cell (e,i) ->
+    let e = eval_expr prog state e in
     let i = eval_expr prog state i in
     let i = V.get_int i in
-    (V.get_record v).(i)
+    (V.get_record e).(i)
   | Op(op,a) ->
     let a = Array.map (eval_expr prog state) a in
     let gf n = V.get_float (a.(n)) in
@@ -134,55 +124,23 @@ let rec eval_expr prog state e =
       | Call s ->
         (* Printf.printf "call %s\n%!" s; *)
         let p = List.assoc s prog.procs in
-        (* Printf.printf "len: %d\n%!" (Array.length a); *)
-        let args =
-          let n = Array.length a - 1 in
-          if n < 0 then [||] else Array.init (Array.length a-1) (fun i -> a.(i+1))
-        in
-        let state = State.of_t ~args (T.Record p.proc_vars) in
-        eval prog state p.proc_eqs;
-        State.get_out state
+        let p_vars = List.assoc s state.State.state_proc_vars in
+        let p_state = { state with State.state_vars = p_vars; state_args = a } in
+        eval prog p_state p.proc_eqs;
+        State.get_return state
     )
   | If(b,t,e) ->
     let b = eval_expr prog state b in
     if V.get_bool b then eval prog state t else eval prog state e;
     V.unit
-  | For(i,b,e,f) ->
-    let b = eval_expr prog state b in
-    let b = V.get_int b in
-    let e = eval_expr prog state e in
-    let e = V.get_int e in
-    for k = b to e do
-      State.set state i (V.int k);
-      eval prog state f
-    done;
-    V.unit
-  | Float x -> V.float x
-  | Int n -> V.int n
-  | Bool b -> V.bool b
-  | String s -> V.string s
-  | Unit -> V.unit
   | Return x ->
-    let x = State.get state x in
-    State.set_out state x;
+    let e = eval_expr prog state e in
+    state.State.state_return <- e;
     V.unit
 
 and eval_eq prog state (x,e) =
   let e = eval_expr prog state e in
-  match x with
-  | LVar x ->
-    (* Printf.printf "eval_eq var: %s\n%!" (string_of_var x); *)
-    State.set state x e
-  | LField (x,i) ->
-    (* Printf.printf "eval_eq field: %s\n%!" (string_of_var x); *)
-    let x = eval_expr prog state x in
-    let r = V.get_record x in
-    r.(i) <- e
-  | LCell (x,i) ->
-    (* Printf.printf "eval_eq field: %s\n%!" (string_of_var x); *)
-    let r = V.get_record (State.get state x) in
-    let i = V.get_int (eval_expr prog state i) in
-    r.(i) <- e
+  State.set state x e
 
 and eval prog state eqs =
   List.iter (eval_eq prog state) eqs
@@ -194,6 +152,5 @@ let emit prog =
   (* let store = state.(store) in *)
   fun () ->
     (* Printf.printf "store: %s\n%!" (string_of_val store); *)
-    let ans = State.get_out state in
     eval prog state prog.loop;
-    ans
+    State.get_return state
