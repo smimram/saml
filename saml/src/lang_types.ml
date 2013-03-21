@@ -17,6 +17,11 @@ and desc =
 (** A variable identifier. *)
 | Var of var
 (** A type variable. *)
+| EVar of t option ref
+(** An existential type variable: this is an opaque type whose contents will be
+    revealed later (it is used only for states at the moment because they are
+    not known at typing time). They cannot be substituted by types with
+    universal variables. *)
 | Int
 | Float
 | String
@@ -83,6 +88,7 @@ let unvar t =
   let rec aux t =
     match t.desc with
     | Var { contents = Link t } -> aux t
+    | EVar { contents = Some t } -> aux t
     | Record r -> { t with desc = Record (Record.canonize r) }
     | _ -> t
   in
@@ -148,6 +154,7 @@ end
 
 let to_string ?env t =
   let un = univ_namer () in
+  let en = univ_namer () in
   let pa p s = if p then Printf.sprintf "(%s)" s else s in
   (* When p is false we don't need parenthesis. *)
   let rec to_string p t =
@@ -172,6 +179,12 @@ let to_string ?env t =
         match !v with
         | Link t -> Printf.sprintf "[%s]" (to_string false t)
         | FVar _ -> un v
+      )
+    | EVar v ->
+      (
+        match !v with
+        | Some t -> Printf.sprintf "?[%s]" (to_string false t)
+        | None -> "?" ^ en v
       )
     | Int -> "int"
     | Float -> "float"
@@ -233,6 +246,9 @@ let fresh_invar () = ref (FVar !current_level)
 let fresh_var () =
   make (Var (fresh_invar ()))
 
+let fresh_evar () =
+  make (EVar (ref None))
+
 let get_var t =
   match t.desc with
   | Var v -> v
@@ -253,6 +269,8 @@ let rec free_vars ?(multiplicities=false) t =
   | Arr (a, t) -> List.fold_left (fun v (_,(t,_)) -> u (fv t) v) (fv t) a
   | Var { contents = Link t } -> fv t
   | Var v -> [v]
+  | EVar { contents = Some t } -> fv t
+  | EVar _ -> []
   | Ref t -> fv t
   | Array t -> fv t
   | Record (r,v) ->
@@ -275,6 +293,7 @@ let rec update_level l t =
     match t.desc with
     | Arr (a, t) -> aux t
     | Var v -> update_var v
+    | EVar v -> (match !v with Some t -> aux t | None -> ())
     | Ref t -> aux t
     | Array t -> aux t
     | Record (r,v) ->
@@ -319,6 +338,7 @@ let subtype defs t1 t2 =
           update_level l t1;
           v2 := Link t1
         )
+    | EVar v1, EVar v2 when v1 == v2 -> ()
     | Ident a, Ident b when b = a -> ()
     | Ident a, _ -> (try def a <: t2 with Not_found -> raise Cannot_unify)
     | _, Ident b -> (try t1 <: def b with Not_found -> raise Cannot_unify)
@@ -437,12 +457,6 @@ let bool = make Bool
 
 let ident s = make (Ident s)
 
-let state =
-  let n = ref (-1) in
-  fun () ->
-    incr n;
-    make (Ident (Printf.sprintf "state%d" !n))
-
 let array ?static a =
   make ?static (Array a)
 
@@ -537,3 +551,4 @@ let rec emit t =
   | Var _ -> failwith "Trying to emit type for an universal variable."
   | Arr _ -> failwith "Internal error: cannot emit functional types."
   | Ident t -> failwith (Printf.sprintf "Cannot emit type identifier %s." t)
+  | EVar _ -> failwith "Cannot emit existential type."

@@ -521,7 +521,7 @@ module Expr = struct
               ret t
             | Expand ->
               let a = T.fresh_var () in
-              let s = T.state () in
+              let s = T.fresh_evar () in
               let m = T.monad s a in
               let arg = T.arr [] a in
               let t = T.arr ["",(arg,false)] m in
@@ -779,11 +779,13 @@ module Expr = struct
             let f = List.assoc "" args in
             let t = snd (T.split_arr (typ e)) in
             let f = app ~t f [] in
+            (* Reduce f. *)
             let oldstate = state in
             let state = { reduce_state_empty with rs_fresh = state.rs_fresh; rs_types = state.rs_types } in
             let state, f = reduce ~subst ~state f in
             assert (state.rs_types = []);
             assert (state.rs_variants = []);
+            (* Compute state type. *)
             let decls = state.rs_let in
             List.iter (fun (x,v) -> match v.desc with Fun _ -> assert false | _ -> ()) decls;
             let refs = List.filter (fun (x,v) -> match v.desc with Ref _ -> true | _ -> false) decls in
@@ -791,6 +793,20 @@ module Expr = struct
             let state_t = T.record (List.map (fun (x,v) -> x,(typ v,false)) refs) in
             let state, state_var = fresh_var ~name:"state" state in
             let state_ident = ident ~t:state_t state_var in
+            (* Update existential type of state. *)
+            (
+              let t = typ e in
+              let t = snd (T.split_arr t) in
+              let t = T.monad_state t in
+              let t = T.unvar t in
+              match t.T.desc with
+              | T.EVar v ->
+                assert (!v = None);
+                v := Some state_t
+              | _ ->
+                assert false
+            );
+            (* Oscillator functions. *)
             let f_alloc = fct [] (alloc state_t) in
             let state, decls_init, decls_loop =
               let state = ref state in
@@ -812,7 +828,7 @@ module Expr = struct
             in
             let f_init = fct ["",(state_var,None)] (List.fold_left (fun e (x,v) -> letin x v e) f decls_init) in
             let f_loop = fct ["",(state_var,None)] (List.fold_left (fun e (x,v) -> letin x v e) f decls_loop) in
-
+            (* Answer. *)
             let state =
               {
                 rs_let = oldstate.rs_let;
@@ -824,7 +840,6 @@ module Expr = struct
             let ans = record ["alloc", f_alloc; "init", f_init; "loop", f_loop] in
             let f = List.fold_left (fun e (x,v) -> letin x v e) f decls in
             Printf.printf "expand:\n%s\nexpanded:\n%s\n\n%!" (to_string f) (to_string ans);
-
             state, ans
           (*
             | External ext when ext.ext_name = "print" ->
