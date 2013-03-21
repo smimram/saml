@@ -639,6 +639,7 @@ module Expr = struct
         (* TODO *)
         assert (List.for_all is_value a);
         true
+      | Field (e, l) -> is_value e
       | _ -> false
 
   module BB = B.Builder
@@ -1008,9 +1009,11 @@ module Expr = struct
         | Ident x ->
           let e = B.Var (BB.var prog x) in
           prog, e
-        | App ({ desc = Cst Get }, ["", { desc = Ident x }]) -> prog, B.E.get (B.Var (BB.var prog x))
-        | App ({ desc = Cst Set }, ["", { desc = Ident x }; "", e]) ->
-          let x = B.Var (BB.var prog x) in
+        | App ({ desc = Cst Get }, ["",x]) ->
+          let prog, x = emit_expr prog x in
+          prog, B.E.get x
+        | App ({ desc = Cst Set }, ["",x; "",e]) ->
+          let prog, x = emit_expr prog x in
           let prog, e = emit_expr prog e in
           prog, B.E.set x e
         | App ({ desc = External e } as ext, a) ->

@@ -140,7 +140,6 @@ type op =
 type expr =
 | Val of V.t
 | Var of var (** A local variable. *)
-| Ref of int (** A reference. *)
 | Arg of int (** The n-th argument of a function. *)
 | Op of op * expr array
 | If of expr * eqs * eqs
@@ -170,9 +169,8 @@ let extern ?saml ?ocaml ?c name =
     ext_c = c;
   }
 
-let string_of_var n = Printf.sprintf "v%d" n
-let string_of_ref n = Printf.sprintf "r%d" n
-let string_of_arg n = Printf.sprintf "arg[%d]" n
+let string_of_var n = Printf.sprintf "x%d" n
+let string_of_arg n = Printf.sprintf "arg%d" n
 
 (* TODO: many of them can go external (we only need those with partial
    application simplifications *)
@@ -204,7 +202,6 @@ let rec string_of_expr ?(tab=0) e =
   match e with
   | Val v -> V.to_string v
   | Var v -> string_of_var v
-  | Ref v -> string_of_ref v
   | Arg n -> string_of_arg n
   | Field (x,i) -> Printf.sprintf "%s.%d" (string_of_expr x) i
   | Cell (x,i) -> Printf.sprintf "%s[%s]" (string_of_expr x) (string_of_expr i)

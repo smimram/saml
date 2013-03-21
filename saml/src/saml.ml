@@ -74,4 +74,6 @@ let () =
   (* ignore prog *)
   Printf.printf "****** Emitting program ******\n\n%!";
   let prog = Lang.M.emit prog in
+  let prog = Lang.E.BB.prog prog in
+  Printf.printf "%s\n%!" (Backend.to_string prog);
   ()
