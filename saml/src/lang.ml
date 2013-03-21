@@ -1021,8 +1021,7 @@ module Expr = struct
         (* Printf.printf "emit_expr: %s\n\n%!" (to_string expr); *)
         match expr.desc with
         | Ident x ->
-          let e = B.Var (BB.var prog x) in
-          prog, e
+          prog, BB.var prog x
         | App ({ desc = Cst Get }, ["",x]) ->
           let prog, x = emit_expr prog x in
           prog, B.E.get x
@@ -1191,8 +1190,13 @@ module Expr = struct
         *)
         assert (not l.recursive);
         let prog, def = emit_expr prog l.def in
-        let prog = BB.alloc prog l.var (etyp l.def) in
-        let prog = BB.eq prog (BB.var prog l.var) def in
+        let prog =
+          if T.is_unit (typ l.def) then
+            BB.cmd prog def
+          else
+            let prog = BB.alloc prog l.var (etyp l.def) in
+            BB.eq prog (BB.var prog l.var) def
+        in
         emit prog l.body
       | Record [] ->
         (* This case is used for return values (which have to be unit) of
@@ -1207,8 +1211,10 @@ module Expr = struct
 *)
       | _ ->
         let e = expr in
+        let t = typ e in
         let prog, e = emit_expr prog e in
-        BB.cmd prog (B.E.return e)
+        let e = if T.is_unit t then e else B.E.return e in
+        BB.cmd prog e
     in
     (* let prog = BB.alloc ~free:true prog "dt" (B.T.Float) in *)
     aux prog expr

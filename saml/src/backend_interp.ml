@@ -118,7 +118,7 @@ let rec eval_expr prog state e =
         let p = List.assoc s prog.procs in
         let p_vars = List.assoc s state.State.state_proc_vars in
         let p_state = { state with State.state_vars = p_vars; state_args = a } in
-        eval prog p_state p.proc_eqs;
+        eval prog p_state p.proc_cmds;
         State.get_return state
     )
   | If(b,t,e) ->
@@ -130,13 +130,9 @@ let rec eval_expr prog state e =
     state.State.state_return <- e;
     V.unit
 
-and eval_eq prog state (x,e) =
-  let e = eval_expr prog state e in
-  State.set state x e
-
-and eval prog state eqs =
-  List.iter (eval_eq prog state) eqs
+and eval prog state cmds =
+  List.iter (fun e -> let v = eval_expr prog state e in assert (v = V.U)) cmds
 
 let emit prog =
   let state = State.create prog in
-  eval prog state prog.eqs
+  eval prog state prog.cmds

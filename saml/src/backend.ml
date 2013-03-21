@@ -142,16 +142,16 @@ type expr =
 | Var of var (** A local variable. *)
 | Arg of int (** The n-th argument of a function. *)
 | Op of op * expr array
-| If of expr * eqs * eqs
-| For of var * expr * expr * eqs
-| While of expr * eqs
+| If of expr * cmds * cmds
+| For of var * expr * expr * cmds
+| While of expr * cmds
 | Field of expr * int (** Field of a record. *)
 | Cell of expr * expr (** Cell of an array. *)
 | Return of expr (** Return a value. *)
 (** An equation of the form x = e. *)
-and eq = var * expr
+and cmd = expr
 (** A list of equations. *)
-and eqs = eq list
+and cmds = cmd list
 
 (** Create an external operator with given various implementations. *)
 let extern ?saml ?ocaml ?c name =
@@ -198,13 +198,24 @@ let string_of_op = function
 
 let rec string_of_expr ?(tab=0) e =
   let string_of_expr ?(tab=tab) = string_of_expr ~tab in
-  let string_of_eqs ?(tab=tab) = string_of_eqs ~tab in
+  let string_of_cmds ?(tab=tab) = string_of_cmds ~tab in
+  let expr_cmds cmds =
+    match cmds with
+    | [] -> "{}"
+    | [e] -> string_of_expr e
+    | l ->
+      let s = string_of_cmds ~tab:(tab+1) cmds in
+      let stab = String.spaces (2*tab) in
+      Printf.sprintf "{\n%s\n%s}" s stab
+  in
   match e with
   | Val v -> V.to_string v
   | Var v -> string_of_var v
   | Arg n -> string_of_arg n
   | Field (x,i) -> Printf.sprintf "%s.%d" (string_of_expr x) i
   | Cell (x,i) -> Printf.sprintf "%s[%s]" (string_of_expr x) (string_of_expr i)
+  | Op (Set, [|x;e|]) ->
+    Printf.sprintf "%s := %s" (string_of_expr x) (string_of_expr e)
   | Op (o, a) ->
     if Array.length a = 0 then
       string_of_op o
@@ -215,40 +226,24 @@ let rec string_of_expr ?(tab=0) e =
       Printf.sprintf "%s(%s)" (string_of_op o) a
   | If(b,t,e) ->
     let b = string_of_expr b in
-    (* let soeqs eqs = *)
-    (* let s = List.map string_of_eq eqs in *)
-    (* "{ " ^ String.concat "; " s ^ " }" *)
-    (* in *)
-    let soeqs eqs =
-      (* if List.length eqs = 1 then *)
-        (* let s = string_of_eqs ~tab:0 eqs in *)
-        (* Printf.sprintf "{ %s }" s *)
-      (* else *)
-        let s = string_of_eqs ~tab:(tab+1) eqs in
-        let stab = String.spaces (2*tab) in
-        Printf.sprintf "{\n%s\n%s}" s stab
-    in
-    let t = soeqs t in
+    let t = expr_cmds t in
     if e = [] then
       Printf.sprintf "if %s then %s" b t
     else
-      let e = soeqs e in
+      let e = expr_cmds e in
       Printf.sprintf "if %s then %s else %s" b t e
   | For(i,a,b,ee) ->
-    let soeqs eqs = String.concat_map "; " (fun eq -> string_of_eq eq) eqs in
-    Printf.sprintf "for %s = %s to %s do { %s }" (string_of_var i) (string_of_expr a) (string_of_expr b) (soeqs ee)
+    let ee = expr_cmds ee in
+    Printf.sprintf "for %s = %s to %s do %s" (string_of_var i) (string_of_expr a) (string_of_expr b) ee
   | While(b,ee) ->
-    let soeqs eqs = String.concat_map "; " (fun eq -> string_of_eq eq) eqs in
-    Printf.sprintf "while %s do { %s }" (string_of_expr b) (soeqs ee)
+    let ee = expr_cmds ee in
+    Printf.sprintf "while %s do %s" (string_of_expr b) ee
   | Return e -> Printf.sprintf "return %s" (string_of_expr e)
 
-and string_of_eq ?(tab=0) (x,e) =
-  Printf.sprintf "%s = %s" (string_of_var x) (string_of_expr ~tab e)
-
-and string_of_eqs ?(tab=0) eqs =
+and string_of_cmds ?(tab=0) cmds =
   let stab = String.spaces (2*tab) in
-  let eqs = List.map (fun eq -> stab ^ string_of_eq ~tab eq) eqs in
-  String.concat "\n" eqs
+  let cmds = List.map (fun e -> stab ^ string_of_expr ~tab e) cmds in
+  String.concat "\n" cmds
 
 module Expr = struct
   let to_string = string_of_expr
@@ -291,7 +286,7 @@ type proc =
     (** Return type. *)
     proc_vars : T.t array;
     (** Local variables. *)
-    proc_eqs : eqs;
+    proc_cmds : cmds;
     (** Code. *)
   }
 
@@ -302,7 +297,7 @@ type prog =
     (** Global procedures. *)
     vars : T.t array;
     (** Local variables. *)
-    eqs : eqs;
+    cmds : cmds;
     (** Equations of the program. *)
   }
 
@@ -311,7 +306,7 @@ let create () =
   {
     procs = [];
     vars = [||];
-    eqs = [];
+    cmds = [];
   }
 
 (** Allocate a variable of given type. *)
@@ -328,9 +323,12 @@ let alloc prog t =
     let prog = { prog with vars = Array.append prog.vars [|t|] } in
     prog, v
 
-(** Add an equation. *)
+(** Add a command. *)
+let cmd prog e =
+  { prog with cmds = prog.cmds@[e] }
+
 let eq prog x e =
-  { prog with eqs = prog.eqs@[x,e] }
+  cmd prog (E.set x e)
 
 (** String representation of a program. *)
 let to_string p =
@@ -348,14 +346,14 @@ let to_string p =
             let tret = T.to_string tret in
             let args = List.map T.to_string p.proc_args in
             let args = String.concat ", " args in
-            let eqs = if p.proc_eqs = [] then "" else string_of_eqs ~tab:2 p.proc_eqs ^ "\n" in
+            let eqs = if p.proc_cmds = [] then "" else string_of_cmds ~tab:2 p.proc_cmds ^ "\n" in
             Printf.sprintf "  %s %s(%s) {\n%s  }" tret name args eqs
           ) p.procs
       in
       print (Printf.sprintf "procedures:\n%s\n\n" procs)
   );
-  let eqs = string_of_eqs ~tab:1 p.eqs in
-  print (Printf.sprintf "eqs:\n%s\n\n" eqs);
+  let eqs = string_of_cmds ~tab:1 p.cmds in
+  print (Printf.sprintf "cmds:\n%s\n\n" eqs);
   !ans
 
 (** Rename procedures of the program. *)
@@ -506,15 +504,15 @@ module Opt = struct
         )
       | If (b,t,e) ->
         let b = simpl_expr b in
-        let t = simpl_eqs t in
-        let e = simpl_eqs e in
+        let t = simpl_cmds t in
+        let e = simpl_cmds e in
         If (b,t,e)
       | e -> e
 
-    and simpl_eqs eqs =
-      List.map (fun (l,e) -> l, simpl_expr e) eqs
+    and simpl_cmds cmds =
+      List.map simpl_expr cmds
     in
-    { p with eqs = simpl_eqs p.eqs; }
+    { p with cmds = simpl_cmds p.cmds; }
 
 (*
   (** Inline linearly used variables and eliminate dead code. *)
@@ -649,7 +647,7 @@ module Builder = struct
       prog : prog;
       (** Stacks are used to temporarily emit instructions into a buffer instead of
           loop, for emitting if for instance. *)
-      stack : eqs list;
+      stack : cmds list;
     }
 
   (** Create a program with output of given type and initial value. *)
@@ -687,25 +685,24 @@ module Builder = struct
 
   let var b x =
     try
-      List.assoc x b.ident
+      Var (List.assoc x b.ident)
     with
     | Not_found ->
       failwith (Printf.sprintf "Internal error: variable %s not found in backend builder." x)
 
-  let eq b x e =
-    match b.stack with
-    | eqs::stack ->
-      let eqs = eqs@[x,e] in
-      let stack = eqs::stack in
-      { b with stack }
-    | [] ->
-      let prog = eq b.prog x e in
-      { b with prog }
-
   (** Perform a command. *)
   let cmd b e =
-    let b, x = alloc_anon b T.Unit in
-    eq b x e
+    match b.stack with
+    | cmds::stack ->
+      let cmds = cmds@[e] in
+      let stack = cmds::stack in
+      { b with stack }
+    | [] ->
+      let prog = cmd b.prog e in
+      { b with prog }
+
+  let eq b x e =
+    cmd b (E.set x e)
 
   let return b e =
     cmd b (Return e)
