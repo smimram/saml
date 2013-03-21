@@ -235,6 +235,13 @@ module List = struct
         | None -> aux (k+1)
     in
     aux 0
+
+  let flatten_map f l =
+    let rec aux = function
+      | x::t -> (f x)@(aux t)
+      | [] -> []
+    in
+    aux l
 end
 
 module String = struct

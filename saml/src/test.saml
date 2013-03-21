@@ -22,7 +22,12 @@ let s() =
   let dt() = 1. / 44100. in
   sine(440,phase=0.777)
 
-let () =
-  play(expand(s))
+let osc = expand(s)
 
-(* let r = expand(s) *)
+(* let s = *)
+  (* let osc = expand(s) in *)
+  (* let s = osc.alloc () in *)
+  (* (\* let x = osc.init(s) in *\) *)
+  (* s *)
+
+let () = ()

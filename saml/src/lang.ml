@@ -24,6 +24,8 @@ module Expr = struct
   and desc =
   | Ident of string
   | Fun of (string * (string * t option)) list * t
+  (** A function. Arguments are labelled (or not if the label is ""), have a
+      variable, and optionally a default value. *)
   | Let of let_t
   | App of t * (string * t) list
   | Cst of constant
@@ -51,7 +53,7 @@ module Expr = struct
   | Set
   | If (* takes 3 arguments : "",then,?else *)
   | Expand (** Expand the monad implementation. *)
-  | Alloc of T.t (** Allocate a value. *)
+  | Alloc of T.t (** Allocate a value (its a function with no argument). *)
   (** External values. *)
   and extern =
     {
@@ -62,7 +64,7 @@ module Expr = struct
       ext_backend : T.t -> Backend.Builder.t -> Backend.expr array -> Backend.Builder.t * Backend.expr;
       (** Backend implementation depending on its type. *)
       ext_implem : (string * t) list -> t;
-      (** Implementation. *)
+    (** Implementation. *)
     }
   (** Let declarations. *)
   and let_t =
@@ -143,7 +145,8 @@ module Expr = struct
     | Some t -> T.unvar t
     | None -> failwith (Printf.sprintf "Couldn't get type for %s." (to_string e))
 
-  let rec fct ?(pos=dummy_pos) ?t args e = make ~pos ?t (Fun (args, e))
+  let rec fct ?(pos=dummy_pos) ?t args e =
+    make ~pos ?t (Fun (args, e))
 
   let quote ?pos e =
     let t =
@@ -461,7 +464,7 @@ module Expr = struct
                 let tret = t in
                 let b,t,e = bte a in
                 (* TODO: can we avoid a globally generated fresh name? *)
-                let x = fresh_var  ~name:"ifref" () in
+                let x = fresh_var ~name:"ifref" () in
                 let t = quote (set_ref (ident ~t:(T.ref tret) x) (unquote t)) in
                 let e = quote (set_ref (ident ~t:(T.ref tret) x) (unquote e)) in
                 let ite = app (make (Cst If)) ["",b; "then",t; "else",e] in
@@ -663,10 +666,10 @@ module Expr = struct
   }
 
   (** Generate a fresh variable name. *)
-  let fresh_var state =
+  let fresh_var ?(name="x") state =
     let state = { state with rs_fresh = state.rs_fresh + 1 } in
-    (* Printf.printf "fresh var: _x%d\n%!" state.rs_fresh; *)
-    state, Printf.sprintf "_x%d" state.rs_fresh
+    (* Printf.printf "fresh var: _%s%d\n%!" name state.rs_fresh; *)
+    state, Printf.sprintf "_%s%d" name state.rs_fresh
 
   (** Normalize an expression by performing beta-reductions and
       builtins-reductions. *)
@@ -778,9 +781,37 @@ module Expr = struct
             let f = app ~t f [] in
             let oldstate = state in
             let state = { reduce_state_empty with rs_fresh = state.rs_fresh; rs_types = state.rs_types } in
-            let state, prog = reduce ~subst ~state f in
+            let state, f = reduce ~subst ~state f in
             assert (state.rs_types = []);
             assert (state.rs_variants = []);
+            let decls = state.rs_let in
+            List.iter (fun (x,v) -> match v.desc with Fun _ -> assert false | _ -> ()) decls;
+            let refs = List.filter (fun (x,v) -> match v.desc with Ref _ -> true | _ -> false) decls in
+            let refs = List.rev refs in
+            let state_t = T.record (List.map (fun (x,v) -> x,(typ v,false)) refs) in
+            let state, state_var = fresh_var ~name:"state" state in
+            let state_ident = ident ~t:state_t state_var in
+            let f_alloc = fct [] (alloc state_t) in
+            let state, decls_init, decls_loop =
+              let state = ref state in
+              let aux ~init (x,v) =
+                match v.desc with
+                | Ref e ->
+                  if init then
+                    let s, u = fresh_var !state in
+                    state := s;
+                    [u, app (make (Cst Set)) ["",ident x;"",e]; x, field state_ident x]
+                  else
+                    [x, field state_ident x]
+                | _ -> [x,v]
+              in
+              let decls_init = List.flatten_map (aux ~init:true) decls in
+              let decls_loop = List.flatten_map (aux ~init:false) decls in
+              !state, decls_init, decls_loop
+            in
+            let f_init = fct ["",(state_var,None)] (List.fold_left (fun e (x,v) -> letin x v e) f decls_init) in
+            let f_loop = fct ["",(state_var,None)] (List.fold_left (fun e (x,v) -> letin x v e) f decls_loop) in
+
             let state =
               {
                 rs_let = oldstate.rs_let;
@@ -789,13 +820,11 @@ module Expr = struct
                 rs_variants = oldstate.rs_variants;
               }
             in
-            List.iter (fun (x,v) -> match v.desc with Fun _ -> assert false | _ -> ()) state.rs_let;
-            let refs = List.filter (fun (x,v) -> match v.desc with Ref _ -> true | _ -> false) state.rs_let in
-            let refs = List.rev refs in
-            let refs_t = T.record (List.map (fun (x,v) -> x,(typ v,false)) refs) in
-            let f_alloc = fct [] (alloc refs_t) in
-            (* let state, f = reduce_quote ~subst ~state f [] in *)
-            state, app e ["",quote f]
+            let ans = record ["alloc", f_alloc; "init", f_init; "loop", f_loop] in
+            let f = List.fold_left (fun e (x,v) -> letin x v e) f decls in
+            Printf.printf "expand:\n%s\nexpanded:\n%s\n\n%!" (to_string f) (to_string ans);
+
+            state, ans
           (*
             | External ext when ext.ext_name = "print" ->
             let s = String.concat_map "; " (fun (x,v) -> Printf.sprintf "%s/%s" (to_string v) x) subst) in
