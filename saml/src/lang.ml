@@ -797,12 +797,13 @@ module Expr = struct
               let aux ~init (x,v) =
                 match v.desc with
                 | Ref e ->
+                  let x_def = field ~t:(typ v) state_ident x in
                   if init then
                     let s, u = fresh_var !state in
                     state := s;
-                    [u, app (make (Cst Set)) ["",ident x;"",e]; x, field state_ident x]
+                    [u, set_ref (ident x) e; x, x_def]
                   else
-                    [x, field state_ident x]
+                    [x, x_def]
                 | _ -> [x,v]
               in
               let decls_init = List.flatten_map (aux ~init:true) decls in
@@ -924,7 +925,8 @@ module Expr = struct
           | _ ->
             (* let s = String.concat_map "\n" (fun (l,e) -> Printf.sprintf "*** %s = %s" l (to_string e)) subst in *)
             (* Printf.printf "%s\n%!" s; *)
-            failwith (Printf.sprintf "Cannot reduce field \"%s\" of %s : %s." l (to_string r) (T.to_string (typ r)))
+            (* failwith (Printf.sprintf "Cannot reduce field \"%s\" of %s : %s." l (to_string r) (T.to_string (typ r))) *)
+            state, field ~t:(typ expr) r l
         )
       | Replace_fields (r, l) ->
         let state, r = reduce ~state r in
