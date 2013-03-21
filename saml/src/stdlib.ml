@@ -116,6 +116,14 @@ module List = struct
     in
     aux 0 l
 
+  let index_pred p l =
+    let rec aux n = function
+      | [] -> raise Not_found
+      | x::_ when p x -> n
+      | _::t -> aux (n+1) t
+    in
+    aux 0 l
+
   let indexq x l =
     let rec aux n = function
       | [] -> raise Not_found

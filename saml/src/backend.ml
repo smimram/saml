@@ -279,6 +279,9 @@ module Expr = struct
       | Some n -> [|n|]
     in
     Op(Alloc t, a)
+
+  let field e l =
+    Field(e,l)
 end
 module E = Expr
 

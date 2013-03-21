@@ -1119,6 +1119,19 @@ module Expr = struct
           else
             failwith "TODO: emit records"
 *)
+        | Field (e, l) ->
+          let l =
+            let r =
+              match (T.unvar (typ e)).T.desc with
+              | T.Record (r,_) -> r
+              | _ -> assert false
+            in
+            (* TODO: ensure in some way that this numbering won't be broken by
+               polymorphism... *)
+            List.index_pred (fun (l',_) -> l' = l) r
+          in
+          let prog, e = emit_expr prog e in
+          prog, B.E.field e l
         | Array _ ->
           failwith "Trying to emit constructed array."
       in
