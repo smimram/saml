@@ -37,7 +37,6 @@ module Value = struct
   | B of bool
   | R of t array
   | S of string
-  | P of string (** A procedure *)
   | U (** Unit *)
   | Z (** Bottom *)
 
@@ -51,7 +50,6 @@ module Value = struct
       let r = Array.to_list r in
       let r = String.concat_map ", " to_string r in
       Printf.sprintf "{ %s }" r
-    | P f -> Printf.sprintf "`%s" f
     | Z -> "⊥"
 
   (** Default value for a given type. The bot argument ensures that values are
@@ -81,8 +79,6 @@ module Value = struct
 
   let array n t =
     R (Array.init n (fun _ -> default t))
-
-  let proc s = P s
 
   let get_float = function
     | F x -> x
@@ -148,6 +144,7 @@ type expr =
 | Arg of int (** The n-th argument of a function. *)
 | Op of op * expr array
 | If of expr * eqs * eqs
+| For of var * expr * expr * eqs
 | While of expr * eqs
 | Field of expr * int (** Field of a record. *)
 | Cell of expr * expr (** Cell of an array. *)
@@ -240,6 +237,9 @@ let rec string_of_expr ?(tab=0) e =
     else
       let e = soeqs e in
       Printf.sprintf "if %s then %s else %s" b t e
+  | For(i,a,b,ee) ->
+    let soeqs eqs = String.concat_map "; " (fun eq -> string_of_eq eq) eqs in
+    Printf.sprintf "for %s = %s to %s do { %s }" (string_of_var i) (string_of_expr a) (string_of_expr b) (soeqs ee)
   | While(b,ee) ->
     let soeqs eqs = String.concat_map "; " (fun eq -> string_of_eq eq) eqs in
     Printf.sprintf "while %s do { %s }" (string_of_expr b) (soeqs ee)
@@ -257,6 +257,8 @@ module Expr = struct
   let to_string = string_of_expr
 
   let unit = Val V.U
+
+  let ident x = Var x
 
   let get x =
     Op(Get, [|x|])
@@ -292,14 +294,8 @@ type prog =
     (** Global procedures. *)
     vars : T.t array;
     (** Local variables. *)
-    refs : T.t array;
-    (** References. *)
-    output : T.t;
-    (** Type of the output. *)
-    init : eqs;
-    (** Initialization of variables. *)
-    loop : eqs;
-    (** Main program loop. *)
+    eqs : eqs;
+    (** Equations of the program. *)
   }
 
 (** Create an empty program. *)
@@ -307,15 +303,13 @@ let create t =
   {
     procs = [];
     vars = [||];
-    refs = [||];
-    output = t;
-    init = [];
-    loop = [];
+    eqs = [];
   }
 
 (** Allocate a variable of given type. *)
-let alloc_var prog t =
+let alloc prog t =
   try
+    (* Trye to reuse unit variables. *)
     if t = T.Unit then
       prog, Array.index t prog.vars
     else
@@ -326,50 +320,16 @@ let alloc_var prog t =
     let prog = { prog with vars = Array.append prog.vars [|t|] } in
     prog, v
 
-(** Allocate a reference of given type. *)
-let alloc_ref prog t =
-  let v = Array.length prog.refs in
-  let prog = { prog with refs = Array.append prog.refs [|t|] } in
-  prog, v
-
-(** Add an initial equation. *)
-let init prog x e =
-  { prog with init = prog.init@[x,e] }
-let prog_init = init
-
 (** Add an equation. *)
 let eq prog x e =
-  { prog with loop = prog.loop@[x,e] }
-
-(*
-(** Type of a loc *)
-let rec typ prog x =
-  (* Printf.printf "typ: %s\n%!" (string_of_loc x); *)
-  match x with
-  | LVar x -> fst prog.vars.(x)
-  | LField (x, n) ->
-    (
-      match T.unptr (typ prog (LVar x)) with
-      | T.Record r -> r.(n)
-      | _ -> assert false
-    )
-  | LCell (x, _) ->
-    (
-      match typ prog (LVar x) with
-      | T.Array t -> t
-      | _ -> assert false
-    )
-*)
+  { prog with eqs = prog.eqs@[x,e] }
 
 (** String representation of a program. *)
 let to_string p =
   let ans = ref "" in
   let print s = ans := !ans ^ s in
   let vars = Array.mapi (fun i t -> Printf.sprintf "%s:%s" (string_of_var i) (T.to_string t)) p.vars in
-  let refs = Array.mapi (fun i t -> Printf.sprintf "%s:%s" (string_of_ref i) (T.to_string t)) p.refs in
   let vars = String.concat ", " (Array.to_list vars) in
-  let refs = String.concat ", " (Array.to_list refs) in
-  print (Printf.sprintf "references:\n  %s\n\n" refs);
   print (Printf.sprintf "variables:\n  %s\n\n" vars);
   (
     if p.procs <> [] then
@@ -386,35 +346,14 @@ let to_string p =
       in
       print (Printf.sprintf "procedures:\n%s\n\n" procs)
   );
-  print (Printf.sprintf "output:\n  %s\n\n" (T.to_string p.output));
-  let init = string_of_eqs ~tab:1 p.init in
-  print (Printf.sprintf "init:\n%s\n\n" init);
-  let loop = string_of_eqs ~tab:1 p.loop in
-  print (Printf.sprintf "loop:\n%s\n\n" loop);
+  let eqs = string_of_eqs ~tab:1 p.eqs in
+  print (Printf.sprintf "eqs:\n%s\n\n" eqs);
   !ans
 
 (** Rename procedures of the program. *)
 let map_proc_names prog f =
   let procs = List.map (fun (l,p) -> f l, p) prog.procs in
   { prog with procs }
-
-module Subst = struct
-  module Ref = struct
-    let rec eqs s ee = List.map (eq s) ee
-    and eq s (x,e) = x, expr s e
-    and expr s e =
-      (* Printf.printf "Subst.Ref.expr: %s\n%!" (E.to_string e); *)
-      match e with
-      | Ref x -> (try s x with Not_found -> Ref x)
-      | Val _ | Var _ | Arg _ as e -> e
-      | Op(o,a) -> Op(o, Array.map (expr s) a)
-      | Return e -> Return (expr s e)
-
-    let eqs_list s ee =
-      let s x = List.assoc x s in
-      eqs s ee
-  end
-end
 
 (*
 (** Helper structure to compute free variables. *)
@@ -567,9 +506,7 @@ module Opt = struct
     and simpl_eqs eqs =
       List.map (fun (l,e) -> l, simpl_expr e) eqs
     in
-    { p with
-      init = simpl_eqs p.init;
-      loop = simpl_eqs p.loop }
+    { p with eqs = simpl_eqs p.eqs; }
 
 (*
   (** Inline linearly used variables and eliminate dead code. *)
@@ -695,89 +632,12 @@ let split_ret eqs =
 
 (** {3 Procedures} *)
 
-(** Names for standard procedures. *)
-module Proc_name = struct
-  let alloc = "alloc"
-  let unalloc = "unalloc"
-  let init = "init"
-  let loop = "loop"
-end
-
-(** Generate procedures from a program. The state is last argument (in order not
-    to change preexisting arguments. *)
-(* TODO: optimize first in order to generate smallest state as possible. *)
-let pack_state prefix prog =
-  let state_t = T.Record prog.refs in
-  let subst_refs arg_state i = Field(Arg arg_state, i) in
-  let prog, alloc =
-    let prog, u = alloc_var prog T.Unit in
-    let s = Op(Alloc state_t,[||]) in
-    prog, [u, Return s]
-  in
-  let proc_alloc =
-    {
-      proc_vars = prog.vars;
-      proc_args = [];
-      proc_ret = state_t;
-      proc_eqs = alloc;
-    }
-  in
-  let proc_init =
-    let eqs = Subst.Ref.eqs (subst_refs 0) prog.init in
-    {
-      proc_vars = prog.vars;
-      proc_args = [state_t];
-      proc_ret = prog.output;
-      proc_eqs = eqs;
-    }
-  in
-  let proc_loop =
-    let eqs = Subst.Ref.eqs (subst_refs 0) prog.loop in
-    {
-      proc_vars = prog.vars;
-      proc_args = [state_t];
-      proc_ret = prog.output;
-      proc_eqs = eqs;
-    }
-  in
-  let prog, unalloc =
-    let prog, u = alloc_var prog T.Unit in
-    prog, [u, Op(Free, [|Arg 0|])]
-  in
-  let proc_unalloc =
-    {
-      proc_vars = prog.vars;
-      proc_args = [state_t];
-      proc_eqs = unalloc;
-      proc_ret = T.Unit;
-    }
-  in
-  let procs =
-    List.map
-      (fun (l,p) ->
-        let state_arg = List.length p.proc_args in
-        prefix^l,
-        {
-          proc_vars = p.proc_vars;
-          proc_args = p.proc_args@[state_t];
-          proc_ret = p.proc_ret;
-          proc_eqs = Subst.Ref.eqs (subst_refs state_arg) p.proc_eqs;
-        }
-      ) prog.procs
-  in
-  [
-    prefix^Proc_name.alloc, proc_alloc;
-    prefix^Proc_name.init, proc_init;
-    prefix^Proc_name.loop, proc_loop;
-    prefix^Proc_name.unalloc, proc_unalloc;
-  ]@procs
-
 (** Helper functions to create programs. *)
 module Builder = struct
   type t =
     {
-      ident : (string * expr) list;
-      (** Declared identifiers. *)
+      ident : (string * var) list;
+      (** Declared variables. *)
       prog : prog;
       (** Stacks are used to temporarily emit instructions into a buffer instead of
           loop, for emitting if for instance. *)
@@ -798,67 +658,46 @@ module Builder = struct
   let pop b =
     { b with stack = List.tl b.stack }, List.hd b.stack
 
-  let alloc_var_anon b t =
-    let prog, v = alloc_var b.prog t in
+  let alloc_anon b t =
+    let prog, v = alloc b.prog t in
     { b with prog }, v
 
-  let alloc_var b x t =
+  let alloc b x t =
     (* In theory, we could have masking but in practice we rename all the
        variables, so it's safer this way for now. *)
     if List.exists (fun (y,_) -> x = y) b.ident then
       failwith (Printf.sprintf "Backend: trying to reallocate %s." x);
-    let prog, v = alloc_var b.prog t in
+    let prog, v = alloc b.prog t in
     { b with
       prog;
-      ident = (x,Var v)::b.ident }
-
-  let alloc_ref b x t =
-    if List.exists (fun (y,_) -> x = y) b.ident then
-      failwith (Printf.sprintf "Backend: trying to reallocate %s." x);
-    let prog, v = alloc_ref b.prog t in
-    { b with
-      prog;
-      ident = (x,Ref v)::b.ident }
+      ident = (x,v)::b.ident }
 
   let procs b procs =
     let prog = b.prog in
     let prog = { prog with procs = prog.procs@procs } in
     { b with prog }
 
-  let ident b x =
+  let var b x =
     try
       List.assoc x b.ident
     with
     | Not_found ->
       failwith (Printf.sprintf "Internal error: variable %s not found in backend builder." x)
 
-  let var b x =
-    match ident b x with
-    | Var v -> v
-    | _ -> assert false
-
-  let eq b ?(init=false) x e =
-    (* Equations are always performed at init. *)
-    let b =
-      let prog = prog_init b.prog x e in
+  let eq b x e =
+    match b.stack with
+    | eqs::stack ->
+      let eqs = eqs@[x,e] in
+      let stack = eqs::stack in
+      { b with stack }
+    | [] ->
+      let prog = eq b.prog x e in
       { b with prog }
-    in
-    if init then
-      b
-    else
-      match b.stack with
-      | eqs::stack ->
-        let eqs = eqs@[x,e] in
-        let stack = eqs::stack in
-        { b with stack }
-      | [] ->
-        let prog = eq b.prog x e in
-        { b with prog }
 
   (** Perform a command. *)
-  let cmd ?init b e =
-    let b, x = alloc_var_anon b T.Unit in
-    eq ?init b x e
+  let cmd b e =
+    let b, x = alloc_anon b T.Unit in
+    eq b x e
 
   let return b e =
     cmd b (Return e)
@@ -879,7 +718,4 @@ module Builder = struct
         prog
     in
     prog
-
-  let pack_state prefix b =
-    pack_state prefix (prog b)
 end

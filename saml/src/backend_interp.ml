@@ -30,7 +30,7 @@ module State = struct
     let alloc vars = Array.map (fun t -> default_value t) vars in
     {
       state_vars = alloc prog.vars;
-      state_refs = alloc prog.refs;
+      state_refs = [||]; (* TODO *)
       state_proc_vars = List.map (fun (l,p) -> l, alloc p.proc_vars) prog.procs;
       state_args = [||];
       state_return = V.Z;
@@ -139,10 +139,4 @@ and eval prog state eqs =
 
 let emit prog =
   let state = State.create prog in
-  eval prog state prog.init;
-  (* let store = free_var prog "state" in *)
-  (* let store = state.(store) in *)
-  fun () ->
-    (* Printf.printf "store: %s\n%!" (string_of_val store); *)
-    eval prog state prog.loop;
-    State.get_return state
+  eval prog state prog.eqs

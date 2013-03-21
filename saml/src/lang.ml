@@ -991,11 +991,11 @@ module Expr = struct
         (* Printf.printf "emit_expr: %s\n\n%!" (to_string expr); *)
         match expr.desc with
         | Ident x ->
-          let e = BB.ident prog x in
+          let e = B.Var (BB.var prog x) in
           prog, e
-        | App ({ desc = Cst Get }, ["", { desc = Ident x }]) -> prog, B.E.get (BB.ident prog x)
+        | App ({ desc = Cst Get }, ["", { desc = Ident x }]) -> prog, B.E.get (B.Var (BB.var prog x))
         | App ({ desc = Cst Set }, ["", { desc = Ident x }; "", e]) ->
-          let x = BB.ident prog x in
+          let x = B.Var (BB.var prog x) in
           let prog, e = emit_expr prog e in
           prog, B.E.set x e
         | App ({ desc = External e } as ext, a) ->
@@ -1108,6 +1108,7 @@ module Expr = struct
       (* Printf.printf "emit: %s\n\n%!" (to_string expr); *)
       match expr.desc with
       | Let ({ def = { desc = Ref v } } as l) ->
+        (*
         let prog = BB.alloc_ref prog l.var (etyp v) in
         let prog =
           (* Bot is only used for declaring the reference. *)
@@ -1118,6 +1119,8 @@ module Expr = struct
             BB.cmd prog ~init:true (B.E.set (BB.ident prog l.var) e)
         in
         emit prog l.body
+        *)
+        assert false
       | Let l ->
         assert (l.var <> "dt");
         (*
@@ -1130,8 +1133,8 @@ module Expr = struct
         *)
         assert (not l.recursive);
         let prog, def = emit_expr prog l.def in
-        let prog = BB.alloc_var prog l.var (etyp l.def) in
-        let prog = BB.eq prog ~init:(T.allocates (typ l.def)) (BB.var prog l.var) def in
+        let prog = BB.alloc prog l.var (etyp l.def) in
+        let prog = BB.eq prog (BB.var prog l.var) def in
         emit prog l.body
       | Record [] ->
         (* This case is used for return values (which have to be unit) of
