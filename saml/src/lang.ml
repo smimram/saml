@@ -1071,6 +1071,8 @@ module Expr = struct
         | External e ->
           (* For constants such as pi. *)
           e.ext_backend (typ expr) prog [||]
+        | Ref e ->
+          emit_expr prog e
         | Record [] ->
           prog, B.E.unit
 (*
@@ -1140,7 +1142,7 @@ module Expr = struct
       in
       (* Printf.printf "emit: %s\n\n%!" (to_string expr); *)
       match expr.desc with
-      | Let ({ def = { desc = Ref v } } as l) ->
+      (* | Let ({ def = { desc = Ref v } } as l) -> *)
         (*
         let prog = BB.alloc_ref prog l.var (etyp v) in
         let prog =
@@ -1153,7 +1155,7 @@ module Expr = struct
         in
         emit prog l.body
         *)
-        assert false
+        (* assert false *)
       | Let ({ def = { desc = External _ } } as l)
       | Let ({ def = { desc = Fun _ } } as l) ->
         Printf.printf "Ignoring function: %s\n%!" l.var;
