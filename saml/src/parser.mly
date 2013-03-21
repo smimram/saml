@@ -75,7 +75,7 @@
 
 %token LET REC IN FUN ARR DOT
 %token MODULE END BUILTIN INCLUDE
-%token REF GET SET FOR TO DO DONE
+%token REF GET SET FOR WHILE TO DO DONE
 %token CMP LE GE LT GT
 %token BAND BOR BNOT
 %token IF THEN ELSE
@@ -199,6 +199,7 @@ expr:
     | expr BOR expr { mk_app (Builtin.get "or") ["",$1; "",$3] }
     | BNOT expr { mk_app (Builtin.get "not") ["",$2] }
     | POW LPAR expr COMMA expr RPAR { mk_app (Builtin.get "pow") ["",$3;"",$5] }
+    | WHILE expr DO expr DONE { mk (While($2,E.quote $4)) }
     | FOR IDENT EQ expr TO expr DO expr DONE { mk (For($2,$4,$6,E.quote $8)) }
     | simple_expr app_args { mk_app $1 $2 }
     | REF simple_expr { mk_ref $2 }

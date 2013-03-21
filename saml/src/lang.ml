@@ -43,6 +43,7 @@ module Expr = struct
       optional and replaces the value only if not already present. *)
   | Variant of string * t
   | For of string * t * t * t
+  | While of t * t
   and constant =
   | Bot (** Dummy value used internally to declare references. *)
   | Int of int
@@ -128,6 +129,8 @@ module Expr = struct
         Printf.sprintf "(%s : %s)" (to_string false e) (T.to_string t)
       | For(i,b,e,f) ->
         pa p (Printf.sprintf "for %s = %s to %s do %s done" i (to_string false b) (to_string false e) (to_string false f))
+      | While(b,e) ->
+        pa p (Printf.sprintf "while %s do %s done" (to_string false b) (to_string false e))
       | Array a ->
         let a = String.concat_map ", " (to_string false) a in
         Printf.sprintf "[%s]" a
@@ -604,6 +607,12 @@ module Expr = struct
             | _ -> assert false
           in
           ret (Replace_fields(r,l)) t
+        | While(b,e) ->
+          let b = infer_type env b in
+          let b = coerce b T.bool in
+          let e = infer_type env e in
+          let e = coerce e (T.arrnl [] T.unit) in
+          ret (While(b,e)) T.unit
         | For(i,b,e,f) ->
           let b = infer_type env b in
           let e = infer_type env e in
@@ -860,6 +869,11 @@ module Expr = struct
             )
           | _ -> state, app e args
         )
+      | While(b,e) ->
+        let state, b = reduce ~subst ~state b in
+        let state, e = reduce_quote ~subst ~state e [] in
+        let e = quote e in
+        state, make (While(b,e))
       | For(i,b,e,f) ->
         let state, i' = fresh_var state in
         let subst = (i,ident i')::subst in
@@ -1038,6 +1052,11 @@ module Expr = struct
           let prog, t = emit_eqs prog t in
           let prog, e = emit_eqs prog e in
           prog, B.If (b,t,e)
+        | While (b,e) ->
+          let e = unquote e in
+          let prog, b = emit_expr prog b in
+          let prog, e = emit_eqs prog e in
+          prog, B.While (b,e)
 (*
         | For (i,b,e,f) ->
           let f = unquote f in

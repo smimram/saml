@@ -17,6 +17,7 @@
       "ref", REF;
       "rec", REC;
       "for", FOR;
+      "while", WHILE;
       "to", TO;
       "do", DO;
       "done", DONE;
