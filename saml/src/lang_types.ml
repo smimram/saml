@@ -32,7 +32,7 @@ and desc =
     might point to other records. *)
 and var = var_contents ref
 and var_contents =
-| EVar of int
+| FVar of int
 (** A free variable at given level. *)
 | Link of t
 (** A link to another variable *)
@@ -70,7 +70,7 @@ module Record = struct
               | Record (r,v) -> canonize (r,v)
               | Var v -> aux (Some v)
             )
-          | EVar _ -> [], Some v
+          | FVar _ -> [], Some v
       in
       aux v
     in
@@ -171,7 +171,7 @@ let to_string ?env t =
       (
         match !v with
         | Link t -> Printf.sprintf "[%s]" (to_string false t)
-        | EVar _ -> un v
+        | FVar _ -> un v
       )
     | Int -> "int"
     | Float -> "float"
@@ -228,7 +228,7 @@ let current_level = ref 0
 let enter_level () = incr current_level
 let leave_level () = decr current_level
 
-let fresh_invar () = ref (EVar !current_level)
+let fresh_invar () = ref (FVar !current_level)
 
 let fresh_var () =
   make (Var (fresh_invar ()))
@@ -270,7 +270,7 @@ let rec update_level l t =
     let update_var v =
       match !v with
       | Link t -> aux t
-      | EVar l' -> v := EVar (min l l')
+      | FVar l' -> v := FVar (min l l')
     in
     match t.desc with
     | Arr (a, t) -> aux t
@@ -303,7 +303,7 @@ let subtype defs t1 t2 =
       );
     match t1.desc, t2.desc with
     | Var v1, Var v2 when v1 == v2 -> ()
-    | Var ({ contents = EVar l } as v1), _ ->
+    | Var ({ contents = FVar l } as v1), _ ->
       if List.memq v1 (free_vars t2) then
         raise Cannot_unify
       else
@@ -311,7 +311,7 @@ let subtype defs t1 t2 =
           update_level l t2;
           v1 := Link t2
         )
-    | _, Var ({ contents = EVar l } as v2) ->
+    | _, Var ({ contents = FVar l } as v2) ->
       if List.memq v2 (free_vars t1) then
         raise Cannot_unify
       else
@@ -403,7 +403,7 @@ let generalize t =
     let rec aux t =
       let generalize_var v =
         match !v with
-        | EVar l -> if l > current_level then m v else v
+        | FVar l -> if l > current_level then m v else v
         | Link _ -> assert false
       in
       let t' =
@@ -536,9 +536,4 @@ let rec emit t =
   | Array t -> B.T.Array (emit t)
   | Var _ -> failwith "Trying to emit type for an universal variable."
   | Arr _ -> failwith "Internal error: cannot emit functional types."
-
-(** This indicates whether the function allocates memory and should thus be
-    executed only at init. *)
-let allocates t =
-  (* TODO *)
-  false
+  | Ident t -> failwith (Printf.sprintf "Cannot emit type identifier %s." t)

@@ -1009,7 +1009,9 @@ module Expr = struct
           in
           let a = Array.of_list a in
           e.ext_backend (typ ext) prog a
-        (* prog, B.Op (op,a) *)
+        | App ({ desc = Cst (Alloc t) }, a) ->
+          assert (a = []);
+          prog, B.E.alloc (T.emit t)
         | App ({ desc = Cst If }, a) ->
           let b,t,e = bte a in
           let t = unquote t in
@@ -1121,6 +1123,10 @@ module Expr = struct
         emit prog l.body
         *)
         assert false
+      | Let ({ def = { desc = External _ } } as l)
+      | Let ({ def = { desc = Fun _ } } as l) ->
+        Printf.printf "Ignoring function: %s\n%!" l.var;
+        emit prog l.body
       | Let l ->
         assert (l.var <> "dt");
         (*
@@ -1293,15 +1299,20 @@ module Module = struct
     m
 
   let emit m =
-    let rec aux = function
-      | Expr e::_ ->
-        let t = E.typ e in
-        let t = T.emit t in
-        E.emit (E.BB.create t) e
-      | _::l -> aux l
-      | [] -> assert false
+    let e =
+      let n = ref (-1) in
+      let fresh () = incr n; Printf.sprintf "m%d" !n in
+      List.fold_left
+        (fun ee e ->
+          match e with
+          | Expr e -> E.letin (fresh ()) e ee
+          | Decl (x, e) -> E.letin x e ee
+          | Type _ -> ee
+          | Variant _ -> ee
+        ) (E.unit ()) (List.rev m)
     in
-    aux m
+    Printf.printf "emit:\n%s\n\n%!" (E.to_string e);
+    E.emit (E.BB.create ()) e
 end
 
 module M = Module

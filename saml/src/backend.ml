@@ -271,6 +271,14 @@ module Expr = struct
 
   let record r =
     Val (V.R r)
+
+  let alloc ?n t =
+    let a =
+      match n with
+      | None -> [||]
+      | Some n -> [|n|]
+    in
+    Op(Alloc t, a)
 end
 module E = Expr
 
@@ -299,7 +307,7 @@ type prog =
   }
 
 (** Create an empty program. *)
-let create t =
+let create () =
   {
     procs = [];
     vars = [||];
@@ -645,10 +653,10 @@ module Builder = struct
     }
 
   (** Create a program with output of given type and initial value. *)
-  let create t =
+  let create () =
     {
       ident = [];
-      prog = create t;
+      prog = create ();
       stack = [];
     }
 
