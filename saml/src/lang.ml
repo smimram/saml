@@ -44,7 +44,6 @@ module Expr = struct
   | Variant of string * t
   | For of string * t * t * t
   | While of t * t
-  | Init of t * t
   (** A value at initialization, and another one at other times. *)
   and constant =
   | Bot (** Dummy value used internally to declare references. *)
@@ -142,7 +141,6 @@ module Expr = struct
       | Replace_fields (r,l) ->
         Printf.sprintf "( %s with %s )" (to_string true r) (String.concat_map ", " (fun (l,(e,o)) -> Printf.sprintf "%s =%s %s" l (if o then "?" else "") (to_string false e)) l)
       | Variant (l,e) -> Printf.sprintf "`%s(%s)" l (to_string false e)
-      | Init (e0,e) -> Printf.sprintf "init(%s,%s)" (to_string false e0) (to_string false e)
     in
     to_string false e
 
@@ -652,7 +650,6 @@ module Expr = struct
         assert (List.for_all is_value a);
         true
       | Field (e, l) -> is_value e
-      | Init (e0, e) -> is_value e0 && is_value e
       | _ -> false
 
   module BB = B.Builder
