@@ -22,13 +22,12 @@ let s() =
   let dt() = 1. / 44100. in
   sine(440,phase=0.777)
 
-let s =
+let () =
   let osc = expand(s) in
   let s = osc.alloc () in
   let x = ref (osc.init(s)) in
   while true do
     x := osc.loop(s)
-  done;
-  x
+  done
 
 let () = ()

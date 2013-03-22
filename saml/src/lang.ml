@@ -44,6 +44,8 @@ module Expr = struct
   | Variant of string * t
   | For of string * t * t * t
   | While of t * t
+  | Init of t * t
+  (** A value at initialization, and another one at other times. *)
   and constant =
   | Bot (** Dummy value used internally to declare references. *)
   | Int of int
@@ -140,6 +142,7 @@ module Expr = struct
       | Replace_fields (r,l) ->
         Printf.sprintf "( %s with %s )" (to_string true r) (String.concat_map ", " (fun (l,(e,o)) -> Printf.sprintf "%s =%s %s" l (if o then "?" else "") (to_string false e)) l)
       | Variant (l,e) -> Printf.sprintf "`%s(%s)" l (to_string false e)
+      | Init (e0,e) -> Printf.sprintf "init(%s,%s)" (to_string false e0) (to_string false e)
     in
     to_string false e
 
@@ -649,6 +652,7 @@ module Expr = struct
         assert (List.for_all is_value a);
         true
       | Field (e, l) -> is_value e
+      | Init (e0, e) -> is_value e0 && is_value e
       | _ -> false
 
   module BB = B.Builder
@@ -791,10 +795,8 @@ module Expr = struct
             let f = app ~t f [] in
             (* Reduce f. *)
             let oldstate = state in
-            let state = { reduce_state_empty with rs_fresh = state.rs_fresh; rs_types = state.rs_types } in
+            let state = { reduce_state_empty with rs_fresh = state.rs_fresh; rs_types = state.rs_types; rs_variants = state.rs_variants } in
             let state, f = reduce ~subst ~state f in
-            assert (state.rs_types = []);
-            assert (state.rs_variants = []);
             (* Compute state type. *)
             let decls = state.rs_let in
             List.iter (fun (x,v) -> match v.desc with Fun _ -> assert false | _ -> ()) decls;
@@ -987,13 +989,11 @@ module Expr = struct
   (** Reduce a quote (of type (args) -> 'a). *)
   and reduce_quote ~subst ~state prog args =
     let oldstate = state in
-    let state = { reduce_state_empty with rs_fresh = state.rs_fresh; rs_types = state.rs_types } in
+    let state = { reduce_state_empty with rs_fresh = state.rs_fresh; rs_types = state.rs_types; rs_variants = state.rs_variants } in
     let t = snd (T.split_arr (typ prog)) in
     let prog = app ~t prog args in
     let state, prog = reduce ~subst ~state prog in
     let prog = List.fold_left (fun e (x,v) -> letin x v e) prog state.rs_let in
-    assert (state.rs_types = []);
-    assert (state.rs_variants = []);
     let state =
       {
         rs_let = oldstate.rs_let;
@@ -1056,28 +1056,18 @@ module Expr = struct
           let prog, b = emit_expr prog b in
           let prog, e = emit_eqs prog e in
           prog, B.While (b,e)
-(*
         | For (i,b,e,f) ->
           let f = unquote f in
           let prog, b = emit_expr prog b in
           let prog, e = emit_expr prog e in
           let prog = BB.alloc prog i B.T.Int in
           let prog, f = emit_eqs prog f in
-          prog, B.For(BB.var prog i,b,e,f)
-*)
-(*
-        | App ({ desc = Proc(p,_)}, a) ->
-          let a = List.map snd a in
-          let (state,prog), a =
-            List.fold_map
-              (fun (state,prog) e ->
-                let state, prog, e = emit_expr ~state prog e in
-                (state,prog), e
-              ) (state,prog) a
+          let i =
+            match BB.var prog i with
+            | B.Var i -> i
+            | _ -> assert false
           in
-          let a = Array.of_list a in
-          state, prog, B.Op (B.Call p, a)
-*)
+          prog, B.For(i,b,e,f)
         | Cst c ->
           (
             match c with
@@ -1093,55 +1083,6 @@ module Expr = struct
           emit_expr prog e
         | Record [] ->
           prog, B.E.unit
-(*
-        | Record r ->
-          (* Printf.printf "emit record: %s : %s\n%!" (to_string expr) (T.to_string (typ expr)); *)
-          (* Records are handled in a (very) special way: functional fields are
-             actually function declarations. If there is only one data field left
-             then the return value is not a 1-uple but the value itself. *)
-          let decls = ref [] in
-          (* TODO: we should filter according to the type because some fields
-             might be hidden, or coercions could remove those... *)
-          let r = List.filter (fun (l,e) -> if T.is_arr (typ e) then (decls := (l,e) :: !decls; false) else true) r in
-          let decls = List.rev !decls in
-          if List.length r = 1 then
-            let l,e = List.hd r in
-            (* This is where we need emit to take and return subst and state... *)
-            (* TODO: emit decls *)
-            let state, prog =
-              List.fold_left
-                (fun (state,prog) (l,e) ->
-                  let ea, er = split_fun e in
-                  let ta, t = T.split_arr (typ e) in
-                  (* Arguments should be ordered according to type (this is
-                     important for labeled arguments). *)
-                  let args =
-                    let ea = ref ea in
-                    let arg l =
-                      let ans = List.assoc l !ea in
-                      ea := List.remove_assoc l !ea;
-                      ans
-                    in
-                    let n = ref (-1) in
-                    let ans = List.map (fun (l,(t,_)) -> let x,_ = arg l in incr n; l,x,t,!n) ta in
-                    assert (!ea = []);
-                    ans
-                  in
-                  let state, e = reduce_quote ~subst ~state e (List.map (fun (l,x,t,n) -> l, ident ~t x) args) in
-                  let prog = BB.push prog in
-                  let prog = List.fold_left (fun prog (l,x,t,n) -> BB.eq_alloc prog x (T.emit t) (B.Arg n)) prog args in
-                  let state, prog = emit ~subst ~state prog e in
-                  let prog, e = BB.pop prog in
-                  let targs = List.map (fun (l,x,t,n) -> T.emit t) args in
-                  let prog = BB.proc prog l targs (T.emit t) e in
-                  state, prog
-                ) (state,prog) decls
-            in
-            (* Printf.printf "emit_expr record: %s\n%!" (to_string e); *)
-            emit_expr ~state prog e
-          else
-            failwith "TODO: emit records"
-*)
         | Field (e, l) ->
           let l =
             let r =
@@ -1160,23 +1101,15 @@ module Expr = struct
       in
       (* Printf.printf "emit: %s\n\n%!" (to_string expr); *)
       match expr.desc with
-      (* | Let ({ def = { desc = Ref v } } as l) -> *)
-        (*
-        let prog = BB.alloc_ref prog l.var (etyp v) in
-        let prog =
-          (* Bot is only used for declaring the reference. *)
-          if v.desc = Cst Bot then
-            prog
-          else
-            let prog, e = emit_expr prog v in
-            BB.cmd prog ~init:true (B.E.set (BB.ident prog l.var) e)
-        in
-        emit prog l.body
-        *)
-        (* assert false *)
       | Let ({ def = { desc = External _ } } as l)
       | Let ({ def = { desc = Fun _ } } as l) ->
-        Printf.printf "Ignoring function: %s\n%!" l.var;
+        Printf.printf "Ignoring function %s...\n%!" l.var;
+        emit prog l.body
+      | Let ({ def = { desc = Record _ } } as l) ->
+        Printf.printf "Ignoring record %s...\n%!" l.var;
+        emit prog l.body
+      | Let ({ def = { desc = Module _ } } as l) ->
+        Printf.printf "Ignoring module %s...\n%!" l.var;
         emit prog l.body
       | Let l ->
         assert (l.var <> "dt");
@@ -1202,13 +1135,6 @@ module Expr = struct
         (* This case is used for return values (which have to be unit) of
            subprograms (if, while, etc). *)
         prog
-(*
-      | _ when T.is_unit (typ expr) ->
-        let e = expr in
-        let x = fresh_var state in
-        let e = letin x e (unit ()) in
-        emit prog e
-*)
       | _ ->
         let e = expr in
         let t = typ e in
@@ -1216,18 +1142,7 @@ module Expr = struct
         let e = if T.is_unit t then e else B.E.return e in
         BB.cmd prog e
     in
-    (* let prog = BB.alloc ~free:true prog "dt" (B.T.Float) in *)
     aux prog expr
-
-(*
-  (** Emit a quote. *)
-  and emit_quote ~subst ~state prog e args =
-    let state, e = reduce_quote ~subst ~state e args in
-    let prog = BB.push prog in
-    let state, prog = emit ~subst ~state ~free_vars:true ~prog e in
-    let prog, e = BB.pop prog in
-    (state, prog), e
-*)
 end
 
 module E = Expr
