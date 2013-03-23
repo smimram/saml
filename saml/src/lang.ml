@@ -94,7 +94,9 @@ module Expr = struct
 
   let to_string e =
     let pa p s = if p then Printf.sprintf "(%s)" s else s in
-    let rec to_string p e =
+    let rec to_string ~tab p e =
+      let tabs ?(tab=tab) () = String.make (2*tab) ' ' in
+      let tabss () = tabs ~tab:(tab+1) () in
       match e.desc with
       | Ident x -> x
       | Fun (a, e) ->
@@ -102,18 +104,38 @@ module Expr = struct
           String.concat_map ", "
             (fun (l,(x,d)) ->
               let l = if l = "" || l = x then "" else l ^ ":" in
-              let d = match d with None -> "" | Some d -> "=" ^ to_string false d in
+              let d = match d with None -> "" | Some d -> "=" ^ to_string ~tab:(tab+1) false d in
               Printf.sprintf "%s%s%s" l x d
             ) a
         in
-        pa p (Printf.sprintf "fun (%s) -> %s" a (to_string false e))
+        let e = to_string ~tab:(tab+1) false e in
+        pa p (Printf.sprintf "fun (%s) ->%s%s" a (if String.contains e '\n' then ("\n"^(tabs ~tab:(tab+1) ())) else " ") e)
+      | App ({ desc = Cst If }, a) ->
+        let b = List.assoc "" a in
+        let t = List.assoc "then" a in
+        let e = List.assoc "else" a in
+        let b = to_string ~tab:(tab+1) false b in
+        let t = to_string ~tab:(tab+1) true t in
+        let e = to_string ~tab:(tab+1) true e in
+        let break = String.contains t '\n' || String.contains e '\n' in
+        if break then
+          pa p (Printf.sprintf "if %s then\n%s%s\n%selse\n%s%s" b (tabss()) t (tabs()) (tabss()) e)
+        else
+          pa p (Printf.sprintf "if %s then %s else %s" b t e)
       | App (e, a) ->
-        let a = String.concat_map ", " (fun (l,e) -> (if l = "" then "" else (l ^ "=")) ^ to_string false e) a in
-        pa p (Printf.sprintf "%s(%s)" (to_string true e) a)
+        let a = String.concat_map ", " (fun (l,e) -> (if l = "" then "" else (l ^ "=")) ^ to_string ~tab false e) a in
+        pa p (Printf.sprintf "%s(%s)" (to_string ~tab true e) a)
       | Let l ->
-        pa p (Printf.sprintf "let%s %s = %s in\n%s" (if l.recursive then " rec" else "") l.var (to_string false l.def) (to_string false l.body))
+        let def = to_string ~tab:(tab+1) false l.def in
+        let def =
+          if String.contains def '\n' then
+            Printf.sprintf "\n%s%s\n%s" (tabs ~tab:(tab+1) ()) def (tabs())
+          else
+            Printf.sprintf " %s " def
+        in
+        pa p (Printf.sprintf "let%s %s =%sin\n%s%s" (if l.recursive then " rec" else "") l.var def (tabs()) (to_string ~tab false l.body))
       | Ref e ->
-        Printf.sprintf "ref %s" (to_string true e)
+        Printf.sprintf "ref %s" (to_string ~tab true e)
       | External ext -> Printf.sprintf "'%s'" ext.ext_name
       | Cst c ->
         (
@@ -130,22 +152,24 @@ module Expr = struct
           | Alloc t -> Printf.sprintf "alloc[%s]" (T.to_string t)
         )
       | Coerce (e,t) ->
-        Printf.sprintf "(%s : %s)" (to_string false e) (T.to_string t)
+        Printf.sprintf "(%s : %s)" (to_string ~tab false e) (T.to_string t)
       | For(i,b,e,f) ->
-        pa p (Printf.sprintf "for %s = %s to %s do %s done" i (to_string false b) (to_string false e) (to_string false f))
+        pa p (Printf.sprintf "for %s = %s to %s do\n%s%s\n%sdone" i (to_string ~tab false b) (to_string ~tab false e) (tabs ()) (to_string ~tab:(tab+1)false f) (tabs ()))
       | While(b,e) ->
-        pa p (Printf.sprintf "while %s do %s done" (to_string false b) (to_string false e))
+        pa p (Printf.sprintf "while %s do\n%s%s\n%sdone" (to_string ~tab false b) (tabs ~tab:(tab+1) ()) (to_string ~tab:(tab+1) false e) (tabs()))
       | Array a ->
-        let a = String.concat_map ", " (to_string false) a in
+        let a = String.concat_map ", " (to_string ~tab false) a in
         Printf.sprintf "[%s]" a
       | Module r | Record r ->
-        Printf.sprintf "( %s )" (String.concat_map "; " (fun (x,v) -> Printf.sprintf "%s = %s" x (to_string false v)) r)
-      | Field (r,x) -> Printf.sprintf "%s.%s" (to_string true r) x
+        let r = List.map (fun (x,v) -> Printf.sprintf "%s%s = %s;" (tabs()) x (to_string ~tab:(tab+1) false v)) r in
+        let r = String.concat "\n" r in
+        Printf.sprintf "(\n%s\n%s)" r (tabs())
+      | Field (r,x) -> Printf.sprintf "%s.%s" (to_string ~tab true r) x
       | Replace_fields (r,l) ->
-        Printf.sprintf "( %s with %s )" (to_string true r) (String.concat_map ", " (fun (l,(e,o)) -> Printf.sprintf "%s =%s %s" l (if o then "?" else "") (to_string false e)) l)
-      | Variant (l,e) -> Printf.sprintf "`%s(%s)" l (to_string false e)
+        Printf.sprintf "( %s with %s )" (to_string ~tab true r) (String.concat_map ", " (fun (l,(e,o)) -> Printf.sprintf "%s =%s %s" l (if o then "?" else "") (to_string ~tab false e)) l)
+      | Variant (l,e) -> Printf.sprintf "`%s(%s)" l (to_string ~tab false e)
     in
-    to_string false e
+    to_string ~tab:0 false e
 
   let typ e =
     match e.t with
@@ -1044,7 +1068,7 @@ module Expr = struct
       in
       let etyp e = emit_type e in
       let rec emit_expr prog expr =
-        Printf.printf "emit_expr: %s\n\n%!" (to_string expr);
+        (* Printf.printf "emit_expr: %s\n\n%!" (to_string expr); *)
         match expr.desc with
         | Ident x ->
           prog, BB.var prog x
