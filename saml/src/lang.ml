@@ -127,7 +127,7 @@ module Expr = struct
           | Set -> "set"
           | If -> "if"
           | Expand -> "expand"
-          | Alloc t -> Printf.sprintf "alloc(%s)" (T.to_string t)
+          | Alloc t -> Printf.sprintf "alloc[%s]" (T.to_string t)
         )
       | Coerce (e,t) ->
         Printf.sprintf "(%s : %s)" (to_string false e) (T.to_string t)
@@ -224,8 +224,9 @@ module Expr = struct
   let variant ?pos l e =
     make ?pos (Variant (l,e))
 
-  let unit ?pos ?t () =
-    record ?pos ?t []
+  let unit ?pos () =
+    let t = T.unit in
+    record ?pos ~t []
 
   let string ?pos ?t s =
     let t = maybe T.string t in
@@ -275,11 +276,26 @@ module Expr = struct
   let set_ref r e =
     app ~t:T.unit (make (Cst Set)) ["",r; "",e]
 
+  let cond ?t b ?el th =
+    let t =
+      if th.t <> None then
+        let t = typ th in
+        Some (snd (T.split_arr t))
+      else
+        None
+    in
+    let el =
+      match el with
+      | None -> ["else",fct [] (unit ())]
+      | Some el -> ["else",el]
+    in
+    app ?t (make (Cst If)) (["",b; "then",th]@el)
+
   let init e0 e =
     let b = ident ~t:T.bool init_ident in
     let e0 = quote e0 in
     let e = quote e in
-    app ~t:(typ e) (make (Cst If)) ["",b; "then",e0; "else",e]
+    cond b e0 ~el:e
 
   let fresh_var =
     let n = ref 0 in
@@ -830,9 +846,13 @@ module Expr = struct
               match e.desc with
               | Let ({ def = { desc = Ref e } } as l) ->
                 mstate_t := (l.var, typ e) :: !mstate_t;
-                (* TODO: init *)
-                let l = { l with def = field ~t:(typ e) mstate_ident l.var; body = aux l.body } in
-                ret (Let l)
+                let xs = field ~t:(typ e) mstate_ident l.var in
+                let body = letin l.var xs (aux l.body) in
+                let body =
+                  let init = cond (ident ~t:T.bool init_ident) (quote (set_ref xs e)) in
+                  letin "_unit" init body
+                in
+                ret body.desc
               | Let l ->
                 let l = { l with def = aux l.def; body = aux l.body } in
                 ret (Let l)

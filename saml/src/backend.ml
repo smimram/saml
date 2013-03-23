@@ -506,7 +506,12 @@ module Opt = struct
         let b = simpl_expr b in
         let t = simpl_cmds t in
         let e = simpl_cmds e in
-        If (b,t,e)
+        (
+          match b with
+          | Val (V.B true) when List.length t = 1 -> List.hd t
+          | Val (V.B false) when List.length e = 1 -> List.hd e
+          | _ -> If (b,t,e)
+        )
       | e -> e
 
     and simpl_cmds cmds =
