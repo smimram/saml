@@ -77,6 +77,9 @@ module Expr = struct
       body : t
     }
 
+  (** Boolean variable indicating whether we are on first round. *)
+  let init_ident = "_initb"
+
   (** Raised by ext_implems when it is not implemented. *)
   exception Cannot_reduce
 
@@ -150,6 +153,19 @@ module Expr = struct
     | None -> failwith (Printf.sprintf "Couldn't get type for %s." (to_string e))
 
   let rec fct ?(pos=dummy_pos) ?t args e =
+    let t =
+      match t with
+      | Some _ -> t
+      | None ->
+        if args = [] then
+          (
+            match e.t with
+            | Some _ -> Some (T.arr [] (typ e))
+            | None -> None
+          )
+        else
+          None
+    in
     make ~pos ?t (Fun (args, e))
 
   let quote ?pos e =
@@ -258,6 +274,12 @@ module Expr = struct
 
   let set_ref r e =
     app ~t:T.unit (make (Cst Set)) ["",r; "",e]
+
+  let init e0 e =
+    let b = ident ~t:T.bool init_ident in
+    let e0 = quote e0 in
+    let e = quote e in
+    app ~t:(typ e) (make (Cst If)) ["",b; "then",e0; "else",e]
 
   let fresh_var =
     let n = ref 0 in
@@ -477,7 +499,7 @@ module Expr = struct
               else
                 ret ()
             else
-              ret ()
+            ret ()
           in
           e
         | Let l ->
@@ -783,71 +805,65 @@ module Expr = struct
               List.assoc "else" args
             in
             let state, b = reduce ~subst ~state b in
-            let state, th = reduce_quote ~subst ~state th [] in
-            let state, el = reduce_quote ~subst ~state el [] in
-            state, app e ["",b; "then", quote th; "else", quote el]
+            (
+              match b.desc with
+              (* | Cst (Bool true) -> reduce ~subst ~state (app th []) *)
+              (* | Cst (Bool false) -> reduce ~subst ~state (app el []) *)
+              | _ ->
+                let state, th = reduce_quote ~subst ~state th [] in
+                let state, el = reduce_quote ~subst ~state el [] in
+                state, app e ["",b; "then", quote th; "else", quote el]
+            )
           | Cst Expand ->
             let f = List.assoc "" args in
-            let t = snd (T.split_arr (typ e)) in
-            let f = app ~t f [] in
-            (* Reduce f. *)
-            let oldstate = state in
-            let state = { reduce_state_empty with rs_fresh = state.rs_fresh; rs_types = state.rs_types; rs_variants = state.rs_variants } in
-            let state, f = reduce ~subst ~state f in
-            (* Compute state type. *)
-            let decls = state.rs_let in
-            List.iter (fun (x,v) -> match v.desc with Fun _ -> assert false | _ -> ()) decls;
-            let refs = List.filter (fun (x,v) -> match v.desc with Ref _ -> true | _ -> false) decls in
-            let refs = List.rev refs in
-            let state_t = T.record (List.map (fun (x,v) -> x,(typ v,false)) refs) in
-            let state, state_var = fresh_var ~name:"state" state in
-            let state_ident = ident ~t:state_t state_var in
-            (* Update existential type of state. *)
-            (
+            let state, f = reduce_quote ~subst ~state f [] in
+            let mstate_evar =
               let t = typ e in
               let t = snd (T.split_arr t) in
-              let t = T.monad_state t in
-              let t = T.unvar t in
-              match t.T.desc with
+              T.monad_state t
+            in
+            let state, mstate_var = fresh_var ~name:"state" state in
+            let mstate_ident = ident ~t:mstate_evar mstate_var in
+            let mstate_t = ref [] in
+            let rec aux e =
+              let ret desc = { e with desc } in
+              match e.desc with
+              | Let ({ def = { desc = Ref e } } as l) ->
+                mstate_t := (l.var, typ e) :: !mstate_t;
+                (* TODO: init *)
+                let l = { l with def = field ~t:(typ e) mstate_ident l.var; body = aux l.body } in
+                ret (Let l)
+              | Let l ->
+                let l = { l with def = aux l.def; body = aux l.body } in
+                ret (Let l)
+              | App (e,a) ->
+                let a = List.map (fun (l,e) -> l, aux e) a in
+                ret (App (aux e, a))
+              | Fun (a,e) -> ret (Fun (a, aux e))
+              | Array e -> ret (Array (List.map aux e))
+              | Record r -> ret (Record (List.map (fun (l,e) -> l, aux e) r))
+              | Module r -> ret (Module (List.map (fun (l,e) -> l, aux e) r))
+              | Field (e,l) -> ret (Field (aux e, l))
+              | Ident _ | External _ | Cst _ -> e
+            in
+            let f = aux f in
+            let mstate_t = !mstate_t in
+            let mstate_t = T.record (List.map (fun (x,t) -> x,(t,false)) mstate_t) in
+            (* Update existential type of state. *)
+            (
+              match mstate_evar.T.desc with
               | T.EVar v ->
                 assert (!v = None);
-                v := Some state_t
+                v := Some mstate_t
               | _ ->
                 assert false
             );
             (* Oscillator functions. *)
-            let f_alloc = fct [] (alloc state_t) in
-            let state, decls_init, decls_loop =
-              let state = ref state in
-              let aux ~init (x,v) =
-                match v.desc with
-                | Ref e ->
-                  let x_def = field ~t:(typ v) state_ident x in
-                  if init then
-                    let s, u = fresh_var !state in
-                    state := s;
-                    [u, set_ref (ident x) e; x, x_def]
-                  else
-                    [x, x_def]
-                | _ -> [x,v]
-              in
-              let decls_init = List.flatten_map (aux ~init:true) decls in
-              let decls_loop = List.flatten_map (aux ~init:false) decls in
-              !state, decls_init, decls_loop
-            in
-            let f_init = fct ["",(state_var,None)] (List.fold_left (fun e (x,v) -> letin x v e) f decls_init) in
-            let f_loop = fct ["",(state_var,None)] (List.fold_left (fun e (x,v) -> letin x v e) f decls_loop) in
-            (* Answer. *)
-            let state =
-              {
-                rs_let = oldstate.rs_let;
-                rs_fresh = state.rs_fresh;
-                rs_types = oldstate.rs_types;
-                rs_variants = oldstate.rs_variants;
-              }
-            in
+            let f_alloc = fct [] (alloc mstate_t) in
+            (* TODO: reduce both init and loop? *)
+            let f_init = fct ["",(mstate_var,None)] (letin init_ident (bool true) f) in
+            let f_loop = fct ["",(mstate_var,None)] (letin init_ident (bool false) f) in
             let ans = record ["alloc", f_alloc; "init", f_init; "loop", f_loop] in
-            let f = List.fold_left (fun e (x,v) -> letin x v e) f decls in
             Printf.printf "expand:\n%s\nexpanded:\n%s\n\n%!" (to_string f) (to_string ans);
             state, ans
           (*
@@ -986,19 +1002,12 @@ module Expr = struct
   (** Reduce a quote (of type (args) -> 'a). *)
   and reduce_quote ~subst ~state prog args =
     let oldstate = state in
-    let state = { reduce_state_empty with rs_fresh = state.rs_fresh; rs_types = state.rs_types; rs_variants = state.rs_variants } in
+    let state = { state with rs_let = [] } in
     let t = snd (T.split_arr (typ prog)) in
     let prog = app ~t prog args in
     let state, prog = reduce ~subst ~state prog in
     let prog = List.fold_left (fun e (x,v) -> letin x v e) prog state.rs_let in
-    let state =
-      {
-        rs_let = oldstate.rs_let;
-        rs_fresh = state.rs_fresh;
-        rs_types = oldstate.rs_types;
-        rs_variants = oldstate.rs_variants;
-      }
-    in
+    let state = { oldstate with rs_fresh = state.rs_fresh } in
     state, prog
 
   (** Emit the programs. *)
@@ -1015,7 +1024,7 @@ module Expr = struct
       in
       let etyp e = emit_type e in
       let rec emit_expr prog expr =
-        (* Printf.printf "emit_expr: %s\n\n%!" (to_string expr); *)
+        Printf.printf "emit_expr: %s\n\n%!" (to_string expr);
         match expr.desc with
         | Ident x ->
           prog, BB.var prog x
