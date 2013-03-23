@@ -5,6 +5,8 @@
 (* include "pervasives.saml" *)
 include "builtin.saml"
 
+(* type t = int *)
+
 let play = builtin "play"
 
 let id(x) = x
@@ -28,6 +30,5 @@ let () =
   let x = ref (osc.init(s)) in
   while true do
     x := osc.loop(s)
-  done
-
-let () = ()
+  done;
+  ()

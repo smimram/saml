@@ -161,9 +161,10 @@ module Expr = struct
         let a = String.concat_map ", " (to_string ~tab false) a in
         Printf.sprintf "[%s]" a
       | Module r | Record r ->
-        let r = List.map (fun (x,v) -> Printf.sprintf "%s%s = %s;" (tabs()) x (to_string ~tab:(tab+1) false v)) r in
-        let r = String.concat "\n" r in
-        Printf.sprintf "(\n%s\n%s)" r (tabs())
+        if r = [] then "()" else
+          let r = List.map (fun (x,v) -> Printf.sprintf "%s%s = %s;" (tabs()) x (to_string ~tab:(tab+1) false v)) r in
+          let r = String.concat "\n" r in
+          Printf.sprintf "(\n%s\n%s)" r (tabs())
       | Field (r,x) -> Printf.sprintf "%s.%s" (to_string ~tab true r) x
       | Replace_fields (r,l) ->
         Printf.sprintf "( %s with %s )" (to_string ~tab true r) (String.concat_map ", " (fun (l,(e,o)) -> Printf.sprintf "%s =%s %s" l (if o then "?" else "") (to_string ~tab false e)) l)
@@ -1068,7 +1069,7 @@ module Expr = struct
       in
       let etyp e = emit_type e in
       let rec emit_expr prog expr =
-        (* Printf.printf "emit_expr: %s\n\n%!" (to_string expr); *)
+        (* Printf.printf "emit_expr:\n%s\n\n%!" (to_string expr); *)
         match expr.desc with
         | Ident x ->
           prog, BB.var prog x
@@ -1288,6 +1289,18 @@ module Module = struct
       in
       error msg
 
+  let to_expr m =
+    let n = ref (-1) in
+    let fresh () = incr n; Printf.sprintf "_m%d" !n in
+    List.fold_left
+      (fun ee e ->
+        match e with
+        | Expr e -> E.letin (fresh ()) e ee
+        | Decl (x, e) -> E.letin x e ee
+        | Type _ -> ee
+        | Variant _ -> ee
+      ) (E.unit ()) (List.rev m)
+
   let reduce ?(subst=[]) ?(state=E.reduce_state_empty) m =
     let emit_let state =
       { state with E.rs_let = [] }, List.map (fun (x,e) -> Decl (x, e)) (List.rev state.E.rs_let)
@@ -1321,10 +1334,15 @@ module Module = struct
     let m = List.concat m in
     m
 
+  (* let reduce ?(subst=[]) ?(state=E.reduce_state_empty) m = *)
+    (* let e = to_expr m in *)
+    (* let state, e = E.reduce ~subst ~state e in *)
+    (* [Expr e] *)
+
   let emit m =
     let e =
       let n = ref (-1) in
-      let fresh () = incr n; Printf.sprintf "m%d" !n in
+      let fresh () = incr n; Printf.sprintf "_m%d" !n in
       List.fold_left
         (fun ee e ->
           match e with
