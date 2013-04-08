@@ -15,6 +15,24 @@ module B = Backend
 module T = Lang_types
 
 module Expr = struct
+  module Ident = struct
+    type t = string
+
+    let prefix = "#"
+
+    let is_meta x = x.[0] = '#'
+
+    let dt = prefix ^ "dt"
+
+    (** Boolean variable indicating whether we are on first round. *)
+    let init = prefix ^ "init"
+
+    let state =
+      let n = ref (-1) in
+      fun () ->
+        incr n; Printf.sprintf "%sstate%d" prefix !n
+  end
+
   type t =
     {
       desc : desc;
@@ -22,7 +40,7 @@ module Expr = struct
       mutable t : T.t option; (** Infered type. *)
     }
   and desc =
-  | Ident of string
+  | Ident of Ident.t
   | Fun of (string * (string * t option)) list * t
   (** A function. Arguments are labelled (or not if the label is ""), have a
       variable, and optionally a default value. *)
@@ -46,16 +64,22 @@ module Expr = struct
   | While of t * t
   (** A value at initialization, and another one at other times. *)
   and constant =
-  | Bot (** Dummy value used internally to declare references. *)
+  | Bot
+  (** Dummy value used internally to declare references. *)
   | Int of int
   | Float of float
   | Bool of bool
   | String of string
   | Get
   | Set
-  | If (* takes 3 arguments : "",then,?else *)
+  | If
+  (** Conditional branching. Takes 3 arguments : "", then, ?else. *)
   | Expand (** Expand the monad implementation. *)
-  | Alloc of T.t (** Allocate a value (its a function with no argument). *)
+  | Alloc_state of T.t
+  (** Allocate room for a value in the state (it does not allocate complex
+      values such as records, [Alloc] should be used for this). *)
+  | Alloc of T.t
+  (** Dynamically a value (it is a function with no argument). *)
   (** External values. *)
   and extern =
     {
@@ -76,9 +100,6 @@ module Expr = struct
       def : t;
       body : t
     }
-
-  (** Boolean variable indicating whether we are on first round. *)
-  let init_ident = "_initb"
 
   (** Raised by ext_implems when it is not implemented. *)
   exception Cannot_reduce
@@ -149,6 +170,7 @@ module Expr = struct
           | Set -> "set"
           | If -> "if"
           | Expand -> "expand"
+          | Alloc_state t -> Printf.sprintf "alloc state[%s]" (T.to_string t)
           | Alloc t -> Printf.sprintf "alloc[%s]" (T.to_string t)
         )
       | Coerce (e,t) ->
@@ -317,7 +339,7 @@ module Expr = struct
     app ?t (make (Cst If)) (["",b; "then",th]@el)
 
   let init e0 e =
-    let b = ident ~t:T.bool init_ident in
+    let b = ident ~t:T.bool Ident.init in
     let e0 = quote e0 in
     let e = quote e in
     cond b e0 ~el:e
@@ -435,7 +457,7 @@ module Expr = struct
       | None ->
         let desc = e.desc in
         match desc with
-        | Ident "dt" ->
+        | Ident "#dt" ->
           let t = T.arr [] T.float in
           ret desc t
         | Ident x ->
@@ -546,7 +568,7 @@ module Expr = struct
         | Let l ->
           if l.recursive then
             let x = l.var in
-            assert (x <> "dt");
+            assert (not (Ident.is_meta x));
             let t = T.fresh_var () in
             let def =
               let env = T.Env.add_t env x t in
@@ -561,7 +583,7 @@ module Expr = struct
             ret (Let { l with def; body }) (typ body)
           else
             let def = infer_type env l.def in
-            let def = if l.var = "dt" then coerce def (T.arr [] T.float) else def in
+            let def = if l.var = "#dt" then coerce def (T.arr [] T.float) else def in
             let env = T.Env.add_t env l.var (typ def) in
             let body = infer_type env l.body in
             ret (Let { l with def; body }) (typ body)
@@ -725,19 +747,43 @@ module Expr = struct
       (** Let declarations. *)
       rs_fresh : int;
       (** Fresh variable generator. *)
+      rs_refs : (string * (string * t) list) option;
+      (** State variable name and references allocated in the state. *)
       rs_types : (string * T.t) list;
       (** Types declared (declarations are only allowed at toplevel). *)
       rs_variants : (string * T.t) list
       (** Variants declared (declarations are only allowed at toplevel). *)
     }
 
-  (** Empty state for beta-reduction. *)
-  let reduce_state_empty = {
-    rs_let = [];
-    rs_fresh = -1;
-    rs_types = [];
-    rs_variants = [];
-  }
+  module RS = struct
+    type t = reduce_state
+
+    (** Empty state for beta-reduction. *)
+    let empty =
+      {
+        rs_let = [];
+        rs_fresh = -1;
+        rs_refs = None;
+        rs_types = [];
+        rs_variants = [];
+      }
+
+    let with_state rs =
+      match rs.rs_refs with
+      | None -> { rs with rs_refs = Some (Ident.state (), []) }
+      | Some _ -> rs
+
+    let state rs =
+      let rs = with_state rs in
+      let state, _ = get_some rs.rs_refs in
+      rs, state
+
+    let add_state rs r t =
+      let rs = with_state rs in
+      let state, refs = get_some rs.rs_refs in
+      let refs = (r,t)::refs in
+      { rs with rs_refs = Some (state,refs) }
+  end
 
   (** Generate a fresh variable name. *)
   let fresh_var ?(name="x") state =
@@ -874,7 +920,7 @@ module Expr = struct
                 let xs = field ~t:(typ e) mstate_ident l.var in
                 let body = letin l.var xs (aux l.body) in
                 let body =
-                  let init = cond (ident ~t:T.bool init_ident) (quote (set_ref xs e)) in
+                  let init = cond (ident ~t:T.bool Ident.init) (quote (set_ref xs e)) in
                   letin "_unit" init body
                 in
                 ret body.desc
@@ -905,9 +951,10 @@ module Expr = struct
             );
             (* Oscillator functions. *)
             let f_alloc = fct [] (alloc mstate_t) in
+            (* TODO: have the init parameter as a parameter. *)
             (* TODO: reduce both init and loop? *)
-            let f_init = fct ["",(mstate_var,None)] (letin init_ident (bool true) f) in
-            let f_loop = fct ["",(mstate_var,None)] (letin init_ident (bool false) f) in
+            let f_init = fct ["",(mstate_var,None)] (letin Ident.init (bool true) f) in
+            let f_loop = fct ["",(mstate_var,None)] (letin Ident.init (bool false) f) in
             let ans = record ["alloc", f_alloc; "init", f_init; "loop", f_loop] in
             Printf.printf "expand:\n%s\nexpanded:\n%s\n\n%!" (to_string f) (to_string ans);
             state, ans
@@ -1216,6 +1263,7 @@ module Module = struct
   let to_string m =
     String.concat_map "\n\n" to_string m
 
+  (* This is registered later in order to break cyclic dependencies. *)
   let parse_file_fun : (string -> t) ref = ref (fun _ -> assert false)
   let parse_file f = !parse_file_fun f
 
@@ -1301,7 +1349,7 @@ module Module = struct
         | Variant _ -> ee
       ) (E.unit ()) (List.rev m)
 
-  let reduce ?(subst=[]) ?(state=E.reduce_state_empty) m =
+  let reduce ?(subst=[]) ?(state=E.RS.empty) m =
     let emit_let state =
       { state with E.rs_let = [] }, List.map (fun (x,e) -> Decl (x, e)) (List.rev state.E.rs_let)
     in
