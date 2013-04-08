@@ -749,10 +749,6 @@ module Expr = struct
       (** Fresh variable generator. *)
       rs_refs : (string * (string * t) list) option;
       (** State variable name and references allocated in the state. *)
-      rs_types : (string * T.t) list;
-      (** Types declared (declarations are only allowed at toplevel). *)
-      rs_variants : (string * T.t) list
-      (** Variants declared (declarations are only allowed at toplevel). *)
     }
 
   module RS = struct
@@ -764,8 +760,6 @@ module Expr = struct
         rs_let = [];
         rs_fresh = -1;
         rs_refs = None;
-        rs_types = [];
-        rs_variants = [];
       }
 
     let with_state rs =
