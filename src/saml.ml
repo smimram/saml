@@ -62,17 +62,24 @@ let () =
     | _ -> error "Exactly one .saml file should be present on command-line."
   in
   let prog = parse_file fname in
-  let pass name f prog =
+  let pass_module name f prog =
     Printf.printf "****** %s *****\n\n%!" name;
     let prog = f prog in
     Printf.printf "%s\n\n%!" (Lang.M.to_string prog);
     prog
   in
-  let prog = pass "Parsing program" id prog in
-  let prog = pass "Infering type" (Lang.M.infer_type ~annot:true) prog in
-  let prog = pass "Reducing program" Lang.M.reduce prog in
-  Printf.printf "****** Emitting program ******\n\n%!";
-  let prog = Lang.M.emit prog in
+  let pass name f prog =
+    Printf.printf "****** %s *****\n\n%!" name;
+    let prog = f prog in
+    Printf.printf "%s\n\n%!" (Lang.E.to_string prog);
+    prog
+  in
+  let prog = pass_module "Parsing program" id prog in
+  let prog = pass_module "Infering type" (Lang.M.infer_type ~annot:true) prog in
+  let prog = Lang.M.to_expr prog in
+  let prog = pass "Reducing program" (fun e -> Lang.E.reduce e) prog in
+  Printf.printf "****** Emit program *****\n\n%!";
+  let prog = Lang.E.emit prog in
   let prog = Lang.E.BB.prog prog in
   Printf.printf "%s\n%!" (Backend.to_string prog);
   ()

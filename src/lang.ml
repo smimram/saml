@@ -791,6 +791,11 @@ module Expr = struct
     (* Printf.printf "fresh var: _%s%d\n%!" name state.rs_fresh; *)
     state, Printf.sprintf "_%s%d" name state.rs_fresh
 
+  let expand_let state prog =
+    let prog = List.fold_left (fun e (x,v) -> letin x v e) prog state.rs_let in
+    let state = { state with rs_let = [] } in
+    state, prog
+
   (** Normalize an expression by performing beta-reductions and
       builtins-reductions. *)
   let rec reduce ~subst ~state expr =
@@ -1098,9 +1103,14 @@ module Expr = struct
     let t = snd (T.split_arr (typ prog)) in
     let prog = app ~t prog args in
     let state, prog = reduce ~subst ~state prog in
-    let prog = List.fold_left (fun e (x,v) -> letin x v e) prog state.rs_let in
+    let satte, prog = expand_let state prog in
     let state = { oldstate with rs_fresh = state.rs_fresh } in
     state, prog
+
+  let reduce ?(subst=[]) ?(state=RS.empty) e =
+    let state, e = reduce ~subst ~state e in
+    let state, e = expand_let state e in
+    e
 
   (** Emit the programs. *)
   let rec emit prog expr =
@@ -1241,6 +1251,9 @@ module Expr = struct
         BB.cmd prog e
     in
     aux prog expr
+
+  let emit ?(builder=BB.create ()) e =
+    emit builder e
 end
 
 module E = Expr
@@ -1349,6 +1362,7 @@ module Module = struct
         | Variant _ -> ee
       ) (E.unit ()) (List.rev m)
 
+(*
   let reduce ?(subst=[]) ?(state=E.RS.empty) m =
     let emit_let state =
       { state with E.rs_let = [] }, List.map (fun (x,e) -> Decl (x, e)) (List.rev state.E.rs_let)
@@ -1381,12 +1395,14 @@ module Module = struct
     let _, m = List.fold_map (fun (subst,state) d -> aux subst state d) (subst,state) m in
     let m = List.concat m in
     m
+*)
 
   (* let reduce ?(subst=[]) ?(state=E.reduce_state_empty) m = *)
     (* let e = to_expr m in *)
     (* let state, e = E.reduce ~subst ~state e in *)
     (* [Expr e] *)
 
+(*
   let emit m =
     let e =
       let n = ref (-1) in
@@ -1402,6 +1418,7 @@ module Module = struct
     in
     Printf.printf "emit:\n%s\n\n%!" (E.to_string e);
     E.emit (E.BB.create ()) e
+*)
 end
 
 module M = Module
