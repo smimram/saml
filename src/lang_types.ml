@@ -9,8 +9,6 @@ module B = Backend
 type t =
   {
     desc : desc; (** The type. *)
-    (* TODO: check whether this is really useful and coherent... *)
-    static : bool; (** Whether the value is statically known at compile-time. *)
   }
 and desc =
 | Ident of string
@@ -42,10 +40,9 @@ and var_contents =
 | Link of t
 (** A link to another variable *)
 
-let make ?pos ?(static=false) t =
+let make ?pos t =
   {
     desc = t;
-    static;
   }
 
 let arr a r = make (Arr (a, r))
@@ -254,12 +251,6 @@ let get_var t =
   | Var v -> v
   | _ -> assert false
 
-let static t =
-  { t with static = true }
-
-let is_static t =
-  t.static
-
 (* TODO: use multiplicities *)
 let rec free_vars ?(multiplicities=false) t =
   (* Printf.printf "free_vars: %s\n%!" (to_string t); *)
@@ -315,11 +306,6 @@ let subtype defs t1 t2 =
     (* Printf.printf "unify: %s with %s\n%!" (to_string t1) (to_string t2); *)
     let t1 = unvar t1 in
     let t2 = unvar t2 in
-    if is_static t2 && not (is_static t1) && not (is_var t1) && not (is_var t2) then
-      (
-        Printf.printf "not static...\n%!";
-        raise Cannot_unify
-      );
     match t1.desc, t2.desc with
     | Var v1, Var v2 when v1 == v2 -> ()
     | Var ({ contents = FVar l } as v1), _ ->
@@ -457,8 +443,8 @@ let bool = make Bool
 
 let ident s = make (Ident s)
 
-let array ?static a =
-  make ?static (Array a)
+let array a =
+  make (Array a)
 
 let record ?(row=false) r =
   let row = if row then Some (fresh_invar ()) else None in

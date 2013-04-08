@@ -240,7 +240,7 @@ module Expr = struct
       | _ -> false
 
   let int ?pos n =
-    let t = T.static T.int in
+    let t = T.int in
     make ?pos ~t (Cst (Int n))
 
   let float ?pos ?(t=T.float) x =

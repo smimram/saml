@@ -376,7 +376,7 @@ let array_get =
 let array_tail =
   let t _ =
     let v = T.fresh_var () in
-    let a = T.array ~static:true v in
+    let a = T.array v in
     T.arrnl [a] a
   in
   let i a =
@@ -392,7 +392,7 @@ let array_tail =
 let array_length =
   let t _ =
     let v = T.fresh_var () in
-    let a = T.array ~static:true v in
+    let a = T.array v in
     T.arrnl [a] T.int
   in
   let i a =

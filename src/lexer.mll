@@ -25,7 +25,6 @@
       "struct", MODULE;
       "end", END;
       "builtin", BUILTIN;
-      "static", STATIC;
       "not", BNOT;
       "with", WITH;
       "type", TYPE;

@@ -79,7 +79,7 @@
 %token CMP LE GE LT GT
 %token BAND BOR BNOT
 %token IF THEN ELSE
-%token STATIC WITH TYPE
+%token WITH TYPE
 %token LPAR RPAR LARR RARR
 %token SEMICOLON COLON COMMA MAYBE
 %token EQ PLUS MINUS TIMES DIV POW
@@ -241,7 +241,6 @@ simple_expr:
 typ:
     | IDENT { type_of_string $1 }
     | typ_record ARR typ { T.arr $1 $3 }
-    | STATIC typ { T.static $2 }
     | typ_record { T.record $1 }
 
 typ_record:
