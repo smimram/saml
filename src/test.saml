@@ -27,7 +27,7 @@ let s() =
 let () =
   let osc = expand(s) in
   let s = osc.alloc () in
-  let x = ref (osc.init(s)) in
+  let x = ref (osc.loop(init=true,s)) in
   while true do
     x := osc.loop(s)
   done;

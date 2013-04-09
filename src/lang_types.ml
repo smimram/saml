@@ -504,8 +504,7 @@ let monad state t =
   let r =
     [
       "alloc", arr [] state;
-      "init", arr ["",(state,false)] t;
-      "loop", arr ["",(state,false)] t;
+      "loop", arr ["init",(bool,true); "",(state,false)] t;
     ]
   in
   let r = List.map (fun (l,t) -> l,(t,false)) r in
@@ -517,6 +516,13 @@ let monad_state t =
     let a,_ = List.assoc "alloc" r in
     let _, t = split_arr a in
     t
+  | _ -> assert false
+
+let set_evar evar t =
+  match (unvar evar).desc with
+  | EVar v ->
+    assert (!v = None);
+    v := Some t
   | _ -> assert false
 
 (** Emit a type. This should not be used directly but rather E.emit_type. *)
