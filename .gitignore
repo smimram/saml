@@ -8,3 +8,9 @@
 ._d
 ._ncdi
 *~
+src/doc
+src/lexer.ml
+src/parser.ml
+src/parser.mli
+src/saml
+src/saml_dssi.ml
