@@ -69,14 +69,21 @@ let () =
     prog
   in
   let pass name f prog =
-    Printf.printf "****** %s *****\n\n%!" name;
-    let prog = f prog in
-    Printf.printf "%s\n\n%!" (Lang.E.to_string prog);
-    prog
+    try
+      Printf.printf "****** %s *****\n\n%!" name;
+      let prog = f prog in
+      Printf.printf "%s\n\n%!" (Lang.E.to_string prog);
+      prog
+    with
+    | Lang.E.Typing (pos, msg) ->
+      let err = Printf.sprintf "Typing error at %s: %s." (Common.string_of_pos pos) msg in
+      error err
   in
   let prog = pass_module "Parsing program" id prog in
-  let prog = pass_module "Infering type" (Lang.M.infer_type ~annot:true) prog in
   let prog = Lang.M.to_expr prog in
+  let prog = Lang.E.run prog in
+  (* Printf.printf "****** Program *****\n\n%s\n\n%!" (Lang.E.to_string prog); *)
+  let prog = pass "Infering type" (Lang.E.infer_type ~annot:true) prog in
   let prog = pass "Reducing program" (fun e -> Lang.E.reduce e) prog in
   Printf.printf "****** Emit program *****\n\n%!";
   let prog = Lang.E.emit prog in

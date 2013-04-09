@@ -114,9 +114,7 @@
 %nonassoc UMINUS
 
 %start prog
-//%start expr
 %type <Lang.Module.t> prog
-//%type <Lang.Expr.t> expr
 %%
 
 prog:

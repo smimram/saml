@@ -141,7 +141,7 @@ module Expr = struct
         else
           pa p (Printf.sprintf "if %s then %s else %s" b t e)
       | App (e, a) ->
-        let a = String.concat_map ", " (fun (l,e) -> (if l = "" then "" else (l ^ "=")) ^ to_string ~tab false e) a in
+        let a = String.concat_map ", " (fun (l,e) -> (if l = "" then "" else (l ^ "=")) ^ to_string ~tab:(tab+1) false e) a in
         pa p (Printf.sprintf "%s(%s)" (to_string ~tab true e) a)
       | Let l ->
         let def = to_string ~tab:(tab+1) false l.def in
@@ -346,6 +346,17 @@ module Expr = struct
       incr n;
       Printf.sprintf "_%s%d" name !n
 
+
+  (** Execute a program. *)
+  let run e =
+    let e = app (make (Cst Expand)) ["",quote e] in
+    let x = fresh_var () in
+    let state = fresh_var () in
+    let run = app (field (ident x) "loop") ["init", bool true; "", ident state] in
+    let run = letin state (app (field (ident x) "alloc") []) run in
+    let e = letin x e run in
+    e
+
   (** Split the bool / then / else in the arguments of an if. *)
   let bte args =
     List.assoc "" args,
@@ -375,13 +386,20 @@ module Expr = struct
   (** Raised by SAML implementations when reduction is not possible. *)
   exception Cannot_reduce
 
+  (** {2 Type inference} *)
+
   (** Typing error. *)
   exception Typing of pos * string
 
   (** Infer the type of an expression. *)
   let rec infer_type ?(annot=fun e -> ()) env e =
-    (* Printf.printf "infer_type: %s\n%!" (to_string e); *)
-    let infer_type ?(annot=annot) = infer_type ~annot in
+    (* Printf.printf "infer_type:\n%s\n\n\n%!" (to_string e); *)
+    let infer_type = infer_type ~annot in
+    (* let infer_type env e = *)
+      (* let ans = infer_type env e in *)
+      (* Printf.printf "infer_type:\n%s\n=>\n%s\n:\n%s\n\n\n%!" (to_string e) (to_string ans) (T.to_string (typ ans)); *)
+      (* ans *)
+    (* in *)
     let (<:) = T.subtype (T.Env.defs env) in
 
     (* let infer_type env e = *)
@@ -448,14 +466,16 @@ module Expr = struct
 
     let ret desc t = { e with desc = desc; t = Some t } in
     let ans =
-      match e.t with
-      | Some t -> e
-      | None ->
+      (* match e.t with *)
+      (* | Some t -> e *)
+      (* | None -> *)
         let desc = e.desc in
         match desc with
         | Ident "#dt" ->
           let t = T.arr [] T.float in
           ret desc t
+        | Ident "#init" ->
+          ret desc T.bool
         | Ident x ->
           (
             try
@@ -712,6 +732,49 @@ module Expr = struct
     in
     annot ans; ans
 
+  let infer_type ?(annot=false) ?(env=T.Env.empty) e =
+    let annotations = ref [] in
+    let out fname x =
+      annotations := List.map_assoc ~d:"" (fun y -> y ^ x) fname !annotations
+    in
+    let annot_type (p1,p2) t =
+      let fname = p2.Lexing.pos_fname in
+      let a =
+        Printf.sprintf "\"%s\" %d %d %d \"%s\" %d %d %d\n%s(\n  %s\n)\n"
+          fname
+          p1.Lexing.pos_lnum
+          p1.Lexing.pos_bol
+          p1.Lexing.pos_cnum
+          fname
+          p2.Lexing.pos_lnum
+          p2.Lexing.pos_bol
+          p2.Lexing.pos_cnum
+          "type"
+          (T.to_string t)
+      in
+      if p1.Lexing.pos_lnum > 0 then out fname a
+    in
+    let annot, annot_final =
+      if annot then
+        (fun e -> try annot_type e.pos (typ e) with _ -> ()),
+        (fun () ->
+          List.iter
+            (fun (fname,x) ->
+              if fname <> "" then
+                Common.file_out (Filename.chop_extension fname ^ ".annot") x
+            ) !annotations)
+      else
+        (fun _ -> ()), (fun () -> ())
+    in
+    try
+      let e = infer_type ~annot env e in
+      annot_final ();
+      e
+    with
+    | e -> annot_final (); raise e
+
+  (** {2 Reduction} *)
+
   let split_fun e =
     match e.desc with
     | Fun (a,e) -> a,e
@@ -793,6 +856,7 @@ module Expr = struct
     (** Perform a substitution. *)
     let rec substs ss e =
       let d =
+        (* Printf.printf "subst: %s\n%!" (to_string e); *)
         match e.desc with
         | Ident x ->
           let rec aux = function
@@ -839,6 +903,8 @@ module Expr = struct
           let ss = List.remove_all_assoc i ss in
           let s = substs ss in
           For (i, s b, s e, s f)
+        | While (b,e) ->
+          While (substs ss b, substs ss e)
       in
       { e with desc = d }
     in
@@ -889,8 +955,8 @@ module Expr = struct
             let state, b = reduce ~subst ~state b in
             (
               match b.desc with
-              (* | Cst (Bool true) -> reduce ~subst ~state (app th []) *)
-              (* | Cst (Bool false) -> reduce ~subst ~state (app el []) *)
+              | Cst (Bool true) -> reduce ~subst ~state (app th [])
+              | Cst (Bool false) -> reduce ~subst ~state (app el [])
               | _ ->
                 let state, th = reduce_quote ~subst ~state th [] in
                 let state, el = reduce_quote ~subst ~state el [] in
@@ -1158,7 +1224,7 @@ module Expr = struct
         | Record [] ->
           prog, B.E.unit
         | Field (e, l) ->
-          Printf.printf "field: %s.%s : %s\n%!" (to_string e) l (T.to_string (typ e));
+          (* Printf.printf "field: %s.%s : %s\n%!" (to_string e) l (T.to_string (typ e)); *)
           let l =
             let r =
               match (T.unvar (typ e)).T.desc with
@@ -1187,7 +1253,7 @@ module Expr = struct
         Printf.printf "Ignoring module %s...\n%!" l.var;
         emit prog l.body
       | Let l ->
-        assert (l.var <> "dt");
+        assert (l.var <> Ident.dt);
         (*
           if l.recursive then
           let prog = BB.alloc prog l.var t in
@@ -1247,6 +1313,19 @@ module Module = struct
   let parse_file_fun : (string -> t) ref = ref (fun _ -> assert false)
   let parse_file f = !parse_file_fun f
 
+  let to_expr m =
+    let n = ref (-1) in
+    let fresh () = incr n; Printf.sprintf "_m%d" !n in
+    List.fold_left
+      (fun ee e ->
+        match e with
+        | Expr e -> E.letin (fresh ()) e ee
+        | Decl (x, e) -> E.letin x e ee
+        | Type _ -> ee
+        | Variant _ -> ee
+      ) (E.unit ()) (List.rev m)
+
+(*
   let infer_type ?(annot=false) ?(env=T.Env.empty) m =
     let annotations = ref [] in
     let out fname x =
@@ -1316,18 +1395,7 @@ module Module = struct
           msg
       in
       error msg
-
-  let to_expr m =
-    let n = ref (-1) in
-    let fresh () = incr n; Printf.sprintf "_m%d" !n in
-    List.fold_left
-      (fun ee e ->
-        match e with
-        | Expr e -> E.letin (fresh ()) e ee
-        | Decl (x, e) -> E.letin x e ee
-        | Type _ -> ee
-        | Variant _ -> ee
-      ) (E.unit ()) (List.rev m)
+*)
 
 (*
   let reduce ?(subst=[]) ?(state=E.RS.empty) m =
