@@ -2,7 +2,7 @@
 
 (** Compiler related options. *)
 module Compiler = struct
-  let coerce = ref true
+  let coerce = ref false
 
   module Coerce = struct
     (** Coerce (x,a=...,b=...) into x. *)

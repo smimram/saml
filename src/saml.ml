@@ -85,7 +85,7 @@ let () =
   (* Printf.printf "****** Program *****\n\n%s\n\n%!" (Lang.E.to_string prog); *)
   let prog = pass "Infering type" (Lang.E.infer_type ~annot:true) prog in
   let prog = pass "Reducing program" (fun e -> Lang.E.reduce e) prog in
-  let prog = pass "Infering type" (Lang.E.infer_type ~annot:true) prog in
+  let prog = pass "Infering type" (Lang.E.infer_type ~annot:false) prog in
   Printf.printf "****** Emit program *****\n\n%!";
   let prog = Lang.E.emit prog in
   let prog = Lang.E.BB.prog prog in

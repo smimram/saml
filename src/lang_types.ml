@@ -244,7 +244,7 @@ let expand env t =
       | Record (r,v) ->
         let r = List.map (fun (l,(t,o)) -> l,(aux t,o)) r in
         Record (r,v)
-      | Float -> t.desc
+      | Float | Int -> t.desc
     in
     { t with desc = d }
   in

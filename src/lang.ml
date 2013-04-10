@@ -753,7 +753,12 @@ module Expr = struct
         let t = T.variant () in
         ret (Variant(l,e)) t
     in
-    annot ans; ans
+    (
+      match ans.desc with
+      | Let _ -> ()
+      | _ -> annot ans
+    );
+    ans
 
   let infer_type ?(annot=false) ?(env=T.Env.empty) e =
     let annotations = ref [] in
