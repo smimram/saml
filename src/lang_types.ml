@@ -134,8 +134,11 @@ module Env = struct
   let variants env =
     Array.of_list (List.rev env.variants)
 
+  let add env x scheme =
+    { env with t = (x,scheme)::env.t }
+
   let add_t env x t =
-    { env with t = (x,fun () -> t)::env.t }
+    add env x (fun () -> t)
 
   let add_def env x t =
     { env with defs = (x,t)::env.defs }
@@ -150,6 +153,8 @@ module Env = struct
       variants = env.variants;
     }
 end
+
+let show_levels = true
 
 let to_string ?env t =
   let un = univ_namer () in
@@ -177,7 +182,12 @@ let to_string ?env t =
       (
         match !v with
         | Link t -> Printf.sprintf "[%s]" (to_string false t)
-        | FVar _ -> un v
+        | FVar level ->
+          let s = un v in
+          if show_levels then
+            s ^ "@" ^ string_of_int level
+          else
+            s
       )
     | EVar v ->
       (
@@ -415,6 +425,7 @@ let generalize t =
         | Link _ -> assert false
       in
       let t' =
+        (* Printf.printf "generalize: %s\n%!" (to_string t); *)
         match (unvar t).desc with
         | Var v -> Var (generalize_var v)
         | Arr (a, t) ->
@@ -429,7 +440,7 @@ let generalize t =
             | None -> None
           in
           Record (List.map (fun (x,(t,o)) -> x,(aux t,o)) r, v)
-        | Int | Float | String | Bool | Ident _ as t -> t
+        | EVar _ | Int | Float | String | Bool | Ident _ as t -> t
       in
       { t with desc = t' }
     in

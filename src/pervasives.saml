@@ -14,21 +14,12 @@ let nact() = ()
 let ignore (x) = ()
 
 let prev(init, x) =
-  (* TODO: proper type generalization *)
-  (* let init = (init : float) in *)
   let y = ref init in
   let ans = !y in
   y := x;
   ans
 
 let on(b,f) =
-  (* TODO: use usual prev *)
-  let prev(init, x) =
-    let x' = ref init in
-    let ans = !x' in
-    x' := x;
-    ans
-  in
   let b' = prev(false,b) in
   if (b && not b') then f()
 

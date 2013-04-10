@@ -398,11 +398,13 @@ module Expr = struct
   let rec infer_type ?(annot=fun e -> ()) env e =
     (* Printf.printf "infer_type:\n%s\n\n\n%!" (to_string e); *)
     let infer_type = infer_type ~annot in
-    (* let infer_type env e = *)
-      (* let ans = infer_type env e in *)
-      (* Printf.printf "infer_type:\n%s\n=>\n%s\n:\n%s\n\n\n%!" (to_string e) (to_string ans) (T.to_string (typ ans)); *)
-      (* ans *)
-    (* in *)
+
+    let infer_type env e =
+      let ans = infer_type env e in
+      Printf.printf "infer_type:\n%s\n=>\n%s\n:\n%s\n\n\n%!" (to_string e) (to_string ans) (T.to_string (typ ans));
+      ans
+    in
+
     let (<:) = T.subtype (T.Env.defs env) in
 
     (* let infer_type env e = *)
@@ -410,6 +412,18 @@ module Expr = struct
     (* Printf.printf "inferred: %s : %s\n%!" (to_string e) (T.to_string (typ e)); *)
     (* e *)
     (* in *)
+
+    let infer_type ?(level=false) env e =
+      if level then
+        (
+          T.enter_level ();
+          let ans = infer_type env e in
+          T.leave_level ();
+          ans
+        )
+      else
+        infer_type env e
+    in
 
     let type_error e s =
       Printf.ksprintf (fun s -> annot e; raise (Typing (e.pos, s))) s
@@ -472,268 +486,269 @@ module Expr = struct
       (* match e.t with *)
       (* | Some t -> e *)
       (* | None -> *)
-        let desc = e.desc in
-        match desc with
-        | Ident "#dt" ->
-          let t = T.arr [] T.float in
-          ret desc t
-        | Ident "#init" ->
-          ret desc T.bool
-        | Ident x ->
-          (
-            try
-              let t = T.Env.typ env x () in
-              ret desc t
-            with
-            | Not_found -> type_error e "Unbound value %s." x
-          )
-        | Fun (a, e) ->
-          let a =
-            List.map
-              (fun (l,(x,d)) ->
-                let d,t =
-                  match d with
-                  | Some d ->
-                    let d = infer_type env d in
-                    Some d, typ d
-                  | None ->
-                    None, T.fresh_var ()
-                in
-                let o = d <> None in
-                (l,(x,d)), (l,x,t,o)
-              ) a
-          in
-          let a, ta = List.split a in
-          let env' = List.map (fun (l,x,t,o) -> x,(fun () -> t)) ta in
-          let env = T.Env.merge env' env in
-          let e = infer_type env e in
-          let ta = List.map (fun (l,x,t,o) -> l,(t,o)) ta in
-          ret (Fun (a, e)) (T.arr ta (typ e))
-        | App (e, a) ->
-          let a = List.map (fun (l,e) -> l,(infer_type env e)) a in
-          let e =
-            match e.desc with
-            | External ext ->
-              (* Printf.printf "external app: %s\n%!" (to_string expr); *)
-              let a = List.map (fun (l,e) -> l, typ e) a in
-              let t = ext.ext_t a in
-              ret e.desc t
-            | _ -> infer_type env e
-          in
-          let t = typ e in
-          (* TODO: this is a hack, we should do proper unification *)
-          (
-            match (T.unvar t).T.desc with
-            | T.Var v ->
-              let a = List.map (fun (l,e) -> l,(typ e,false)) a in
-              let t = T.fresh_var () in
-              v := T.Link (T.arr a t)
-            | _ -> ()
-          );
-          if not (T.is_arr t) then
-            type_error e "This expression of type %s is not a function; it cannot be applied." (T.to_string t);
-          let u,v = T.split_arr t in
-          let u = ref u in
-          let expr = e in
-          let a =
-            List.map
-              (fun (l,e) ->
-                let tu,_ =
-                  try
-                    List.assoc l !u
-                  with
-                  | Not_found ->
-                    if l = "" then
-                      type_error expr "The expression has type %s. It cannot be applied to this many arguments." (T.to_string t)
-                    else
-                      type_error expr "The function applied to this argument has type %s. This argument cannot be applied with label %s." (T.to_string t) l;
-                in
-                u := List.remove_assoc l !u;
-                let e = coerce e tu in
-                l,e
-              ) a
-          in
-          let t =
-            if List.for_all (fun (l,(t,o)) -> o) !u then v
-            else
-              (* T.arr !u v *)
-              (* failwith "Partial application." *)
-              type_error e "Partial application not handled (yet)."
-          in
-          let e =
-            let ret () = ret (App (e, a)) t in
-            if e.desc = Cst If then
-              (* If the return value of the if is not unit, use a reference. We have
-                 to do this because the backend cannot handle return values for
-                 ifs. *)
-              let t = typ (List.assoc "then" a) in
-              let _, t = T.split_arr t in
-              if not (T.is_unit t) then
-                let r = reference (make (Coerce (bot (), t))) in
-                let tret = t in
-                let b,t,e = bte a in
-                (* TODO: can we avoid a globally generated fresh name? *)
-                let x = fresh_var ~name:"ifref" () in
-                let t = quote (set_ref (ident ~t:(T.ref tret) x) (unquote t)) in
-                let e = quote (set_ref (ident ~t:(T.ref tret) x) (unquote e)) in
-                let ite = app (make (Cst If)) ["",b; "then",t; "else",e] in
-                let e = letin x r (seq ite (get_ref (ident ~t:(T.ref tret) x))) in
-                infer_type env e
-              else
-                ret ()
-            else
-            ret ()
-          in
-          e
-        | Let l ->
-          if l.recursive then
-            let x = l.var in
-            assert (not (Ident.is_meta x));
+      let desc = e.desc in
+      match desc with
+      | Ident "#dt" ->
+        let t = T.arr [] T.float in
+        ret desc t
+      | Ident "#init" ->
+        ret desc T.bool
+      | Ident x ->
+        (
+          try
+            let t = T.Env.typ env x () in
+            ret desc t
+          with
+          | Not_found -> type_error e "Unbound value %s." x
+        )
+      | Fun (a, e) ->
+        let a =
+          List.map
+            (fun (l,(x,d)) ->
+              let d,t =
+                match d with
+                | Some d ->
+                  let d = infer_type env d in
+                  Some d, typ d
+                | None ->
+                  None, T.fresh_var ()
+              in
+              let o = d <> None in
+              (l,(x,d)), (l,x,t,o)
+            ) a
+        in
+        let a, ta = List.split a in
+        let env' = List.map (fun (l,x,t,o) -> x,(fun () -> t)) ta in
+        let env = T.Env.merge env' env in
+        let e = infer_type env e in
+        let ta = List.map (fun (l,x,t,o) -> l,(t,o)) ta in
+        ret (Fun (a, e)) (T.arr ta (typ e))
+      | App (e, a) ->
+        let a = List.map (fun (l,e) -> l,(infer_type env e)) a in
+        let e =
+          match e.desc with
+          | External ext ->
+            (* Printf.printf "external app: %s\n%!" (to_string expr); *)
+            let a = List.map (fun (l,e) -> l, typ e) a in
+            let t = ext.ext_t a in
+            ret e.desc t
+          | _ -> infer_type env e
+        in
+        let t = typ e in
+        (* TODO: this is a hack, we should do proper unification *)
+        (
+          match (T.unvar t).T.desc with
+          | T.Var v ->
+            let a = List.map (fun (l,e) -> l,(typ e,false)) a in
             let t = T.fresh_var () in
-            let def =
-              let env = T.Env.add_t env x t in
-              infer_type env l.def
-            in
-            if not ((typ def) <: t) then
-              failwith "ERROR (TODO) in let rec";
-            if not (T.free_vars (typ def) = []) then
-              type_error l.def "Expression has type %s but free variables are not allowed in recursive definitions." (T.to_string (typ def));
-            let env = T.Env.add_t env x (typ def) in
-            let body = infer_type env l.body in
-            ret (Let { l with def; body }) (typ body)
+            v := T.Link (T.arr a t)
+          | _ -> ()
+        );
+        if not (T.is_arr t) then
+          type_error e "This expression of type %s is not a function; it cannot be applied." (T.to_string t);
+        let u,v = T.split_arr t in
+        let u = ref u in
+        let expr = e in
+        let a =
+          List.map
+            (fun (l,e) ->
+              let tu,_ =
+                try
+                  List.assoc l !u
+                with
+                | Not_found ->
+                  if l = "" then
+                    type_error expr "The expression has type %s. It cannot be applied to this many arguments." (T.to_string t)
+                  else
+                    type_error expr "The function applied to this argument has type %s. This argument cannot be applied with label %s." (T.to_string t) l;
+              in
+              u := List.remove_assoc l !u;
+              let e = coerce e tu in
+              l,e
+            ) a
+        in
+        let t =
+          if List.for_all (fun (l,(t,o)) -> o) !u then v
           else
-            let def = infer_type env l.def in
-            let def = if l.var = "#dt" then coerce def (T.arr [] T.float) else def in
-            let env = T.Env.add_t env l.var (typ def) in
-            let body = infer_type env l.body in
-            ret (Let { l with def; body }) (typ body)
-        | Cst c ->
-          (
-            let ret t = ret (Cst c) t in
-            match c with
-            | Bot -> ret (T.fresh_var ())
-            | Int _ -> ret T.int
-            | Float _ -> ret T.float
-            | Bool _ -> ret T.bool
-            | String _ -> ret T.string
-            | Get ->
-              let a = T.fresh_var () in
-              let t = T.arrnl [T.ref a] a in
-              ret t
-            | Set ->
-              let a = T.fresh_var () in
-              let t = T.arrnl [T.ref a; a] T.unit in
-              ret t
-            | If ->
-              let a = T.fresh_var () in
-              let arg = T.arr [] a in
-              let t = T.arr ["",(T.bool,false); "then",(arg,false); "else",(arg,false)] a in
-              ret t
-            | Expand ->
-              let a = T.fresh_var () in
-              let s = T.fresh_evar () in
-              let m = T.monad s a in
-              let arg = T.arr [] a in
-              let t = T.arr ["",(arg,false)] m in
-              ret t
-          )
-        | Coerce (e, t) ->
-          let e = infer_type env e in
-          let t = T.expand env t in
-          let e = coerce e t in
-          e
-        | Ref e ->
-          let e = infer_type env e in
-          if T.is_arr (typ e) then
-            type_error e "This expression has type %s but references are only allowed on data types." (T.to_string (typ e));
-          let t = typ e in
-          let t = T.ref t in
-          ret (Ref e) t
-        | External ext ->
-          ret desc (ext.ext_t [])
-        | Array a ->
+            (* T.arr !u v *)
+            (* failwith "Partial application." *)
+            type_error e "Partial application not handled (yet)."
+        in
+        let e =
+          let ret () = ret (App (e, a)) t in
+          if e.desc = Cst If then
+            (* If the return value of the if is not unit, use a reference. We have
+               to do this because the backend cannot handle return values for
+               ifs. *)
+            let t = typ (List.assoc "then" a) in
+            let _, t = T.split_arr t in
+            if not (T.is_unit t) then
+              let r = reference (make (Coerce (bot (), t))) in
+              let tret = t in
+              let b,t,e = bte a in
+              (* TODO: can we avoid a globally generated fresh name? *)
+              let x = fresh_var ~name:"ifref" () in
+              let t = quote (set_ref (ident ~t:(T.ref tret) x) (unquote t)) in
+              let e = quote (set_ref (ident ~t:(T.ref tret) x) (unquote e)) in
+              let ite = app (make (Cst If)) ["",b; "then",t; "else",e] in
+              let e = letin x r (seq ite (get_ref (ident ~t:(T.ref tret) x))) in
+              infer_type env e
+            else
+              ret ()
+          else
+            ret ()
+        in
+        e
+      | Let l ->
+        if l.recursive then
+          let x = l.var in
+          assert (not (Ident.is_meta x));
           let t = T.fresh_var () in
-          let a =
-            List.map
-              (fun e ->
-                let e = infer_type env e in
-                let te = typ e in
-                if not (t <: te) then
-                  type_error e "This expression has type %s but %s was expected." (T.to_string te) (T.to_string t);
-                e
-              ) a
+          let def =
+            (* TODO: is this the proper level? *)
+            let env = T.Env.add_t env x t in
+            infer_type ~level:true env l.def
           in
-          ret (Array a) (T.array t)
-        | Record r ->
-          let r = List.map (fun (l,e) -> l, infer_type env e) r in
-          let tr = List.map (fun (l,e) -> l,(typ e,false)) r in
-          ret (Record r) (T.record tr)
-        | Module r ->
-          let env, r =
-            List.fold_map
-              (fun env (l,e) ->
-                let e = infer_type env e in
-                let t = typ e in
-                let env = T.Env.add_t env l t in
-                env, (l,e)
-              ) env r
-          in
-          let tr = List.map (fun (l,e) -> l,(typ e,false)) r in
-          ret (Module r) (T.record tr)
-        | Field (r, l) ->
-          let r = infer_type env r in
-          let tr = typ r in
-          if not (tr <: (T.record ~row:true [])) then
-            type_error r "This expression has type %s but expected to be a record." (T.to_string (typ r));
-          let t = T.fresh_var () in
-          if not (tr <: (T.record ~row:true [l,(t,false)])) then
-            type_error r "This record does not have a member %s." l;
-          ret (Field (r,l)) t
-        | Replace_fields (r, l) ->
-          let r = infer_type env r in
-          let tr = typ r in
-          let l = List.map (fun (l,(e,o)) -> l,(infer_type env e,o)) l in
-          if not (tr <: (T.record ~row:true [])) then
-            type_error r "This expression has type %s but expected to be a record." (T.to_string (typ r));
-          (* TODO: we could indicate optional fields by subtyping *)
-          let t =
-            match (typ r).T.desc with
-            | T.Record(r,row) ->
-              let r = ref r in
-              List.iter
-                (fun (l,(e,o)) ->
-                  Printf.printf "tr: %s\n%!" (T.to_string tr);
-                  if o then assert (tr <: (T.record ~row:true [l,(typ e,true)]));
-                  (* TODO: this is actually much more subtle when we have
-                     optional values, but it will do for now. *)
-                  r := List.remove_all_assoc l !r;
-                  r := (!r)@[l,(typ e,false)]
-                ) l;
-              let t = T.record !r in
-              T.record_with_row t row
-            | _ -> assert false
-          in
-          ret (Replace_fields(r,l)) t
-        | While(b,e) ->
-          let b = infer_type env b in
-          let b = coerce b T.bool in
-          let e = infer_type env e in
-          let e = coerce e (T.arrnl [] T.unit) in
-          ret (While(b,e)) T.unit
-        | For(i,b,e,f) ->
-          let b = infer_type env b in
-          let e = infer_type env e in
-          let f =
-            let env = T.Env.add_t env i T.int in
-            infer_type env f
-          in
-          let b = coerce b T.int in
-          let e = coerce e T.int in
-          let f = coerce f (T.arrnl [] T.unit) in
-          ret (For(i,b,e,f)) T.unit
-        | Variant(l,e) ->
-          let t = T.variant () in
-          ret (Variant(l,e)) t
+          if not ((typ def) <: t) then
+            failwith "ERROR (TODO) in let rec";
+          if not (T.free_vars (typ def) = []) then
+            type_error l.def "Expression has type %s but free variables are not allowed in recursive definitions." (T.to_string (typ def));
+          let env = T.Env.add env x (T.generalize (typ def)) in
+          let body = infer_type env l.body in
+          ret (Let { l with def; body }) (typ body)
+        else
+          let def = infer_type ~level:true env l.def in
+          let def = if l.var = "#dt" then coerce def (T.arr [] T.float) else def in
+          let env = T.Env.add env l.var (T.generalize (typ def)) in
+          let body = infer_type env l.body in
+          ret (Let { l with def; body }) (typ body)
+      | Cst c ->
+        (
+          let ret t = ret (Cst c) t in
+          match c with
+          | Bot -> ret (T.fresh_var ())
+          | Int _ -> ret T.int
+          | Float _ -> ret T.float
+          | Bool _ -> ret T.bool
+          | String _ -> ret T.string
+          | Get ->
+            let a = T.fresh_var () in
+            let t = T.arrnl [T.ref a] a in
+            ret t
+          | Set ->
+            let a = T.fresh_var () in
+            let t = T.arrnl [T.ref a; a] T.unit in
+            ret t
+          | If ->
+            let a = T.fresh_var () in
+            let arg = T.arr [] a in
+            let t = T.arr ["",(T.bool,false); "then",(arg,false); "else",(arg,false)] a in
+            ret t
+          | Expand ->
+            let a = T.fresh_var () in
+            let s = T.fresh_evar () in
+            let m = T.monad s a in
+            let arg = T.arr [] a in
+            let t = T.arr ["",(arg,false)] m in
+            ret t
+        )
+      | Coerce (e, t) ->
+        let e = infer_type env e in
+        let t = T.expand env t in
+        let e = coerce e t in
+        e
+      | Ref e ->
+        let e = infer_type env e in
+        if T.is_arr (typ e) then
+          type_error e "This expression has type %s but references are only allowed on data types." (T.to_string (typ e));
+        let t = typ e in
+        let t = T.ref t in
+        ret (Ref e) t
+      | External ext ->
+        ret desc (ext.ext_t [])
+      | Array a ->
+        let t = T.fresh_var () in
+        let a =
+          List.map
+            (fun e ->
+              let e = infer_type env e in
+              let te = typ e in
+              if not (t <: te) then
+                type_error e "This expression has type %s but %s was expected." (T.to_string te) (T.to_string t);
+              e
+            ) a
+        in
+        ret (Array a) (T.array t)
+      | Record r ->
+        let r = List.map (fun (l,e) -> l, infer_type env e) r in
+        let tr = List.map (fun (l,e) -> l,(typ e,false)) r in
+        ret (Record r) (T.record tr)
+      | Module r ->
+        let env, r =
+          List.fold_map
+            (fun env (l,e) ->
+              let e = infer_type ~level:true env e in
+              let t = typ e in
+              let env = T.Env.add env l (T.generalize t) in
+              env, (l,e)
+            ) env r
+        in
+        let tr = List.map (fun (l,e) -> l,(typ e,false)) r in
+        ret (Module r) (T.record tr)
+      | Field (r, l) ->
+        let r = infer_type env r in
+        let tr = typ r in
+        if not (tr <: (T.record ~row:true [])) then
+          type_error r "This expression has type %s but expected to be a record." (T.to_string (typ r));
+        let t = T.fresh_var () in
+        if not (tr <: (T.record ~row:true [l,(t,false)])) then
+          type_error r "This record does not have a member %s." l;
+        ret (Field (r,l)) t
+      | Replace_fields (r, l) ->
+        let r = infer_type env r in
+        let tr = typ r in
+        let l = List.map (fun (l,(e,o)) -> l,(infer_type env e,o)) l in
+        if not (tr <: (T.record ~row:true [])) then
+          type_error r "This expression has type %s but expected to be a record." (T.to_string (typ r));
+        (* TODO: we could indicate optional fields by subtyping *)
+        let t =
+          match (typ r).T.desc with
+          | T.Record(r,row) ->
+            let r = ref r in
+            List.iter
+              (fun (l,(e,o)) ->
+                Printf.printf "tr: %s\n%!" (T.to_string tr);
+                if o then assert (tr <: (T.record ~row:true [l,(typ e,true)]));
+                (* TODO: this is actually much more subtle when we have
+                   optional values, but it will do for now. *)
+                r := List.remove_all_assoc l !r;
+                r := (!r)@[l,(typ e,false)]
+              ) l;
+            let t = T.record !r in
+            T.record_with_row t row
+          | _ -> assert false
+        in
+        ret (Replace_fields(r,l)) t
+      | While(b,e) ->
+        let b = infer_type env b in
+        let b = coerce b T.bool in
+        let e = infer_type env e in
+        let e = coerce e (T.arrnl [] T.unit) in
+        ret (While(b,e)) T.unit
+      | For(i,b,e,f) ->
+        let b = infer_type env b in
+        let e = infer_type env e in
+        let f =
+          let env = T.Env.add_t env i T.int in
+          infer_type env f
+        in
+        let b = coerce b T.int in
+        let e = coerce e T.int in
+        let f = coerce f (T.arrnl [] T.unit) in
+        ret (For(i,b,e,f)) T.unit
+      | Variant(l,e) ->
+        let t = T.variant () in
+        ret (Variant(l,e)) t
     in
     annot ans; ans
 
