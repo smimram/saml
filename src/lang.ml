@@ -180,7 +180,7 @@ module Expr = struct
         Printf.sprintf "[%s]" a
       | Module r | Record r ->
         if r = [] then "()" else
-          let r = List.map (fun (x,v) -> Printf.sprintf "%s%s = %s;" (tabs()) x (to_string ~tab:(tab+1) false v)) r in
+          let r = List.map (fun (x,v) -> Printf.sprintf "%s%s = %s;" (tabss()) x (to_string ~tab:(tab+1) false v)) r in
           let r = String.concat "\n" r in
           Printf.sprintf "(\n%s\n%s)" r (tabs())
       | Field (r,x) -> Printf.sprintf "%s.%s" (to_string ~tab true r) x
@@ -611,6 +611,7 @@ module Expr = struct
           (
             let ret t = ret (Cst c) t in
             match c with
+            | Bot -> ret (T.fresh_var ())
             | Int _ -> ret T.int
             | Float _ -> ret T.float
             | Bool _ -> ret T.bool
