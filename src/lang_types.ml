@@ -45,8 +45,10 @@ let make ?pos t =
     desc = t;
   }
 
+(** Construct an arrow. *)
 let arr a r = make (Arr (a, r))
 
+(** Construct an arrow with unlabeled arguments. *)
 let arrnl a r =
   let a = List.map (fun t -> "",(t,false)) a in
   arr a r

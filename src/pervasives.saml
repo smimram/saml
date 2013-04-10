@@ -70,7 +70,7 @@ let array =
 
 let file =
   struct
-    let write = builtin "write_file"
+    let write = builtin "file_write"
   end
 
 (** Dummy implementation of events. *)

@@ -1156,12 +1156,7 @@ module Expr = struct
         (* Printf.printf "emit_expr:\n%s\n\n%!" (to_string expr); *)
         match expr.desc with
         | Ident x ->
-          (* At toplevel, init is always true since there is only one
-             execution. *)
-          if x = Ident.init then
-            emit_expr prog (bool true)
-          else
-            prog, BB.var prog x
+          prog, BB.var prog x
         | App ({ desc = Cst Get }, ["",x]) ->
           let prog, x = emit_expr prog x in
           prog, B.E.get x
