@@ -131,6 +131,24 @@ let osc =
 
     let random() =
       random(2.)-1
+
+    let play(buflen=1024,osc) =
+      let osc() =
+        let dt() = 1. / 44100. in
+        osc()
+      in
+      let buf = array.create(buflen,0.) in
+      let osc = expand(osc) in
+      let state = osc.alloc() in
+      let x = ref (osc.loop(init=true,state)) in
+      while true do
+        for i = 0 to buflen - 1 do
+          buf[i] := !x;
+          x := osc.loop(state)
+        done;
+        array.play(buf)
+      done;
+      ()
   end
 
 let frequency =
@@ -311,8 +329,8 @@ let instrument =
           period = fun(x) -> period := x
         )
       in
-      (ans : instrument)
-      (* ans *)
+      (* (ans : instrument) *)
+      ans
 
 (*
     let play(s) =
