@@ -288,14 +288,17 @@ module Expr = struct
     | e::l -> seq e (seqs l)
     | [] -> unit ()
 
-  let bot ?pos ~t () =
-    make ~t (Cst Bot)
+  let bot ?pos ?t () =
+    make ?t (Cst Bot)
 
   let array ?pos ?t a =
     make ?pos ?t (Array a)
 
   let field ?pos ?t e l =
     make ?pos ?t (Field (e, l))
+
+  let coerce ~t e =
+    make (Coerce (e, t))
 
   let reference ?pos ?t e =
     let t =
@@ -393,7 +396,7 @@ module Expr = struct
 
   (** Infer the type of an expression. *)
   let rec infer_type ?(annot=fun e -> ()) env e =
-    Printf.printf "infer_type:\n%s\n\n\n%!" (to_string e);
+    (* Printf.printf "infer_type:\n%s\n\n\n%!" (to_string e); *)
     let infer_type = infer_type ~annot in
     (* let infer_type env e = *)
       (* let ans = infer_type env e in *)
@@ -566,7 +569,7 @@ module Expr = struct
               let t = typ (List.assoc "then" a) in
               let _, t = T.split_arr t in
               if not (T.is_unit t) then
-                let r = reference (bot ~t ()) in
+                let r = reference (make (Coerce (bot (), t))) in
                 let tret = t in
                 let b,t,e = bte a in
                 (* TODO: can we avoid a globally generated fresh name? *)

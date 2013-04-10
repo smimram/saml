@@ -45,7 +45,7 @@ module State = struct
 end
 
 let rec eval_expr prog state e =
-  Printf.printf "SAML.eval_expr: %s\n" (string_of_expr e);
+  (* Printf.printf "SAML.eval_expr: %s\n" (string_of_expr e); *)
   match e with
   | Val v -> v
   | Var v -> State.get state v
@@ -63,6 +63,7 @@ let rec eval_expr prog state e =
     let x = a.(0) in
     let v = a.(1) in
     let v = eval_expr prog state v in
+    (* Printf.printf "%s <- %s\n" (string_of_expr x) (V.to_string v); *)
     (
       match x with
       | Var x -> State.set state x v
@@ -70,15 +71,24 @@ let rec eval_expr prog state e =
         let x = eval_expr prog state x in
         let x = V.get_record x in
         x.(i) <- v
+      | Cell (x,i) ->
+        let x = eval_expr prog state x in
+        let x = V.get_array x in
+        let i = eval_expr prog state i in
+        let i = V.get_int i in
+        x.(i) <- v
       | _ -> assert false
     );
-    V.U
+    V.unit
+  | Op(Get,a) ->
+    eval_expr prog state a.(0)
   | Op(op,a) ->
     let a = Array.map (eval_expr prog state) a in
     let gf n = V.get_float (a.(n)) in
     let f = V.float in
     let b = V.bool in
     (
+      (* Printf.printf "op: %s\n%!" (string_of_op op); *)
       match op with
       | Add -> f ((gf 0) +. (gf 1))
       | Sub -> f ((gf 0) -. (gf 1))
@@ -106,7 +116,7 @@ let rec eval_expr prog state e =
       | External ext -> ext.ext_saml a
       | Alloc t ->
         if Array.length a = 0 then
-          default_value t
+          V.default ~bot:false t
         else
           V.array (V.get_int a.(0)) t
       | Realloc t ->
@@ -129,9 +139,28 @@ let rec eval_expr prog state e =
         eval prog p_state p.proc_cmds;
         State.get_return state
     )
+  | While (b,e) as w ->
+    let b = eval_expr prog state b in
+    if V.get_bool b then
+      (
+        eval prog state e;
+        eval_expr prog state w
+      )
+    else
+      V.unit
   | If(b,t,e) ->
     let b = eval_expr prog state b in
     if V.get_bool b then eval prog state t else eval prog state e;
+    V.unit
+  | For(i,a,b,e) ->
+    let a = eval_expr prog state a in
+    let a = V.get_int a in
+    let b = eval_expr prog state b in
+    let b = V.get_int b in
+    for n = a to b do
+      let _ = eval_expr prog state (Op(Set,[|Var i; Val (V.int n)|])) in
+      eval prog state e
+    done;
     V.unit
   | Return x ->
     let e = eval_expr prog state e in
@@ -139,7 +168,7 @@ let rec eval_expr prog state e =
     V.unit
 
 and eval prog state cmds =
-  List.iter (fun e -> let v = eval_expr prog state e in assert (v = V.U)) cmds
+  List.iter (fun e -> let v = eval_expr prog state e in assert (v = V.unit)) cmds
 
 let emit prog =
   let state = State.create prog in

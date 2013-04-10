@@ -540,7 +540,7 @@ let rec emit t =
   | Record (r,None) ->
     let r = List.may_map (fun (l,(t,o)) -> assert (not o); if not (is_arr t) then Some (emit t) else None) r in
     let r = Array.of_list r in
-    if Array.length r = 1 then r.(0) else B.T.Record r
+    B.T.Record r
   | Array t -> B.T.Array (emit t)
   | Var _ -> failwith "Trying to emit type for an universal variable."
   | Arr _ -> failwith "Internal error: cannot emit functional types."
