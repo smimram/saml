@@ -5,6 +5,11 @@
 (* include "pervasives.saml" *)
 include "builtin.saml"
 
+let array =
+  struct
+    let create = builtin "array_create"
+  end
+
 (* type t = int *)
 
 let play = builtin "play"
@@ -25,6 +30,8 @@ let s() =
   sine(440,phase=0.777)
 
 let () =
+  let buflen = 1024 in
+  let a = array.create(buflen,0.) in
   let osc = expand(s) in
   let s = osc.alloc () in
   let x = ref (osc.loop(init=true,s)) in

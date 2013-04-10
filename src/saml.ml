@@ -76,7 +76,7 @@ let () =
       prog
     with
     | Lang.E.Typing (pos, msg) ->
-      let err = Printf.sprintf "Typing error at %s: %s." (Common.string_of_pos pos) msg in
+      let err = Printf.sprintf "Typing error at %s: %s" (Common.string_of_pos pos) msg in
       error err
   in
   let prog = pass_module "Parsing program" id prog in

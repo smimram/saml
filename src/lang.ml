@@ -554,7 +554,8 @@ module Expr = struct
             if List.for_all (fun (l,(t,o)) -> o) !u then v
             else
               (* T.arr !u v *)
-              failwith "Partial application."
+              (* failwith "Partial application." *)
+              type_error e "Partial application not handled (yet)."
           in
           let e =
             let ret () = ret (App (e, a)) t in
@@ -898,7 +899,9 @@ module Expr = struct
           let l = List.map (fun (l,(e,o)) -> l,(substs ss e,o)) l in
           Replace_fields (r, l)
         | Cst _ | External _ as e -> e
-        | Module _ -> assert false
+        | Module m ->
+          let m = List.map (fun (l,e) -> l, substs ss e) m in
+          Module m
         | For (i,b,e,f) ->
           let ss = List.remove_all_assoc i ss in
           let s = substs ss in
