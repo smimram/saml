@@ -393,7 +393,7 @@ module Expr = struct
 
   (** Infer the type of an expression. *)
   let rec infer_type ?(annot=fun e -> ()) env e =
-    (* Printf.printf "infer_type:\n%s\n\n\n%!" (to_string e); *)
+    Printf.printf "infer_type:\n%s\n\n\n%!" (to_string e);
     let infer_type = infer_type ~annot in
     (* let infer_type env e = *)
       (* let ans = infer_type env e in *)

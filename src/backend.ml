@@ -217,13 +217,13 @@ let rec string_of_expr ?(tab=0) e =
   | Op (Set, [|x;e|]) ->
     Printf.sprintf "%s := %s" (string_of_expr x) (string_of_expr e)
   | Op (o, a) ->
-    if Array.length a = 0 then
-      string_of_op o
-    else
-      let a = Array.to_list a in
-      let a = List.map string_of_expr a in
-      let a = String.concat ", " a in
-      Printf.sprintf "%s(%s)" (string_of_op o) a
+    (* if Array.length a = 0 then *)
+    (* string_of_op o *)
+    (* else *)
+    let a = Array.to_list a in
+    let a = List.map string_of_expr a in
+    let a = String.concat ", " a in
+    Printf.sprintf "%s(%s)" (string_of_op o) a
   | If(b,t,e) ->
     let b = string_of_expr b in
     let t = expr_cmds t in
@@ -312,7 +312,7 @@ let create () =
 (** Allocate a variable of given type. *)
 let alloc prog t =
   try
-    (* Trye to reuse unit variables. *)
+    (* Try to reuse unit variables. *)
     if t = T.Unit then
       prog, Array.index t prog.vars
     else

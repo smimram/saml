@@ -89,4 +89,5 @@ let () =
   let prog = Lang.E.emit prog in
   let prog = Lang.E.BB.prog prog in
   Printf.printf "%s\n%!" (Backend.to_string prog);
+  Backend_interp.emit prog;
   ()

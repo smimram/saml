@@ -3,21 +3,19 @@
 open Stdlib
 open Backend
 
+module B = Backend
+
 let default_value t = V.default ~bot:true t
 
 (** Operations on state for interpreter. *)
 module State = struct
   type state =
     {
-      state_vars : V.t array;
+      vars : V.t array;
       (** Variables. *)
-      state_refs : V.t array;
-      (** References. *)
-      state_proc_vars : (string * V.t array) list;
-      (** Local variables for procedures. *)
-      state_args : V.t array;
+      args : V.t array;
       (** Arguments (for functions). *)
-      mutable state_return : V.t;
+      mutable return : V.t;
       (** Returned value for functions calls. *)
     }
 
@@ -27,30 +25,27 @@ module State = struct
     "TODO: State.to_string"
 
   let create prog =
-    let alloc vars = Array.map (fun t -> default_value t) vars in
     {
-      state_vars = alloc prog.vars;
-      state_refs = [||]; (* TODO *)
-      state_proc_vars = List.map (fun (l,p) -> l, alloc p.proc_vars) prog.procs;
-      state_args = [||];
-      state_return = V.Z;
+      vars = Array.map default_value prog.B.vars;
+      args = [||];
+      return = V.Z;
     }
 
   let set state x v =
-    state.state_refs.(x) <- v
+    state.vars.(x) <- v
 
   let get state x =
-    state.state_refs.(x)
+    state.vars.(x)
 
   let get_arg state n =
-    state.state_args.(n)
+    state.args.(n)
 
   let get_return state =
-    state.state_return
+    state.return
 end
 
 let rec eval_expr prog state e =
-  (* Printf.printf "SAML.eval_expr: %s\n" (string_of_expr e); *)
+  Printf.printf "SAML.eval_expr: %s\n" (string_of_expr e);
   match e with
   | Val v -> v
   | Var v -> State.get state v
@@ -64,6 +59,20 @@ let rec eval_expr prog state e =
     let i = eval_expr prog state i in
     let i = V.get_int i in
     (V.get_record e).(i)
+  | Op(Set,a) ->
+    let x = a.(0) in
+    let v = a.(1) in
+    let v = eval_expr prog state v in
+    (
+      match x with
+      | Var x -> State.set state x v
+      | Field (x,i) ->
+        let x = eval_expr prog state x in
+        let x = V.get_record x in
+        x.(i) <- v
+      | _ -> assert false
+    );
+    V.U
   | Op(op,a) ->
     let a = Array.map (eval_expr prog state) a in
     let gf n = V.get_float (a.(n)) in
@@ -116,8 +125,7 @@ let rec eval_expr prog state e =
       | Call s ->
         (* Printf.printf "call %s\n%!" s; *)
         let p = List.assoc s prog.procs in
-        let p_vars = List.assoc s state.State.state_proc_vars in
-        let p_state = { state with State.state_vars = p_vars; state_args = a } in
+        let p_state = { state with State.args = a } in
         eval prog p_state p.proc_cmds;
         State.get_return state
     )
@@ -127,7 +135,7 @@ let rec eval_expr prog state e =
     V.unit
   | Return x ->
     let e = eval_expr prog state e in
-    state.State.state_return <- e;
+    state.State.return <- e;
     V.unit
 
 and eval prog state cmds =
