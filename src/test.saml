@@ -8,6 +8,8 @@ include "builtin.saml"
 let array =
   struct
     let create = builtin "array_create"
+
+    let play = builtin "array_play"
   end
 
 (* type t = int *)
@@ -33,9 +35,12 @@ let () =
   let buflen = 1024 in
   let a = array.create(buflen,0.) in
   let osc = expand(s) in
-  let s = osc.alloc () in
+  let s = osc.alloc() in
   let x = ref (osc.loop(init=true,s)) in
   while true do
-    x := osc.loop(s)
+    for i = 0 to buflen - 1 do
+      a[i] := osc.loop(s)
+    done;
+    array.play(a)
   done;
   ()

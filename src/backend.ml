@@ -199,10 +199,10 @@ let string_of_op = function
 let rec string_of_expr ?(tab=0) e =
   let string_of_expr ?(tab=tab) = string_of_expr ~tab in
   let string_of_cmds ?(tab=tab) = string_of_cmds ~tab in
-  let expr_cmds cmds =
+  let expr_cmds ?(brackets=false) cmds =
     match cmds with
     | [] -> "{}"
-    | [e] -> string_of_expr e
+    | [e] when not brackets -> string_of_expr e
     | l ->
       let s = string_of_cmds ~tab:(tab+1) cmds in
       let stab = String.spaces (2*tab) in
@@ -236,7 +236,7 @@ let rec string_of_expr ?(tab=0) e =
     let ee = expr_cmds ee in
     Printf.sprintf "for %s = %s to %s do %s" (string_of_var i) (string_of_expr a) (string_of_expr b) ee
   | While(b,ee) ->
-    let ee = expr_cmds ee in
+    let ee = expr_cmds ~brackets:true ee in
     Printf.sprintf "while %s do %s" (string_of_expr b) ee
   | Return e -> Printf.sprintf "return %s" (string_of_expr e)
 
