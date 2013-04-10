@@ -43,4 +43,7 @@ include "pervasives.saml"
   (* done; *)
   (* () *)
 
-let () = osc.play(fun () -> osc.sine(440*(osc.saw(1)+1)))
+let s() =
+  osc.sine(440*(osc.saw(1)+1+osc.sine(20)))
+
+let () = osc.play(s)
