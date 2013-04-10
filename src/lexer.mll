@@ -17,6 +17,7 @@
       "ref", REF;
       "rec", REC;
       "for", FOR;
+      "while", WHILE;
       "to", TO;
       "do", DO;
       "done", DONE;
@@ -24,12 +25,12 @@
       "struct", MODULE;
       "end", END;
       "builtin", BUILTIN;
-      "static", STATIC;
       "not", BNOT;
-      "compile", COMPILE;
       "with", WITH;
       "type", TYPE;
       "include", INCLUDE;
+      "expand", EXPAND;
+      "dt", IDENT Lang.Expr.Ident.dt;
     ]
 }
 

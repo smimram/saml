@@ -75,6 +75,15 @@ module Array = struct
       true
     with
     | Exit -> false
+
+  let may_map f a =
+    let ans = ref [] in
+    for i = 0 to Array.length a - 1 do
+      match f a.(i) with
+      | Some x -> ans := x :: !ans
+      | None -> ()
+    done;
+    Array.of_list (List.rev !ans)
 end
 
 module List = struct
@@ -103,6 +112,14 @@ module List = struct
     let rec aux n = function
       | [] -> raise Not_found
       | y::_ when x = y -> n
+      | _::t -> aux (n+1) t
+    in
+    aux 0 l
+
+  let index_pred p l =
+    let rec aux n = function
+      | [] -> raise Not_found
+      | x::_ when p x -> n
       | _::t -> aux (n+1) t
     in
     aux 0 l
@@ -226,6 +243,13 @@ module List = struct
         | None -> aux (k+1)
     in
     aux 0
+
+  let flatten_map f l =
+    let rec aux = function
+      | x::t -> (f x)@(aux t)
+      | [] -> []
+    in
+    aux l
 end
 
 module String = struct

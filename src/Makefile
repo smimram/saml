@@ -1,6 +1,7 @@
 SOURCES = stdlib.ml saml_dssi.ml common.ml config.ml \
-	backend.ml lang_types.ml lang.ml builtin.ml \
-	parser.mly lexer.mll saml.ml
+	backend.ml backend_interp.ml \
+	lang_types.ml lang.ml builtin.ml parser.mly lexer.mll saml.ml
+# backend_ocaml.ml backend_c.ml
 RESULT = saml
 #PACKS = llvm-2_8 llvm-2_8.analysis llvm-2_8.bitwriter
 ANNOTATE = yes
@@ -19,7 +20,6 @@ OCAMLDOC = ocamldoc.opt
 
 test: all
 	OCAMLRUNPARAM=b ./saml test.saml
-	$(MAKE) dssi
 
 dssi: dssi_out.so
 analyze: dssi
@@ -30,7 +30,7 @@ liq: dssi
 %.so: %.c
 	gcc -fPIC -shared -Wall -Wno-unused-variable -g -lm $^ -o $@
 
-all: backends saml_dssi.ml nc
+all: backends saml_dssi.ml dnc
 
 backends:
 	$(MAKE) -C backends

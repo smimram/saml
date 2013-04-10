@@ -6,7 +6,6 @@
 (* TODO: functions can be curryfied as usual now that we have records with
    optional types. *)
 (* TODO: in records we should let ... otherwise {x = !r} does get propagated *)
-(* TODO: proper generalization with levels *)
 
 open Stdlib
 open Common
@@ -16,6 +15,24 @@ module B = Backend
 module T = Lang_types
 
 module Expr = struct
+  module Ident = struct
+    type t = string
+
+    let prefix = "#"
+
+    let is_meta x = x.[0] = '#'
+
+    let dt = prefix ^ "dt"
+
+    (** Boolean variable indicating whether we are on first round. *)
+    let init = prefix ^ "init"
+
+    let state =
+      let n = ref (-1) in
+      fun () ->
+        incr n; Printf.sprintf "%sstate%d" prefix !n
+  end
+
   type t =
     {
       desc : desc;
@@ -23,16 +40,16 @@ module Expr = struct
       mutable t : T.t option; (** Infered type. *)
     }
   and desc =
-  | Ident of string
+  | Ident of Ident.t
   | Fun of (string * (string * t option)) list * t
+  (** A function. Arguments are labelled (or not if the label is ""), have a
+      variable, and optionally a default value. *)
   | Let of let_t
   | App of t * (string * t) list
   | Cst of constant
-  | Proc of string * (B.T.t list * B.T.t)
-  (** A compiled procedure with type of arguments and return type. *)
   | External of extern
   | Coerce of t * T.t
-  | Ref of t
+  | Ref of t (** A static reference. *)
   | Array of t list
   | Record of (string * t) list
   | Module of (string * t) list
@@ -44,15 +61,22 @@ module Expr = struct
       optional and replaces the value only if not already present. *)
   | Variant of string * t
   | For of string * t * t * t
+  | While of t * t
+  (** A value at initialization, and another one at other times. *)
   and constant =
-  | Bot (** Dummy value used internally to declare references. *)
+  | Bot
+  (** Dummy value used internally to declare references. *)
   | Int of int
   | Float of float
   | Bool of bool
   | String of string
   | Get
   | Set
-  | If (* takes 3 arguments : "",then,?else *)
+  | If
+  (** Conditional branching. Takes 3 arguments : "", then, ?else. *)
+  | Expand (** Expand the monad implementation. *)
+  | Alloc of T.t
+  (** Dynamically a value (it is a function with no argument). *)
   (** External values. *)
   and extern =
     {
@@ -62,23 +86,9 @@ module Expr = struct
       (** Type given the type of its arguments. *)
       ext_backend : T.t -> Backend.Builder.t -> Backend.expr array -> Backend.Builder.t * Backend.expr;
       (** Backend implementation depending on its type. *)
-      ext_implem : subst:(string * t) list -> state:reduce_state -> (string * t) list -> reduce_state * t;
-      (** Implementation. *)
+      ext_implem : (string * t) list -> t;
+    (** Implementation. *)
     }
-  (** State for beta-reduction. *)
-  and reduce_state =
-      {
-        rs_let : (string * t) list;
-        (** Let declarations. *)
-        rs_fresh : int;
-        (** Fresh variable generator. *)
-        rs_procs : (string * B.proc) list;
-        (** Procedures generated. *)
-        rs_types : (string * T.t) list;
-        (** Types declared. *)
-        rs_variants : (string * T.t) list
-        (** Variants declared. *)
-      }
   (** Let declarations. *)
   and let_t =
     {
@@ -87,14 +97,6 @@ module Expr = struct
       def : t;
       body : t
     }
-
-  let reduce_state_empty = {
-    rs_let = [];
-    rs_fresh = -1;
-    rs_procs = [];
-    rs_types = [];
-    rs_variants = [];
-  }
 
   (** Raised by ext_implems when it is not implemented. *)
   exception Cannot_reduce
@@ -110,7 +112,9 @@ module Expr = struct
 
   let to_string e =
     let pa p s = if p then Printf.sprintf "(%s)" s else s in
-    let rec to_string p e =
+    let rec to_string ~tab p e =
+      let tabs ?(tab=tab) () = String.make (2*tab) ' ' in
+      let tabss () = tabs ~tab:(tab+1) () in
       match e.desc with
       | Ident x -> x
       | Fun (a, e) ->
@@ -118,18 +122,38 @@ module Expr = struct
           String.concat_map ", "
             (fun (l,(x,d)) ->
               let l = if l = "" || l = x then "" else l ^ ":" in
-              let d = match d with None -> "" | Some d -> "=" ^ to_string false d in
+              let d = match d with None -> "" | Some d -> "=" ^ to_string ~tab:(tab+1) false d in
               Printf.sprintf "%s%s%s" l x d
             ) a
         in
-        pa p (Printf.sprintf "fun (%s) -> %s" a (to_string false e))
+        let e = to_string ~tab:(tab+1) false e in
+        pa p (Printf.sprintf "fun (%s) ->%s%s" a (if String.contains e '\n' then ("\n"^(tabs ~tab:(tab+1) ())) else " ") e)
+      | App ({ desc = Cst If }, a) ->
+        let b = List.assoc "" a in
+        let t = List.assoc "then" a in
+        let e = List.assoc "else" a in
+        let b = to_string ~tab:(tab+1) false b in
+        let t = to_string ~tab:(tab+1) true t in
+        let e = to_string ~tab:(tab+1) true e in
+        let break = String.contains t '\n' || String.contains e '\n' in
+        if break then
+          pa p (Printf.sprintf "if %s then\n%s%s\n%selse\n%s%s" b (tabss()) t (tabs()) (tabss()) e)
+        else
+          pa p (Printf.sprintf "if %s then %s else %s" b t e)
       | App (e, a) ->
-        let a = String.concat_map ", " (fun (l,e) -> (if l = "" then "" else (l ^ "=")) ^ to_string false e) a in
-        pa p (Printf.sprintf "%s(%s)" (to_string true e) a)
+        let a = String.concat_map ", " (fun (l,e) -> (if l = "" then "" else (l ^ "=")) ^ to_string ~tab:(tab+1) false e) a in
+        pa p (Printf.sprintf "%s(%s)" (to_string ~tab true e) a)
       | Let l ->
-        pa p (Printf.sprintf "let%s %s = %s in\n%s" (if l.recursive then " rec" else "") l.var (to_string false l.def) (to_string false l.body))
+        let def = to_string ~tab:(tab+1) false l.def in
+        let def =
+          if String.contains def '\n' then
+            Printf.sprintf "\n%s%s\n%s" (tabs ~tab:(tab+1) ()) def (tabs())
+          else
+            Printf.sprintf " %s " def
+        in
+        pa p (Printf.sprintf "let%s %s =%sin\n%s%s" (if l.recursive then " rec" else "") l.var def (tabs()) (to_string ~tab false l.body))
       | Ref e ->
-        Printf.sprintf "ref %s" (to_string true e)
+        Printf.sprintf "ref %s" (to_string ~tab true e)
       | External ext -> Printf.sprintf "'%s'" ext.ext_name
       | Cst c ->
         (
@@ -142,30 +166,50 @@ module Expr = struct
           | Get -> "get"
           | Set -> "set"
           | If -> "if"
+          | Expand -> "expand"
+          | Alloc t -> Printf.sprintf "alloc[%s]" (T.to_string t)
         )
       | Coerce (e,t) ->
-        Printf.sprintf "(%s : %s)" (to_string false e) (T.to_string t)
+        Printf.sprintf "(%s : %s)" (to_string ~tab false e) (T.to_string t)
       | For(i,b,e,f) ->
-        pa p (Printf.sprintf "for %s = %s to %s do %s done" i (to_string false b) (to_string false e) (to_string false f))
+        pa p (Printf.sprintf "for %s = %s to %s do\n%s%s\n%sdone" i (to_string ~tab false b) (to_string ~tab false e) (tabs ()) (to_string ~tab:(tab+1)false f) (tabs ()))
+      | While(b,e) ->
+        pa p (Printf.sprintf "while %s do\n%s%s\n%sdone" (to_string ~tab false b) (tabs ~tab:(tab+1) ()) (to_string ~tab:(tab+1) false e) (tabs()))
       | Array a ->
-        let a = String.concat_map ", " (to_string false) a in
+        let a = String.concat_map ", " (to_string ~tab false) a in
         Printf.sprintf "[%s]" a
       | Module r | Record r ->
-        Printf.sprintf "( %s )" (String.concat_map "; " (fun (x,v) -> Printf.sprintf "%s = %s" x (to_string false v)) r)
-      | Field (r,x) -> Printf.sprintf "%s.%s" (to_string true r) x
+        if r = [] then "()" else
+          let r = List.map (fun (x,v) -> Printf.sprintf "%s%s = %s;" (tabss()) x (to_string ~tab:(tab+1) false v)) r in
+          let r = String.concat "\n" r in
+          Printf.sprintf "(\n%s\n%s)" r (tabs())
+      | Field (r,x) -> Printf.sprintf "%s.%s" (to_string ~tab true r) x
       | Replace_fields (r,l) ->
-        Printf.sprintf "( %s with %s )" (to_string true r) (String.concat_map ", " (fun (l,(e,o)) -> Printf.sprintf "%s =%s %s" l (if o then "?" else "") (to_string false e)) l)
-      | Proc (name,_) -> Printf.sprintf "+%s" name
-      | Variant (l,e) -> Printf.sprintf "`%s(%s)" l (to_string false e)
+        Printf.sprintf "( %s with %s )" (to_string ~tab true r) (String.concat_map ", " (fun (l,(e,o)) -> Printf.sprintf "%s =%s %s" l (if o then "?" else "") (to_string ~tab false e)) l)
+      | Variant (l,e) -> Printf.sprintf "`%s(%s)" l (to_string ~tab false e)
     in
-    to_string false e
+    to_string ~tab:0 false e
 
   let typ e =
     match e.t with
     | Some t -> T.unvar t
     | None -> failwith (Printf.sprintf "Couldn't get type for %s." (to_string e))
 
-  let rec fct ?(pos=dummy_pos) ?t args e = make ~pos ?t (Fun (args, e))
+  let rec fct ?(pos=dummy_pos) ?t args e =
+    let t =
+      match t with
+      | Some _ -> t
+      | None ->
+        if args = [] then
+          (
+            match e.t with
+            | Some _ -> Some (T.arr [] (typ e))
+            | None -> None
+          )
+        else
+          None
+    in
+    make ~pos ?t (Fun (args, e))
 
   let quote ?pos e =
     let t =
@@ -192,7 +236,7 @@ module Expr = struct
       | _ -> false
 
   let int ?pos n =
-    let t = T.static T.int in
+    let t = T.int in
     make ?pos ~t (Cst (Int n))
 
   let float ?pos ?(t=T.float) x =
@@ -223,8 +267,9 @@ module Expr = struct
   let variant ?pos l e =
     make ?pos (Variant (l,e))
 
-  let unit ?pos ?t () =
-    record ?pos ?t []
+  let unit ?pos () =
+    let t = T.unit in
+    record ?pos ~t []
 
   let string ?pos ?t s =
     let t = maybe T.string t in
@@ -243,14 +288,17 @@ module Expr = struct
     | e::l -> seq e (seqs l)
     | [] -> unit ()
 
-  let bot ?pos ~t () =
-    make ~t (Cst Bot)
+  let bot ?pos ?t () =
+    make ?t (Cst Bot)
 
   let array ?pos ?t a =
     make ?pos ?t (Array a)
 
   let field ?pos ?t e l =
     make ?pos ?t (Field (e, l))
+
+  let coerce ~t e =
+    make (Coerce (e, t))
 
   let reference ?pos ?t e =
     let t =
@@ -265,20 +313,52 @@ module Expr = struct
     in
     make ?pos ?t (Ref e)
 
+  let alloc ?pos t =
+    app ?pos ~t (make (Cst (Alloc t))) []
+
   let get_ref ?t r =
     app ?t (make (Cst Get)) ["",r]
 
   let set_ref r e =
     app ~t:T.unit (make (Cst Set)) ["",r; "",e]
 
-  let proc ~t ?pos (name,bt) =
-    make ~t ?pos (Proc (name,bt))
+  let cond ?t b ?el th =
+    let t =
+      if th.t <> None then
+        let t = typ th in
+        Some (snd (T.split_arr t))
+      else
+        None
+    in
+    let el =
+      match el with
+      | None -> ["else",fct [] (unit ())]
+      | Some el -> ["else",el]
+    in
+    app ?t (make (Cst If)) (["",b; "then",th]@el)
+
+  let init e0 e =
+    let b = ident ~t:T.bool Ident.init in
+    let e0 = quote e0 in
+    let e = quote e in
+    cond b e0 ~el:e
 
   let fresh_var =
     let n = ref 0 in
     fun ?(name="tmp") () ->
       incr n;
       Printf.sprintf "_%s%d" name !n
+
+
+  (** Execute a program. *)
+  let run e =
+    let e = app (make (Cst Expand)) ["",quote e] in
+    let x = fresh_var () in
+    let state = fresh_var () in
+    let run = app (field (ident x) "loop") ["init", bool true; "", ident state] in
+    let run = letin state (app (field (ident x) "alloc") []) run in
+    let e = letin x e run in
+    e
 
   (** Split the bool / then / else in the arguments of an if. *)
   let bte args =
@@ -288,12 +368,7 @@ module Expr = struct
 
   let emit_type e =
     (* Printf.printf "emit_type: %s:%s\n%!" (to_string e) (T.to_string (typ e)); *)
-    match e.desc with
-    | App({ desc = Proc (_,(ta,t)) },args) ->
-      (* Printf.printf "%d vs %d\n" (List.length ta) (List.length args); *)
-      assert (List.length ta = List.length args);
-      t
-    | _-> T.emit (typ e)
+    T.emit (typ e)
 
   module FV = struct
     include Set.Make (struct type t = string let compare = compare end)
@@ -314,13 +389,20 @@ module Expr = struct
   (** Raised by SAML implementations when reduction is not possible. *)
   exception Cannot_reduce
 
+  (** {2 Type inference} *)
+
   (** Typing error. *)
   exception Typing of pos * string
 
   (** Infer the type of an expression. *)
   let rec infer_type ?(annot=fun e -> ()) env e =
-    (* Printf.printf "infer_type: %s\n%!" (to_string e); *)
-    let infer_type ?(annot=annot) = infer_type ~annot in
+    (* Printf.printf "infer_type:\n%s\n\n\n%!" (to_string e); *)
+    let infer_type = infer_type ~annot in
+    (* let infer_type env e = *)
+      (* let ans = infer_type env e in *)
+      (* Printf.printf "infer_type:\n%s\n=>\n%s\n:\n%s\n\n\n%!" (to_string e) (to_string ans) (T.to_string (typ ans)); *)
+      (* ans *)
+    (* in *)
     let (<:) = T.subtype (T.Env.defs env) in
 
     (* let infer_type env e = *)
@@ -335,11 +417,6 @@ module Expr = struct
 
     (** Try to coerce e into a value of type t. *)
     let coerce e t =
-      let is_unary_record t =
-        match (T.unvar t).T.desc with
-        | T.Record (["",_],None) -> true
-        | _ -> false
-      in
       (* Printf.printf "...coerce: %s : %s\n%!" (to_string e) (T.to_string t); *)
       let rec test e t =
         (* Printf.printf "test: %s : %s <: %s\n%!" (to_string e) (T.to_string (typ e)) (T.to_string t); *)
@@ -392,15 +469,16 @@ module Expr = struct
 
     let ret desc t = { e with desc = desc; t = Some t } in
     let ans =
-      let expr = e in
-      match e.t with
-      | Some t -> e
-      | None ->
+      (* match e.t with *)
+      (* | Some t -> e *)
+      (* | None -> *)
         let desc = e.desc in
         match desc with
-        | Ident "dt" ->
+        | Ident "#dt" ->
           let t = T.arr [] T.float in
           ret desc t
+        | Ident "#init" ->
+          ret desc T.bool
         | Ident x ->
           (
             try
@@ -479,7 +557,8 @@ module Expr = struct
             if List.for_all (fun (l,(t,o)) -> o) !u then v
             else
               (* T.arr !u v *)
-              failwith "Partial application."
+              (* failwith "Partial application." *)
+              type_error e "Partial application not handled (yet)."
           in
           let e =
             let ret () = ret (App (e, a)) t in
@@ -490,11 +569,11 @@ module Expr = struct
               let t = typ (List.assoc "then" a) in
               let _, t = T.split_arr t in
               if not (T.is_unit t) then
-                let r = reference (bot ~t ()) in
+                let r = reference (make (Coerce (bot (), t))) in
                 let tret = t in
                 let b,t,e = bte a in
                 (* TODO: can we avoid a globally generated fresh name? *)
-                let x = fresh_var  ~name:"ifref" () in
+                let x = fresh_var ~name:"ifref" () in
                 let t = quote (set_ref (ident ~t:(T.ref tret) x) (unquote t)) in
                 let e = quote (set_ref (ident ~t:(T.ref tret) x) (unquote e)) in
                 let ite = app (make (Cst If)) ["",b; "then",t; "else",e] in
@@ -503,13 +582,13 @@ module Expr = struct
               else
                 ret ()
             else
-              ret ()
+            ret ()
           in
           e
         | Let l ->
           if l.recursive then
             let x = l.var in
-            assert (x <> "dt");
+            assert (not (Ident.is_meta x));
             let t = T.fresh_var () in
             let def =
               let env = T.Env.add_t env x t in
@@ -524,7 +603,7 @@ module Expr = struct
             ret (Let { l with def; body }) (typ body)
           else
             let def = infer_type env l.def in
-            let def = if l.var = "dt" then coerce def (T.arr [] T.float) else def in
+            let def = if l.var = "#dt" then coerce def (T.arr [] T.float) else def in
             let env = T.Env.add_t env l.var (typ def) in
             let body = infer_type env l.body in
             ret (Let { l with def; body }) (typ body)
@@ -532,6 +611,7 @@ module Expr = struct
           (
             let ret t = ret (Cst c) t in
             match c with
+            | Bot -> ret (T.fresh_var ())
             | Int _ -> ret T.int
             | Float _ -> ret T.float
             | Bool _ -> ret T.bool
@@ -548,6 +628,13 @@ module Expr = struct
               let a = T.fresh_var () in
               let arg = T.arr [] a in
               let t = T.arr ["",(T.bool,false); "then",(arg,false); "else",(arg,false)] a in
+              ret t
+            | Expand ->
+              let a = T.fresh_var () in
+              let s = T.fresh_evar () in
+              let m = T.monad s a in
+              let arg = T.arr [] a in
+              let t = T.arr ["",(arg,false)] m in
               ret t
           )
         | Coerce (e, t) ->
@@ -569,14 +656,14 @@ module Expr = struct
           let a =
             List.map
               (fun e ->
-                let e =infer_type env e in
+                let e = infer_type env e in
                 let te = typ e in
                 if not (t <: te) then
                   type_error e "This expression has type %s but %s was expected." (T.to_string te) (T.to_string t);
                 e
               ) a
           in
-          ret (Array a) (T.array ~static:true t)
+          ret (Array a) (T.array t)
         | Record r ->
           let r = List.map (fun (l,e) -> l, infer_type env e) r in
           let tr = List.map (fun (l,e) -> l,(typ e,false)) r in
@@ -627,6 +714,12 @@ module Expr = struct
             | _ -> assert false
           in
           ret (Replace_fields(r,l)) t
+        | While(b,e) ->
+          let b = infer_type env b in
+          let b = coerce b T.bool in
+          let e = infer_type env e in
+          let e = coerce e (T.arrnl [] T.unit) in
+          ret (While(b,e)) T.unit
         | For(i,b,e,f) ->
           let b = infer_type env b in
           let e = infer_type env e in
@@ -643,6 +736,49 @@ module Expr = struct
           ret (Variant(l,e)) t
     in
     annot ans; ans
+
+  let infer_type ?(annot=false) ?(env=T.Env.empty) e =
+    let annotations = ref [] in
+    let out fname x =
+      annotations := List.map_assoc ~d:"" (fun y -> y ^ x) fname !annotations
+    in
+    let annot_type (p1,p2) t =
+      let fname = p2.Lexing.pos_fname in
+      let a =
+        Printf.sprintf "\"%s\" %d %d %d \"%s\" %d %d %d\n%s(\n  %s\n)\n"
+          fname
+          p1.Lexing.pos_lnum
+          p1.Lexing.pos_bol
+          p1.Lexing.pos_cnum
+          fname
+          p2.Lexing.pos_lnum
+          p2.Lexing.pos_bol
+          p2.Lexing.pos_cnum
+          "type"
+          (T.to_string t)
+      in
+      if p1.Lexing.pos_lnum > 0 then out fname a
+    in
+    let annot, annot_final =
+      if annot then
+        (fun e -> try annot_type e.pos (typ e) with _ -> ()),
+        (fun () ->
+          List.iter
+            (fun (fname,x) ->
+              if fname <> "" then
+                Common.file_out (Filename.chop_extension fname ^ ".annot") x
+            ) !annotations)
+      else
+        (fun _ -> ()), (fun () -> ())
+    in
+    try
+      let e = infer_type ~annot env e in
+      annot_final ();
+      e
+    with
+    | e -> annot_final (); raise e
+
+  (** {2 Reduction} *)
 
   let split_fun e =
     match e.desc with
@@ -662,208 +798,70 @@ module Expr = struct
         (* TODO *)
         assert (List.for_all is_value a);
         true
+      | Field (e, l) -> is_value e
       | _ -> false
 
   module BB = B.Builder
 
-  (** Emit the programs, optionally allowing free variables and generating a
-      state. *)
-  let rec emit ~subst ~state ?(free_vars=false) ?prog expr =
-    Printf.printf "emit: %s\n\n" (to_string expr);
-    let rec aux ~subst ~state ~free_vars prog expr =
-      (* Printf.printf "emit: %s\n\n" (to_string expr); *)
-      let emit ?(subst=subst) ~state prog expr = aux ~subst ~state ~free_vars prog expr in
-      let emit_eqs ?(subst=subst) ~state  prog expr =
-        let state, prog, e = BB.stack_res prog (fun prog ->
-          emit ~subst ~state prog expr
-        )
-        in
-        state, prog, e
+  (** State for beta-reduction. All lists are in "reversed" order, i.e. most
+      recent declaration at the top (including [rs_let]). *)
+  type reduce_state =
+    {
+      rs_let : (string * t) list;
+      (** Let declarations. *)
+      rs_fresh : int;
+      (** Fresh variable generator. *)
+      rs_refs : (t * (string * T.t) list);
+      (** State identifier, and references allocated in the state. *)
+    }
+
+  module RS = struct
+    type t = reduce_state
+
+    (** Empty state for beta-reduction. *)
+    let create () =
+      let rs_refs =
+        let t = T.fresh_evar () in
+        let s = ident ~t (Ident.state ()) in
+        (s, [])
       in
-      let etyp e = emit_type e in
-      let rec emit_expr ?(subst=subst) ~state prog expr =
-        (* Printf.printf "emit_expr: %s\n\n%!" (to_string expr); *)
-        match expr.desc with
-        | Ident x ->
-          let prog, v =
-            if free_vars then
-              BB.var_create prog x (etyp expr)
-            else
-              prog, BB.var prog x
-          in
-          state, prog, B.Var v
-        | App ({ desc = Cst Get }, ["", { desc = Ident x }]) -> state, prog, B.Var (BB.var prog x)
-        | App ({ desc = External e } as ext, a) ->
-          let (state, prog), a =
-            List.fold_map
-              (fun (state,prog) (l,e) ->
-                assert (l = "");
-                let state, prog, e = emit_expr ~state prog e in
-                (state,prog), e
-              ) (state,prog) a
-          in
-          let a = Array.of_list a in
-          let prog, e = e.ext_backend (typ ext) prog a in
-          state, prog, e
-        (* prog, B.Op (op,a) *)
-        | App ({ desc = Cst If }, a) ->
-          let b,t,e = bte a in
-          let t = unquote t in
-          let e = unquote e in
-          let state, prog, b = emit_expr ~state prog b in
-          let state, prog, t = emit_eqs ~state prog t in
-          let state, prog, e = emit_eqs ~state prog e in
-          state, prog, B.If (b,t,e)
-        | For (i,b,e,f) ->
-          let f = unquote f in
-          let state, prog, b = emit_expr ~state prog b in
-          let state, prog, e = emit_expr ~state prog e in
-          let prog = BB.alloc prog i B.T.Int in
-          let state, prog, f = emit_eqs ~state prog f in
-          state, prog, B.For(BB.var prog i,b,e,f)
-        | App ({ desc = Proc(p,_)}, a) ->
-          let a = List.map snd a in
-          let (state,prog), a =
-            List.fold_map
-              (fun (state,prog) e ->
-                let state, prog, e = emit_expr ~state prog e in
-                (state,prog), e
-              ) (state,prog) a
-          in
-          let a = Array.of_list a in
-          state, prog, B.Op (B.Call p, a)
-        | Cst c ->
-          (
-            match c with
-            | String s -> state, prog, B.String s
-            | Float x -> state, prog, B.Float x
-            | Int x -> state, prog, B.Int x
-            | Bool b -> state, prog, B.Bool b
-          )
-        | External e ->
-          (* For constants such as pi. *)
-          let prog, e = e.ext_backend (typ expr) prog [||] in
-          state, prog, e
-        | Record [] ->
-          state, prog, B.unit
-        | Record r ->
-          (* Printf.printf "emit record: %s : %s\n%!" (to_string expr) (T.to_string (typ expr)); *)
-          (* Records are handled in a (very) special way: functional fields are
-             actually function declarations. If there is only one data field left
-             then the return value is not a 1-uple but the value itself. *)
-          let decls = ref [] in
-          (* TODO: we should filter according to the type because some fields
-             might be hidden, or coercions could remove those... *)
-          let r = List.filter (fun (l,e) -> if T.is_arr (typ e) then (decls := (l,e) :: !decls; false) else true) r in
-          let decls = List.rev !decls in
-          if List.length r = 1 then
-            let l,e = List.hd r in
-            (* This is where we need emit to take and return subst and state... *)
-            (* TODO: emit decls *)
-            let state, prog =
-              List.fold_left
-                (fun (state,prog) (l,e) ->
-                  let ea, er = split_fun e in
-                  let ta, t = T.split_arr (typ e) in
-                  (* Arguments should be ordered according to type (this is
-                     important for labeled arguments). *)
-                  let args =
-                    let ea = ref ea in
-                    let arg l =
-                      let ans = List.assoc l !ea in
-                      ea := List.remove_assoc l !ea;
-                      ans
-                    in
-                    let n = ref (-1) in
-                    let ans = List.map (fun (l,(t,_)) -> let x,_ = arg l in incr n; l,x,t,!n) ta in
-                    assert (!ea = []);
-                    ans
-                  in
-                  let state, e = reduce_quote ~subst ~state e (List.map (fun (l,x,t,n) -> l, ident ~t x) args) in
-                  let state, prog, e = BB.stack_res prog (fun prog ->
-                    let prog = List.fold_left (fun prog (l,x,t,n) -> BB.eq_alloc prog x (T.emit t) (B.Arg n)) prog args in
-                    emit ~subst ~state prog e
-                  )
-                  in
-                  let targs = List.map (fun (l,x,t,n) -> T.emit t) args in
-                  let prog = BB.proc prog l targs (T.emit t) e in
-                  state, prog
-                ) (state,prog) decls
-            in
-            (* Printf.printf "emit_expr record: %s\n%!" (to_string e); *)
-            emit_expr ~state prog e
-          else
-            failwith "TODO: emit records"
-        | Array _ ->
-          failwith "Trying to emit constructed array."
-      in
-      (* Printf.printf "emit: %s\n\n%!" (to_string expr); *)
-      match expr.desc with
-      | Let ({ def = { desc = Ref v } } as l) ->
-        let prog = BB.alloc prog l.var (etyp v) in
-        let state, prog =
-          (* Bot is only used for declaring the reference. *)
-          if v.desc = Cst Bot then
-            state, prog
-          else
-            let state, prog, v = emit_expr ~state prog v in
-            let prog = BB.eq prog ~init:true l.var v in
-            state, prog
-        in
-        emit ~state prog l.body
-      | Let ({ def = { desc = App ({ desc = Cst Set }, ["", { desc = Ident x }; "", e]) } } as l) ->
-        let state, prog, e = emit_expr ~state prog e in
-        let prog = BB.eq prog x e in
-        emit ~state prog l.body
-      | Let l ->
-        assert (l.var <> "dt");
-        let t = etyp l.def in
-        (*
-          if l.recursive then
-          let prog = BB.alloc prog l.var t in
-          let prog, def = emit_expr prog l.def in
-          let prog = BB.eq prog l.var def in
-          emit prog l.body
-          else
-        *)
-        assert (not l.recursive);
-        let state, prog, def = emit_expr ~state prog l.def in
-        let prog = BB.eq_alloc prog ~init:(T.allocates (typ l.def)) l.var t def in
-        emit ~state prog l.body
-      | Record [] ->
-        (* This case is used for return values (which have to be unit) of
-           subprograms (if, while, etc). *)
-        state, prog
-      | _ when T.is_unit (typ expr) ->
-        let e = expr in
-        let state, x = fresh_var state in
-        let e = letin x e (unit ()) in
-        emit ~state prog e
-      | _ ->
-        let e = expr in
-        let t = typ e in
-        (* Printf.printf "emit output: %s\n%!" (to_string e); *)
-        let state, prog, e = emit_expr ~state prog e in
-        let prog = BB.output prog (T.emit t) e in
-        state, prog
-    in
-    let prog =
-      match prog with
-      | Some prog -> prog
-      | None -> BB.create (emit_type expr)
-    in
-    (* let prog = BB.alloc ~free:true prog "dt" (B.T.Float) in *)
-    aux ~subst ~state ~free_vars prog expr
+      {
+        rs_let = [];
+        rs_fresh = -1;
+        rs_refs;
+      }
+
+    (** Generate a fresh variable name. *)
+    let fresh_var ?(name="x") state =
+      let state = { state with rs_fresh = state.rs_fresh + 1 } in
+      (* Printf.printf "fresh var: _%s%d\n%!" name state.rs_fresh; *)
+      state, Printf.sprintf "_%s%d" name state.rs_fresh
+
+    let state rs =
+      let state, _ = rs.rs_refs in
+      rs, state
+
+    let add_state rs r t =
+      let state, refs = rs.rs_refs in
+      let refs = (r,t)::refs in
+      { rs with rs_refs = (state,refs) }
+  end
+
+  let expand_let state prog =
+    let prog = List.fold_left (fun e (x,v) -> letin x v e) prog state.rs_let in
+    let state = { state with rs_let = [] } in
+    state, prog
 
   (** Normalize an expression by performing beta-reductions and
       builtins-reductions. *)
-  and reduce ~subst ~state expr =
+  let rec reduce ~subst ~state expr =
     (* Printf.printf "reduce: %s\n\n%!" (to_string expr); *)
     let reduce ?(subst=subst) ~state expr = reduce ~subst ~state expr in
 
     (** Perform a substitution. *)
     let rec substs ss e =
       let d =
+        (* Printf.printf "subst: %s\n%!" (to_string e); *)
         match e.desc with
         | Ident x ->
           let rec aux = function
@@ -879,6 +877,8 @@ module Expr = struct
         | Let l ->
           (* l.var is supposed to be already alpha-converted so that there is no
              capture. *)
+          (* TODO: actually the renaming already performed is not at all
+             sufficient for all the situations, we should rename. *)
           let ss' = List.remove_all_assoc l.var ss in
           let def = substs (if l.recursive then ss' else ss) l.def in
           let ss = ss' in
@@ -902,12 +902,16 @@ module Expr = struct
           let r = substs ss r in
           let l = List.map (fun (l,(e,o)) -> l,(substs ss e,o)) l in
           Replace_fields (r, l)
-        | Cst _ | External _ | Proc _ as e -> e
-        | Module _ -> assert false
+        | Cst _ | External _ as e -> e
+        | Module m ->
+          let m = List.map (fun (l,e) -> l, substs ss e) m in
+          Module m
         | For (i,b,e,f) ->
           let ss = List.remove_all_assoc i ss in
           let s = substs ss in
           For (i, s b, s e, s f)
+        | While (b,e) ->
+          While (substs ss b, substs ss e)
       in
       { e with desc = d }
     in
@@ -922,7 +926,7 @@ module Expr = struct
           List.fold_map
             (fun state (l,(x,o)) ->
               let o = may s o in
-              let state, y = fresh_var state in
+              let state, y = RS.fresh_var state in
               state, ((x,ident y), (l,(y,o)))
             ) state a
         in
@@ -956,29 +960,62 @@ module Expr = struct
               List.assoc "else" args
             in
             let state, b = reduce ~subst ~state b in
-            let state, th = reduce_quote ~subst ~state th [] in
-            let state, el = reduce_quote ~subst ~state el [] in
-            state, app e ["",b; "then", quote th; "else", quote el]
-          (*
-            | External ext when ext.ext_name = "print" ->
-            let s = String.concat_map "; " (fun (x,v) -> Printf.sprintf "%s/%s" (to_string v) x) subst) in
-            Printf.printf "print: %s [ %s ]\n" (to_string (List.assoc "" args)) s;
-            state, app e args
-          *)
+            (
+              match b.desc with
+              | Cst (Bool true) -> reduce ~subst ~state (app th [])
+              | Cst (Bool false) -> reduce ~subst ~state (app el [])
+              | _ ->
+                let state, th = reduce_quote ~subst ~state th [] in
+                let state, el = reduce_quote ~subst ~state el [] in
+                state, app e ["",b; "then", quote th; "else", quote el]
+            )
+          | Cst Expand ->
+            let f = List.assoc "" args in
+            let mstate = RS.create () in
+            let mstate = { state with rs_refs = mstate.rs_refs } in
+            let mstate, f = reduce_quote ~subst ~state:mstate f [] in
+            (* Fill in types. *)
+            let mstate, mstate_ident = RS.state mstate in
+            let mstate_evar = typ mstate_ident in
+            let mstate_ident = match mstate_ident.desc with Ident s -> s | _ -> assert false in
+            let mstate_evar' =
+              let t = snd (T.split_arr (typ e)) in
+              T.monad_state t
+            in
+            T.set_evar mstate_evar' mstate_evar;
+            let mstate_t =
+              let refs = snd mstate.rs_refs in
+              T.record (List.map (fun (x,t) -> x,(t,false)) refs)
+            in
+            Printf.printf "State type: %s\n\n%!" (T.to_string mstate_t);
+            T.set_evar mstate_evar mstate_t;
+            (* Update state. *)
+            let state = { mstate with rs_refs = state.rs_refs } in
+            (* Oscillator functions. *)
+            let f_alloc = fct [] (alloc mstate_t) in
+            let f_loop = fct ["init",(Ident.init,Some (bool false)); "",(mstate_ident,None)] f in
+            let ans = record ["alloc", f_alloc; "loop", f_loop] in
+            Printf.printf "<<<\nexpand:\n%s\nexpanded:\n%s\n>>>\n\n%!" (to_string f) (to_string ans);
+            state, ans
           | External ext when not (T.is_arr (typ expr)) ->
             (* Printf.printf "EXT %s\n%!" (to_string expr); *)
             (* TODO: better when and reduce partial applications. *)
             (
               try
-                let state, e = ext.ext_implem ~subst ~state args in
+                let e = ext.ext_implem args in
                 reduce ~subst ~state e
               with
               | Cannot_reduce -> state, app e args
             )
           | _ -> state, app e args
         )
+      | While(b,e) ->
+        let state, b = reduce ~subst ~state b in
+        let state, e = reduce_quote ~subst ~state e [] in
+        let e = quote e in
+        state, make (While(b,e))
       | For(i,b,e,f) ->
-        let state, i' = fresh_var state in
+        let state, i' = RS.fresh_var state in
         let subst = (i,ident i')::subst in
         let i = i' in
         let state, b = reduce ~subst ~state b in
@@ -1005,7 +1042,7 @@ module Expr = struct
           let tref = T.ref t in
           let r = bot ~t:t () in
           let r = reference ~t:tref r in
-          let state, rx = fresh_var state in
+          let state, rx = RS.fresh_var state in
           let irx = ident ~t:tref rx in
           let state = { state with rs_let = (rx,r)::state.rs_let } in
           let def = l.def in
@@ -1022,13 +1059,19 @@ module Expr = struct
             reduce ~subst ~state l.body
           else
             (* We have to rename x in order for substitution to be capture-free. *)
-            let state, y = fresh_var state in
+            let state, y = RS.fresh_var state in
             let subst = (l.var,ident y)::subst in
             let state = { state with rs_let = (y,def)::state.rs_let } in
             reduce ~subst ~state l.body
       | Ref e ->
-        let state, e = reduce ~state e in
-        state, reference e
+        let t = typ e in
+        let state, s = RS.state state in
+        let state, sr = RS.fresh_var ~name:"ref" state in
+        let state = RS.add_state state sr t in
+        let r = field ~t s sr in
+        let e = init (set_ref r e) (unit ()) in
+        let e = seq e r in
+        reduce ~state e
       | Array a ->
         let state, a = List.fold_map (fun state e -> reduce ~state e) state a in
         state, array a
@@ -1058,7 +1101,8 @@ module Expr = struct
           | _ ->
             (* let s = String.concat_map "\n" (fun (l,e) -> Printf.sprintf "*** %s = %s" l (to_string e)) subst in *)
             (* Printf.printf "%s\n%!" s; *)
-            failwith (Printf.sprintf "Cannot reduce field \"%s\" of %s : %s." l (to_string r) (T.to_string (typ r)))
+            (* failwith (Printf.sprintf "Cannot reduce field \"%s\" of %s : %s." l (to_string r) (T.to_string (typ r))) *)
+            state, field ~t:(typ expr) r l
         )
       | Replace_fields (r, l) ->
         let state, r = reduce ~state r in
@@ -1080,7 +1124,7 @@ module Expr = struct
       | Variant(l,e) ->
         let state, e = reduce ~state e in
         state, variant l e
-      | Cst _ | External _ | Proc _ -> state, expr
+      | Cst _ | External _ -> state, expr
     in
     (* Printf.printf "reduce: %s\n=>\n%s\n\n%!" (to_string expr) (to_string e); *)
     (* Ensure that types and locations are preserved. *)
@@ -1088,37 +1132,164 @@ module Expr = struct
 
   (** Reduce a quote (of type (args) -> 'a). *)
   and reduce_quote ~subst ~state prog args =
-    let oldstate = state in
-    let state = { reduce_state_empty with rs_fresh = state.rs_fresh; rs_types = state.rs_types } in
+    let old_let = state.rs_let in
+    let state = { state with rs_let = [] } in
     let t = snd (T.split_arr (typ prog)) in
     let prog = app ~t prog args in
     let state, prog = reduce ~subst ~state prog in
-    let prog = List.fold_left (fun e (x,v) -> letin x v e) prog state.rs_let in
-    let state =
-      {
-        rs_let = oldstate.rs_let;
-        rs_fresh = state.rs_fresh;
-        rs_procs = oldstate.rs_procs@state.rs_procs;
-        rs_types = oldstate.rs_types;
-        rs_variants = oldstate.rs_variants;
-      }
-    in
+    let state, prog = expand_let state prog in
+    let state = { state with rs_let = old_let } in
     state, prog
 
-  (** Emit a quote. *)
-  and emit_quote ~subst ~state prog e args =
-    let state, e = reduce_quote ~subst ~state e args in
-    let state, prog, e = BB.stack_res prog (fun prog ->
-      emit ~subst ~state ~free_vars:true ~prog e
-    )
-    in
-    (state, prog), e
+  let reduce ?(subst=[]) ?(state=RS.create ()) e =
+    let state, e = reduce ~subst ~state e in
+    let state, e = expand_let state e in
+    e
 
-  (** Generate a fresh variable name. *)
-  and fresh_var state =
-    let state = { state with rs_fresh = state.rs_fresh + 1 } in
-    (* Printf.printf "fresh var: _x%d\n%!" state.rs_fresh; *)
-    state, Printf.sprintf "_x%d" state.rs_fresh
+  (** Emit the programs. *)
+  let rec emit prog expr =
+    (* Printf.printf "emit: %s\n\n" (to_string expr); *)
+    let rec aux prog expr =
+      (* Printf.printf "emit: %s\n\n" (to_string expr); *)
+      let emit prog expr = aux prog expr in
+      let emit_eqs prog expr =
+        let prog = BB.push prog in
+        let prog = emit prog expr in
+        let prog, e = BB.pop prog in
+        prog, e
+      in
+      let etyp e = emit_type e in
+      let rec emit_expr prog expr =
+        (* Printf.printf "emit_expr:\n%s\n\n%!" (to_string expr); *)
+        match expr.desc with
+        | Ident x ->
+          prog, BB.var prog x
+        | App ({ desc = Cst Get }, ["",x]) ->
+          let prog, x = emit_expr prog x in
+          prog, B.E.get x
+        | App ({ desc = Cst Set }, ["",x; "",e]) ->
+          let prog, x = emit_expr prog x in
+          let prog, e = emit_expr prog e in
+          prog, B.E.set x e
+        | App ({ desc = External e } as ext, a) ->
+          let prog, a =
+            List.fold_map
+              (fun prog (l,e) ->
+                assert (l = "");
+                let prog, e = emit_expr prog e in
+                prog, e
+              ) prog a
+          in
+          let a = Array.of_list a in
+          e.ext_backend (typ ext) prog a
+        | App ({ desc = Cst (Alloc t) }, a) ->
+          assert (a = []);
+          prog, B.E.alloc (T.emit t)
+        | App ({ desc = Cst If }, a) ->
+          let b,t,e = bte a in
+          let t = unquote t in
+          let e = unquote e in
+          let prog, b = emit_expr prog b in
+          let prog, t = emit_eqs prog t in
+          let prog, e = emit_eqs prog e in
+          prog, B.If (b,t,e)
+        | While (b,e) ->
+          let e = unquote e in
+          let prog, b = emit_expr prog b in
+          let prog, e = emit_eqs prog e in
+          prog, B.While (b,e)
+        | For (i,b,e,f) ->
+          let f = unquote f in
+          let prog, b = emit_expr prog b in
+          let prog, e = emit_expr prog e in
+          let prog = BB.alloc prog i B.T.Int in
+          let prog, f = emit_eqs prog f in
+          let i =
+            match BB.var prog i with
+            | B.Var i -> i
+            | _ -> assert false
+          in
+          prog, B.For(i,b,e,f)
+        | Cst c ->
+          (
+            match c with
+            | String s -> prog, B.Val (B.V.string s)
+            | Float x -> prog, B.Val (B.V.float x)
+            | Int x -> prog, B.Val (B.V.int x)
+            | Bool b -> prog, B.Val (B.V.bool b)
+            | Bot -> prog, B.Val B.V.bot
+          )
+        | External e ->
+          (* For constants such as pi. *)
+          e.ext_backend (typ expr) prog [||]
+        | Ref e ->
+          emit_expr prog e
+        | Record [] ->
+          prog, B.E.unit
+        | Field (e, l) ->
+          (* Printf.printf "field: %s.%s : %s\n%!" (to_string e) l (T.to_string (typ e)); *)
+          let l =
+            let r =
+              match (T.unvar (typ e)).T.desc with
+              | T.Record (r,_) -> r
+              | _ -> assert false
+            in
+            (* TODO: ensure in some way that this numbering won't be broken by
+               polymorphism... *)
+            List.index_pred (fun (l',_) -> l' = l) r
+          in
+          let prog, e = emit_expr prog e in
+          prog, B.E.field e l
+        | Array _ ->
+          failwith "Trying to emit constructed array."
+      in
+      (* Printf.printf "emit: %s\n\n%!" (to_string expr); *)
+      match expr.desc with
+      | Let ({ def = { desc = External _ } } as l)
+      | Let ({ def = { desc = Fun _ } } as l) ->
+        Printf.printf "Ignoring function %s...\n%!" l.var;
+        emit prog l.body
+      | Let ({ def = { desc = Record _ } } as l) ->
+        Printf.printf "Ignoring record %s...\n%!" l.var;
+        emit prog l.body
+      | Let ({ def = { desc = Module _ } } as l) ->
+        Printf.printf "Ignoring module %s...\n%!" l.var;
+        emit prog l.body
+      | Let l ->
+        assert (l.var <> Ident.dt);
+        (*
+          if l.recursive then
+          let prog = BB.alloc prog l.var t in
+          let prog, def = emit_expr prog l.def in
+          let prog = BB.eq prog l.var def in
+          emit prog l.body
+          else
+        *)
+        assert (not l.recursive);
+        let prog, def = emit_expr prog l.def in
+        let prog =
+          if T.is_unit (typ l.def) then
+            BB.cmd prog def
+          else
+            let prog = BB.alloc prog l.var (etyp l.def) in
+            BB.eq prog (BB.var prog l.var) def
+        in
+        emit prog l.body
+      | Record [] ->
+        (* This case is used for return values (which have to be unit) of
+           subprograms (if, while, etc). *)
+        prog
+      | _ ->
+        let e = expr in
+        let t = typ e in
+        let prog, e = emit_expr prog e in
+        let e = if T.is_unit t then e else B.E.return e in
+        BB.cmd prog e
+    in
+    aux prog expr
+
+  let emit ?(builder=BB.create ()) e =
+    emit builder e
 end
 
 module E = Expr
@@ -1141,9 +1312,23 @@ module Module = struct
   let to_string m =
     String.concat_map "\n\n" to_string m
 
+  (* This is registered later in order to break cyclic dependencies. *)
   let parse_file_fun : (string -> t) ref = ref (fun _ -> assert false)
   let parse_file f = !parse_file_fun f
 
+  let to_expr m =
+    let n = ref (-1) in
+    let fresh () = incr n; Printf.sprintf "_m%d" !n in
+    List.fold_left
+      (fun ee e ->
+        match e with
+        | Expr e -> E.letin (fresh ()) e ee
+        | Decl (x, e) -> E.letin x e ee
+        | Type _ -> ee
+        | Variant _ -> ee
+      ) (E.unit ()) (List.rev m)
+
+(*
   let infer_type ?(annot=false) ?(env=T.Env.empty) m =
     let annotations = ref [] in
     let out fname x =
@@ -1213,8 +1398,10 @@ module Module = struct
           msg
       in
       error msg
+*)
 
-  let reduce ?(subst=[]) ?(state=E.reduce_state_empty) m =
+(*
+  let reduce ?(subst=[]) ?(state=E.RS.empty) m =
     let emit_let state =
       { state with E.rs_let = [] }, List.map (fun (x,e) -> Decl (x, e)) (List.rev state.E.rs_let)
     in
@@ -1246,6 +1433,30 @@ module Module = struct
     let _, m = List.fold_map (fun (subst,state) d -> aux subst state d) (subst,state) m in
     let m = List.concat m in
     m
+*)
+
+  (* let reduce ?(subst=[]) ?(state=E.reduce_state_empty) m = *)
+    (* let e = to_expr m in *)
+    (* let state, e = E.reduce ~subst ~state e in *)
+    (* [Expr e] *)
+
+(*
+  let emit m =
+    let e =
+      let n = ref (-1) in
+      let fresh () = incr n; Printf.sprintf "_m%d" !n in
+      List.fold_left
+        (fun ee e ->
+          match e with
+          | Expr e -> E.letin (fresh ()) e ee
+          | Decl (x, e) -> E.letin x e ee
+          | Type _ -> ee
+          | Variant _ -> ee
+        ) (E.unit ()) (List.rev m)
+    in
+    Printf.printf "emit:\n%s\n\n%!" (E.to_string e);
+    E.emit (E.BB.create ()) e
+*)
 end
 
 module M = Module

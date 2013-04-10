@@ -5,95 +5,94 @@ open Lang
 module B = Backend
 module BB = B.Builder
 
-(** { 2 General functions } *)
+
+(** Registered externals. *)
+let externals = ref []
+
+
+(** {2 General functions} *)
+
+(** Helpers for constructing types. *)
+module T = struct
+  include T
+
+  let f_f _ = arrnl [float] float
+
+  let ff_f _ = arrnl [float;float] float
+
+  let bb_b _ = arrnl [bool;bool] bool
+
+  let b_b _ = arrnl [bool] bool
+
+  let aa_b _ = let a = T.fresh_var () in T.arrnl [a;a] bool
+end
 
 let may_implem i =
-  maybe (fun ~subst ~state _ -> raise E.Cannot_reduce) i
+  maybe (fun _ -> raise E.Cannot_reduce) i
 
 let may_backend b =
   maybe (fun _ -> assert false) b
 
-(** Used for operators reducing to a closure. *)
-let quick_external t i =
-  let ext =
-    {
-      E.
-      ext_name = "quick_external";
-      ext_t = (fun _ -> t);
-      ext_backend = (fun _ -> assert false);
-      ext_implem = i;
-    }
-  in
-  E.make ~t (E.External ext)
-
-let quick_backend name t b =
-  let ext =
-    {
-      E.
-      ext_name = "quick_"^name;
-      ext_t = (fun _ -> t);
-      ext_backend = b;
-      ext_implem = may_implem None;
-    }
-  in
-  E.make ~t (E.External ext)
-
-let op name t ?i b =
-  {
-    E.
-    ext_name = name;
-    ext_t = t;
-    ext_backend = (fun _ prog a -> prog, B.Op(b,a));
-    ext_implem = may_implem i;
-  }
-
+(** Declare an external backend operator. *)
 let mop name ?i ?b t =
   assert (i <> None || b <> None);
-  {
-    E.
-    ext_name = name;
-    ext_t = t;
-    ext_backend = may_backend b;
-    ext_implem = may_implem i;
-  }
+  let e =
+    {
+      E.
+      ext_name = name;
+      ext_t = t;
+      ext_backend = may_backend b;
+      ext_implem = may_implem i;
+    }
+  in
+  externals := e :: !externals
 
-(** Declare an external backend operator. *)
-(*
-let extern name ?saml ?c ?ocaml t =
-  let get, set =
-    let a, t = T.split_arr t in
-    let a = Array.of_list a in
-    let get =
-      Array.map
-        (fun t ->
-          match t.T.desc with
-          | T.Int -> B.V.get_int
-          | T.Float -> B.V.get_float
-        ) a
-    in
-    let set =
-      match t.T.desc with
-      | T.Int -> B.V.int
-      | T.Float -> B.V.float
-    in
-    get, set
-  in
-  let b t prog args =
-    let saml a = B.V.float (float (B.V.get_int a.(0))) in
-    let c a = a.(0) in
-    prog, B.Op (B.extern name ?saml ?c ?ocaml, args)
-  in
-  mop name (fun _ -> t) ~b
-*)
+let op name t ?i b =
+  let b _ prog a = prog, B.Op(b,a) in
+  mop name ?i ~b t
 
 let get_string e =
   match e.E.desc with
   | E.Cst (E.String s) -> s
   | _ -> raise E.Cannot_reduce
 
-let exit =
+
+(** {2 Simple operators} *)
+
+(** {3 Arithmetic} *)
+
+let () = op "mul" T.ff_f B.Mul
+
+let () = op "div" T.ff_f B.Div
+
+let () = op "pi" (fun _ -> T.float) B.Pi
+
+let () = op "sin" T.f_f B.Sin
+
+let () = op "cos" T.f_f B.Cos
+
+let () = op "exp" T.f_f B.Exp
+
+let () = op "random" T.f_f (B.extern ~saml:(fun a -> B.V.float (Random.float (B.V.get_float a.(0)))) ~ocaml:"Random.float" "random")
+
+(** {3 Booleans} *)
+
+let () = op "eq" T.aa_b B.Eq
+
+let () = op "and" T.bb_b (B.extern ~saml:(fun a -> B.V.bool ((B.V.get_bool a.(0)) && (B.V.get_bool a.(1)))) ~ocaml:"( && )" "and")
+
+let () = op "or" T.bb_b (B.extern ~saml:(fun a -> B.V.bool ((B.V.get_bool a.(0)) || (B.V.get_bool a.(1)))) ~ocaml:"( || )" "or")
+
+let () = op "not" T.b_b (B.extern ~saml:(fun a -> B.V.bool (not (B.V.get_bool a.(0)))) ~ocaml:"( not )" "not")
+
+
+
+(** {2 Specific implementations } *)
+
+let () =
+  let name = "exit" in
   let t _ = T.arrnl [T.int] (T.fresh_var ()) in
-  let i ~subst ~state args =
+  let i args =
     let n = List.assoc "" args in
     let n =
       match n.E.desc with
@@ -102,9 +101,7 @@ let exit =
     in
     exit n
   in
-  mop "exit" t ~i
-
-(** {2 Specific implementations } *)
+  mop name t ~i
 
 (** Declare a binary operator on either int or floats. *)
 let nn_n name fop iop fml iml c =
@@ -122,12 +119,12 @@ let nn_n name fop iop fml iml c =
     else
       T.arrnl [T.float; T.float] T.float
   in
-  let i ~subst ~state args =
+  let i args =
     let x = List.assoc "" args in
     let y = List.assoc_nth 1 "" args in
     match x.E.desc, y.E.desc with
-    | E.Cst (E.Int x), E.Cst (E.Int y) -> state, E.int (iop x y)
-    | E.Cst (E.Float x), E.Cst (E.Float y) -> state, E.float (fop x y)
+    | E.Cst (E.Int x), E.Cst (E.Int y) -> E.int (iop x y)
+    | E.Cst (E.Float x), E.Cst (E.Float y) -> E.float (fop x y)
     | _ -> raise E.Cannot_reduce
   in
   let b t prog args =
@@ -143,8 +140,8 @@ let nn_n name fop iop fml iml c =
   in
   mop name t ~i ~b
 
-let add = nn_n "add" (+.) (+) "(+.)" "(+)" "+"
-let sub = nn_n "sub" (-.) (-) "(-.)" "(-)" "-"
+let () = nn_n "add" (+.) (+) "(+.)" "(+)" "+"
+let () = nn_n "sub" (-.) (-) "(-.)" "(-)" "-"
 
 (* TODO: share code with nn_n *)
 let nn_b name fop iop ocaml c =
@@ -162,12 +159,12 @@ let nn_b name fop iop ocaml c =
     else
       T.arrnl [T.float; T.float] T.bool
   in
-  let i ~subst ~state args =
+  let i args =
     let x = List.assoc "" args in
     let y = List.assoc_nth 1 "" args in
     match x.E.desc, y.E.desc with
-    | E.Cst (E.Int x), E.Cst (E.Int y) -> state, E.bool (iop x y)
-    | E.Cst (E.Float x), E.Cst (E.Float y) -> state, E.bool (fop x y)
+    | E.Cst (E.Int x), E.Cst (E.Int y) -> E.bool (iop x y)
+    | E.Cst (E.Float x), E.Cst (E.Float y) -> E.bool (fop x y)
     | _ -> raise E.Cannot_reduce
   in
   let b t prog args =
@@ -186,9 +183,10 @@ let nn_b name fop iop ocaml c =
 let le = nn_b "le" (<=) (<=) "(<=)" "<="
 let lt = nn_b "lt" (<) (<) "(<)" "<"
 
-let print =
+let () =
+  let name = "print" in
   let t _ = (T.arrnl [T.fresh_var ()] T.unit) in
-  let i ~subst ~state args =
+  let i args =
     let s = List.assoc "" args in
     match s.E.desc with
     | E.Cst (E.String s) ->
@@ -207,9 +205,10 @@ let print =
     let t = T.unvar (fst (List.assoc "" t)) in
     prog, B.Op(B.Print (T.emit t),args)
   in
-  mop "print" t ~i ~b
+  mop name t ~i ~b
 
-let array_play =
+let () =
+  let name = "array_play" in
   let channels = 1 in
   let sr = 44100 in
   let writer = ref None in
@@ -231,8 +230,31 @@ let array_play =
     B.V.unit
   in
   let extern = B.extern ~saml "array_play" in
-  op "array_play" (fun _ -> T.arrnl [T.fresh_var()] T.unit) extern
-  (* extern *)
+  op name (fun _ -> T.arrnl [T.fresh_var()] T.unit) extern
+
+(* TODO: reimplement using array_play *)
+let play =
+  let channels = 1 in
+  let sr = 44100 in
+  let writer = ref None in
+  let saml a =
+    let buf = a.(0) in
+    let buf = B.V.get_array buf in
+    let buf = Array.map B.V.get_float buf in
+    let writer =
+      match !writer with
+      | Some w -> w
+      | None ->
+        let w = new Samlib.pulseaudio_writer "SAML" "sound" channels sr in
+        (* let w = new Audio.IO.Writer.to_wav_file channels sr "output.wav" in *)
+        writer := Some w;
+        w
+    in
+    writer#write [|buf|] 0 (Array.length buf);
+    B.V.unit
+  in
+  let extern = B.extern ~saml "play" in
+  op "play" (fun _ -> T.arrnl [T.monad (T.fresh_var ()) T.float] T.unit) extern
 
 (* TODO: remove this debug *)
 (*
@@ -287,10 +309,11 @@ let play_song =
   (* let b _ = B.Unit in *)
   (* mop "dssi" t b *)
 
-let array_create =
+let () =
+  let name = "array_create" in
   let t _ =
     let a = T.fresh_var () in
-    T.arrnl [T.int; a] (T.array ~alloc:true a)
+    T.arrnl [T.int; a] (T.array a)
   in
   let b t prog a =
     let _, t = T.split_arr t in
@@ -302,9 +325,9 @@ let array_create =
     let t = T.emit t in
     prog, B.Op(B.Alloc t,[|a.(0)|])
   in
-  mop "array_create" t ~b
+  mop name t ~b
 
-let array_realloc =
+let () =
   let name = "array_realloc" in
   let t _ =
     let a = T.fresh_var () in
@@ -321,73 +344,70 @@ let array_realloc =
   in
   mop name t ~b
 
-let array_set =
+let () =
+  let name = "array_set" in
   let t _ =
     let a = T.fresh_var () in
     T.arrnl [T.array a; T.int; a] T.unit
   in
   let b t prog a =
-    let t, _ = T.split_arr t in
-    let t, _ = List.assoc_nth 2 "" t in
-    let prog, x = BB.eq_alloc_anon prog (T.emit t) a.(0) in
-    let prog = BB.eq_anon prog (B.LCell(x,a.(1))) a.(2) in
-    prog, B.Unit
+    let cmd = B.E.set (B.Cell (a.(0), a.(1))) a.(2) in
+    prog, cmd
   in
-  mop "array_set" t ~b
+  mop name t ~b
 
-let array_get =
+let () =
+  let name = "array_get" in
   let t _ =
     let a = T.fresh_var () in
     T.arrnl [T.array a; T.int] a
   in
-  let i ~subst ~state arg =
+  let i arg =
     (* Printf.printf "array_get impl\n%!"; *)
     let array = List.assoc "" arg in
     let n = List.assoc_nth 1 "" arg in
     match array.E.desc, n.E.desc with
-    | E.Array a, E.Cst (E.Int n) -> state, List.nth n a
+    | E.Array a, E.Cst (E.Int n) -> List.nth n a
     | _ -> raise E.Cannot_reduce
   in
   let b t prog a =
-    let x =
-      match a.(0) with
-      | B.Var x -> x
-      | _ -> assert false
-    in
-    prog, B.Cell(x, a.(1))
+    prog, B.Cell(a.(0), a.(1))
   in
-  mop "array_get" t ~i ~b
+  mop name t ~i ~b
 
-let array_tail =
+let () =
+  let name = "array_tail" in
   let t _ =
     let v = T.fresh_var () in
-    let a = T.array ~static:true v in
+    let a = T.array v in
     T.arrnl [a] a
   in
-  let i ~subst ~state a =
+  let i a =
     let array = List.assoc "" a in
     match array.E.desc with
     | E.Array a ->
       let a = List.tl a in
-      state, E.array ~t:(E.typ array) a
+      E.array ~t:(E.typ array) a
     | _ -> raise E.Cannot_reduce
   in
-  mop "array_tail" t ~i
+  mop name t ~i
 
-let array_length =
+let () =
+  let name = "array_length" in
   let t _ =
     let v = T.fresh_var () in
-    let a = T.array ~static:true v in
+    let a = T.array v in
     T.arrnl [a] T.int
   in
-  let i ~subst ~state a =
+  let i a =
     let array = List.assoc "" a in
     match array.E.desc with
-    | E.Array a -> state, E.int (List.length a)
+    | E.Array a -> E.int (List.length a)
     | _ -> raise E.Cannot_reduce
   in
-  mop "array_length" t ~i
+  mop name t ~i
 
+(*
 let compile =
   let t args =
     let state = T.state () in
@@ -420,7 +440,7 @@ let compile =
         let a = T.fresh_var () in
         a, (a, [])
     in
-    let t_alloc = T.arrnl [] { state with T.alloc = true } in
+    let t_alloc = T.arrnl [] state in
     let t_run = T.arrnl [state] t_ret in
     let r =
       [
@@ -523,7 +543,9 @@ let compile =
     state, E.record r
   in
   mop "compile" t ~i
+*)
 
+(*
 let emit_dssi =
   let t _ =
     let a = T.fresh_var () in
@@ -562,19 +584,22 @@ let emit_dssi =
     state, E.string c
   in
   mop "emit_dssi" t ~i
+*)
 
-let write_file =
+let () =
+  let name = "file_write" in
   let t _ = T.arrnl[T.string; T.string] T.unit in
-  let i ~subst ~state args =
+  let i args =
     let fname = List.assoc "" args in
     let fname = get_string fname in
     let s = List.assoc_nth 1 "" args in
     let s = get_string s in
     file_out fname s;
-    state, E.unit ()
+    E.unit ()
   in
-  mop "write_file" t ~i
+  mop name t ~i
 
+(*
 let run =
   let t _ = T.arr ["loop",(T.bool,true); "",(T.arrnl [] T.unit,false)] T.unit in
   let i ~subst ~state args =
@@ -613,6 +638,7 @@ let run =
     state, E.unit ()
   in
   mop "run" t ~i
+*)
 
 (* TODO: we could implement for as an external *)
 (*
@@ -626,7 +652,8 @@ let for_loop =
   mop "for" t b
 *)
 
-let float_of_int =
+(** Convert int to float. *)
+let () =
   let name = "float" in
   let t _ = T.arrnl [T.int] T.float in
   (* TODO: implem? *)
@@ -637,7 +664,7 @@ let float_of_int =
   in
   mop name t ~b
 
-let pow =
+let () =
   let name = "pow" in
   let t _ = T.arrnl [T.float;T.float] T.float in
   let b t prog args =
@@ -661,74 +688,8 @@ let pow =
   (* in *)
   (* mop name t ~b *)
 
-(* TODO: use GADT for cleanly handling type especially with backend
-   externals. *)
-let impl =
-  let tf = T.float in
-  let tb = T.bool in
-  let f_f _ = T.arrnl [tf] tf in
-  let ff_f _ = T.arrnl [tf;tf] tf in
-  let bb_b _ = T.arrnl [tb;tb] tb in
-  let b_b _ = T.arrnl [tb] tb in
-  let aa_b _ = let a = T.fresh_var () in T.arrnl [a;a] tb in
-  [
-    (* Arithmetic. *)
-    (* op "add" ff_f B.Add; *)
-    (* op "sub" ff_f B.Sub; *)
-    add;
-    sub;
-    op "mul" ff_f B.Mul;
-    op "div" ff_f B.Div;
-    pow;
-    op "pi" (fun _ -> tf) B.Pi;
-    op "sin" f_f B.Sin;
-    op "cos" f_f B.Cos;
-    op "exp" f_f B.Exp;
-    op "random" f_f (B.extern ~saml:(fun a -> B.V.float (Random.float (B.V.get_float a.(0)))) ~ocaml:"Random.float" "random");
-
-    (* Booleans. *)
-    (* op "le" ff_b B.Le; *)
-    le;
-    (* op "lt" ff_b B.Lt; *)
-    lt;
-    op "eq" aa_b B.Eq;
-    op "and" bb_b (B.extern ~saml:(fun a -> B.V.bool ((B.V.get_bool a.(0)) && (B.V.get_bool a.(1)))) ~ocaml:"( && )" "and");
-    op "or" bb_b (B.extern ~saml:(fun a -> B.V.bool ((B.V.get_bool a.(0)) || (B.V.get_bool a.(1)))) ~ocaml:"( || )" "or");
-    op "not" b_b (B.extern ~saml:(fun a -> B.V.bool (not (B.V.get_bool a.(0)))) ~ocaml:"( not )" "not");
-
-    (* Conversions. *)
-    float_of_int;
-
-    (* Arrays. *)
-    array_create;
-    array_get;
-    array_set;
-    array_length;
-    array_tail;
-    array_play;
-
-    (* Actions. *)
-    exit;
-    compile;
-    emit_dssi;
-    run;
-    print;
-    write_file;
-
-    (* Sound. *)
-    (* play_buffer_mono; *)
-
-    (* Debug. *)
-    op "play" (fun _ -> T.arrnl [T.arr [] T.float] T.unit) B.Botop;
-    op "save" (fun _ -> T.arrnl [T.arr [] T.float] T.unit) B.Botop;
-    (* dssi; *)
-  ]
-
 let externals =
-  List.map (fun e -> e.E.ext_name, E.make (E.External e)) impl
-
-(* let decls = *)
-(* List.map (fun (x,e) -> M.Decl (x,e)) externals *)
+  List.map (fun e -> e.E.ext_name, E.make (E.External e)) !externals
 
 let get ?pos x =
   try

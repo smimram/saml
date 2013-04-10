@@ -75,14 +75,15 @@
 
 %token LET REC IN FUN ARR DOT
 %token MODULE END BUILTIN INCLUDE
-%token REF GET SET FOR TO DO DONE
+%token REF GET SET FOR WHILE TO DO DONE
 %token CMP LE GE LT GT
 %token BAND BOR BNOT
 %token IF THEN ELSE
-%token STATIC COMPILE WITH TYPE
+%token WITH TYPE
 %token LPAR RPAR LARR RARR
 %token SEMICOLON COLON COMMA MAYBE
 %token EQ PLUS MINUS TIMES DIV POW
+%token EXPAND
 %token EOF
 %token <int> INT
 %token <float> FLOAT
@@ -113,9 +114,7 @@
 %nonassoc UMINUS
 
 %start prog
-//%start expr
 %type <Lang.Module.t> prog
-//%type <Lang.Expr.t> expr
 %%
 
 prog:
@@ -198,6 +197,7 @@ expr:
     | expr BOR expr { mk_app (Builtin.get "or") ["",$1; "",$3] }
     | BNOT expr { mk_app (Builtin.get "not") ["",$2] }
     | POW LPAR expr COMMA expr RPAR { mk_app (Builtin.get "pow") ["",$3;"",$5] }
+    | WHILE expr DO expr DONE { mk (While($2,E.quote $4)) }
     | FOR IDENT EQ expr TO expr DO expr DONE { mk (For($2,$4,$6,E.quote $8)) }
     | simple_expr app_args { mk_app $1 $2 }
     | REF simple_expr { mk_ref $2 }
@@ -218,6 +218,7 @@ simple_expr:
     | FLOAT { mk_cst (Float $1) }
     | BOOL { mk_cst (Bool $1) }
     | STRING { mk_cst (String $1) }
+    | EXPAND { mk_cst Expand }
     | LPAR expr RPAR { $2 }
     | LPAR expr COLON typ RPAR { mk (Coerce ($2, $4)) }
     | GET simple_expr { mk_app (mk_cst Get) ["",$2] }
@@ -232,14 +233,12 @@ simple_expr:
     | VARIANT LPAR RPAR { mk (Variant ($1, unit ~pos:(defpos None) ())) }
     | MODULE decls END { mk_module $2 }
     | BUILTIN STRING { Builtin.get ~pos:(defpos None) $2 }
-    | COMPILE { Builtin.get "compile" }
 
 /***** Types *****/
 
 typ:
     | IDENT { type_of_string $1 }
     | typ_record ARR typ { T.arr $1 $3 }
-    | STATIC typ { T.static $2 }
     | typ_record { T.record $1 }
 
 typ_record:

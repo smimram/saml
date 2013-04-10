@@ -1,0 +1,10 @@
+(* -*- tuareg -*- *)
+
+let pi = builtin "pi"
+let sin = builtin "sin"
+let cos = builtin "cos"
+let pow = builtin "pow"
+let random = builtin "random"
+let float = builtin "float"
+let print = builtin "print"
+let exit = builtin "exit"

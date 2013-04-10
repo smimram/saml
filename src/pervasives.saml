@@ -1,15 +1,6 @@
 (* -*- tuareg -*- *)
 
-let pi = builtin "pi"
-let sin = builtin "sin"
-let cos = builtin "cos"
-let pow = builtin "pow"
-let random = builtin "random"
-let float = builtin "float"
-let print = builtin "print"
-let run = builtin "run"
-let play = builtin "play"
-let exit = builtin "exit"
+include "builtin.saml"
 
 let print_nl(x) =
   print(x);
@@ -32,13 +23,13 @@ let prev(init, x) =
 
 let on(b,f) =
   (* TODO: use usual prev *)
-  let prev(x) =
-    let x' = ref false in
+  let prev(init, x) =
+    let x' = ref init in
     let ans = !x' in
     x' := x;
     ans
   in
-  let b' = prev(b) in
+  let b' = prev(false,b) in
   if (b && not b') then f()
 
 (* let prevn(n,x) = *)
@@ -79,7 +70,7 @@ let array =
 
 let file =
   struct
-    let write = builtin "write_file"
+    let write = builtin "file_write"
   end
 
 (** Dummy implementation of events. *)
@@ -140,6 +131,24 @@ let osc =
 
     let random() =
       random(2.)-1
+
+    let play(buflen=1024,osc) =
+      let osc() =
+        let dt() = 1. / 44100. in
+        osc()
+      in
+      let buf = array.create(buflen,0.) in
+      let osc = expand(osc) in
+      let state = osc.alloc() in
+      let x = ref (osc.loop(init=true,state)) in
+      while true do
+        for i = 0 to buflen - 1 do
+          buf[i] := !x;
+          x := osc.loop(state)
+        done;
+        array.play(buf)
+      done;
+      ()
   end
 
 let frequency =
@@ -320,9 +329,10 @@ let instrument =
           period = fun(x) -> period := x
         )
       in
-      (ans : instrument)
-      (* ans *)
+      (* (ans : instrument) *)
+      ans
 
+(*
     let play(s) =
       let player() =
         let dt() = 1./44100. in
@@ -338,27 +348,22 @@ let instrument =
         prog.activate(state);
         for i = 0 to buflen-1 do
           buf[i] := run();
-          (* freq(!t*440); *)
           note(69);
           t := !t + dt
-          (* if duration >= 0 then on(!t >= duration, release) *)
+          if duration >= 0 then on(!t >= duration, release)
         done;
         array.play(buf)
       in
       run(player)
+*)
   end
 
-let emit =
-  struct
-    let dssi(i) =
-      let i = (i:()->instrument) in
-      (builtin "emit_dssi")(i)
-
-    (* let dssi(s) = *)
-      (* let s = (s : instrument) in *)
-      (* let prog = compile(s) in *)
-      (* () *)
-  end
+(* let emit = *)
+  (* struct *)
+    (* let dssi(i) = *)
+      (* let i = (i:()->instrument) in *)
+      (* (builtin "emit_dssi")(i) *)
+  (* end *)
 
 type `Note_on : int
 type `Note_off : int
