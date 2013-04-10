@@ -23,13 +23,13 @@ let prev(init, x) =
 
 let on(b,f) =
   (* TODO: use usual prev *)
-  let prev(x) =
-    let x' = ref false in
+  let prev(init, x) =
+    let x' = ref init in
     let ans = !x' in
     x' := x;
     ans
   in
-  let b' = prev(b) in
+  let b' = prev(false,b) in
   if (b && not b') then f()
 
 (* let prevn(n,x) = *)

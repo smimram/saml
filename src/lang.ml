@@ -1217,6 +1217,7 @@ module Expr = struct
             | Float x -> prog, B.Val (B.V.float x)
             | Int x -> prog, B.Val (B.V.int x)
             | Bool b -> prog, B.Val (B.V.bool b)
+            | Bot -> prog, B.Val B.V.bot
           )
         | External e ->
           (* For constants such as pi. *)

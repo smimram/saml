@@ -77,6 +77,8 @@ module Value = struct
 
   let string s = S s
 
+  let bot = Z
+
   let array n t =
     R (Array.init n (fun _ -> default t))
 
