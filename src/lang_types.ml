@@ -35,10 +35,14 @@ and desc =
     might point to other records. *)
 and var = var_contents ref
 and var_contents =
-| FVar of int
-(** A free variable at given level. *)
+| FVar of var_name * int ref
+(** A free variable of given name at given level. *)
 | Link of t
 (** A link to another variable *)
+and var_name = string
+
+(** A type scheme is a universally quantified type. *)
+type scheme = var_name list * t
 
 let make ?pos t =
   {
@@ -102,9 +106,6 @@ let is_var t =
 module Env = struct
   type typ = t
 
-  (** A type scheme create an instantiation each time it is called. *)
-  type scheme = unit -> t
-
   type t =
     {
       (** Type of free variables. *)
@@ -138,7 +139,7 @@ module Env = struct
     { env with t = (x,scheme)::env.t }
 
   let add_t env x t =
-    add env x (fun () -> t)
+    add env x ([],t)
 
   let add_def env x t =
     { env with defs = (x,t)::env.defs }
@@ -154,7 +155,8 @@ module Env = struct
     }
 end
 
-let show_levels = true
+let show_unique_names = false
+let show_levels = false
 
 let to_string ?env t =
   let un = univ_namer () in
@@ -182,12 +184,9 @@ let to_string ?env t =
       (
         match !v with
         | Link t -> Printf.sprintf "[%s]" (to_string false t)
-        | FVar level ->
-          let s = un v in
-          if show_levels then
-            s ^ "@" ^ string_of_int level
-          else
-            s
+        | FVar (name,level) ->
+          let s = if show_unique_names then name else un v in
+          if show_levels then s ^ "@" ^ string_of_int !level else s
       )
     | EVar v ->
       (
@@ -214,7 +213,13 @@ let to_string ?env t =
     | Record ([],None) -> "unit"
     | Record r ->
       let r, v = Record.canonize r in
-      let v = if v = None then "" else ">" in
+      let v =
+        if v = None then "" else
+          if show_unique_names then
+            (to_string false (make (Var (get_some v)))) ^ ">"
+          else
+            ">"
+      in
       Printf.sprintf "{%s %s }" v
         (String.concat_map "; "
            (fun (x,(t,o)) ->
@@ -250,10 +255,16 @@ let current_level = ref 0
 let enter_level () = incr current_level
 let leave_level () = decr current_level
 
-let fresh_invar () = ref (FVar !current_level)
+let fresh_invar =
+  let n = ref 0 in
+  fun ?level () ->
+    let level = match level with Some level -> level | None -> !current_level in
+    incr n;
+    let name = "'a" ^ string_of_int !n in
+    ref (FVar (name, ref level))
 
-let fresh_var () =
-  make (Var (fresh_invar ()))
+let fresh_var ?level () =
+  make (Var (fresh_invar ?level ()))
 
 let fresh_evar () =
   make (EVar (ref None))
@@ -291,7 +302,7 @@ let rec update_level l t =
     let update_var v =
       match !v with
       | Link t -> aux t
-      | FVar l' -> v := FVar (min l l')
+      | FVar (_,l') -> l' := min l !l'
     in
     match t.desc with
     | Arr (a, t) -> aux t
@@ -320,20 +331,20 @@ let subtype defs t1 t2 =
     let t2 = unvar t2 in
     match t1.desc, t2.desc with
     | Var v1, Var v2 when v1 == v2 -> ()
-    | Var ({ contents = FVar l } as v1), _ ->
+    | Var ({ contents = FVar (_,l) } as v1), _ ->
       if List.memq v1 (free_vars t2) then
         raise Cannot_unify
       else
         (
-          update_level l t2;
+          update_level !l t2;
           v1 := Link t2
         )
-    | _, Var ({ contents = FVar l } as v2) ->
+    | _, Var ({ contents = FVar (_,l) } as v2) ->
       if List.memq v2 (free_vars t1) then
         raise Cannot_unify
       else
         (
-          update_level l t1;
+          update_level !l t1;
           v2 := Link t1
         )
     | EVar v1, EVar v2 when v1 == v2 -> ()
@@ -414,37 +425,64 @@ let subtype defs t1 t2 =
 (* Printf.printf "subtype %s and %s : %B\n%!" (to_string t1) (to_string t2) ans; *)
 (* ans *)
 
-let generalize t =
+let generalize t : scheme =
   let current_level = !current_level in
-  fun () ->
-    let m = mapperq (fun _ -> fresh_invar ()) in
-    let rec aux t =
-      let generalize_var v =
-        match !v with
-        | FVar l -> if l > current_level then m v else v
-        | Link _ -> assert false
-      in
-      let t' =
-        (* Printf.printf "generalize: %s\n%!" (to_string t); *)
-        match (unvar t).desc with
-        | Var v -> Var (generalize_var v)
-        | Arr (a, t) ->
-          let a = List.map (fun (l,(t,o)) -> l,(aux t,o)) a in
-          Arr (a, aux t)
-        | Ref t -> Ref (aux t)
-        | Array t -> Array (aux t)
-        | Record (r,v) ->
-          let v =
-            match v with
-            | Some v -> Some (generalize_var v)
-            | None -> None
-          in
-          Record (List.map (fun (x,(t,o)) -> x,(aux t,o)) r, v)
-        | EVar _ | Int | Float | String | Bool | Ident _ as t -> t
-      in
-      { t with desc = t' }
+  (* Printf.printf "generalize %s at %d\n%!" (to_string t) current_level; *)
+  let rec aux t =
+    let generalize_var v =
+      match !v with
+      | FVar (name,level) -> if !level > current_level then [name] else []
+      | Link _ -> assert false
     in
-    aux t
+    match (unvar t).desc with
+    | Var v -> generalize_var v
+    | Arr (a, t) ->
+      let a = List.concat_map (fun (l,(t,o)) -> aux t) a in
+      (aux t)@a
+    | Ref t -> aux t
+    | Array t -> aux t
+    | Record (r,v) ->
+      let r = List.concat_map (fun (l,(t,o)) -> aux t) r in
+      let v =
+        match v with
+        | Some v -> generalize_var v
+        | None -> []
+      in
+      v@r
+    | EVar _ | Int | Float | String | Bool | Ident _ -> []
+  in
+  aux t, t
+
+let instantiate ((g,t):scheme) =
+  let s = List.map (fun name -> name, fresh_invar ()) g in
+  let rec aux t =
+    let ivar v =
+      match !v with
+      | FVar (name,_) -> (try List.assoc name s with Not_found -> v)
+      | Link _ -> assert false
+    in
+    let desc =
+      match (unvar t).desc with
+      | Var v -> Var (ivar v)
+      | Arr (a, t) ->
+        let a = List.map (fun (l,(t,o)) -> l,(aux t,o)) a in
+        let t = aux t in
+        Arr (a, t)
+      | Ref t -> Ref (aux t)
+      | Array t -> Array (aux t)
+      | Record (r, v) ->
+        let r = List.map (fun (l,(t,o)) -> l,(aux t,o)) r in
+        let v =
+          match v with
+          | Some v -> Some (ivar v)
+          | None -> None
+        in
+        Record (r, v)
+      | EVar _ | Int | Float | String | Bool | Ident _ as t -> t
+    in
+    { desc }
+  in
+  aux t
 
 let int = make Int
 
@@ -548,7 +586,7 @@ let rec emit t =
   | String -> B.T.String
   | Bool -> B.T.Bool
   | Ref t -> emit t
-  | Record (r,None) ->
+  | Record (r,_) ->
     let r = List.may_map (fun (l,(t,o)) -> assert (not o); if not (is_arr t) then Some (emit t) else None) r in
     let r = Array.of_list r in
     B.T.Record r

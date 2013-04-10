@@ -250,6 +250,8 @@ module List = struct
       | [] -> []
     in
     aux l
+
+  let concat_map = flatten_map
 end
 
 module String = struct

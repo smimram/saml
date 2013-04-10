@@ -63,6 +63,8 @@ module Expr = struct
   | For of string * t * t * t
   | While of t * t
   (** A value at initialization, and another one at other times. *)
+  | Alloc of T.t
+  (** Dynamically a value. *)
   and constant =
   | Bot
   (** Dummy value used internally to declare references. *)
@@ -75,8 +77,6 @@ module Expr = struct
   | If
   (** Conditional branching. Takes 3 arguments : "", then, ?else. *)
   | Expand (** Expand the monad implementation. *)
-  | Alloc of T.t
-  (** Dynamically a value (it is a function with no argument). *)
   (** External values. *)
   and extern =
     {
@@ -167,8 +167,8 @@ module Expr = struct
           | Set -> "set"
           | If -> "if"
           | Expand -> "expand"
-          | Alloc t -> Printf.sprintf "alloc[%s]" (T.to_string t)
         )
+      | Alloc t -> Printf.sprintf "alloc[%s]" (T.to_string t)
       | Coerce (e,t) ->
         Printf.sprintf "(%s : %s)" (to_string ~tab false e) (T.to_string t)
       | For(i,b,e,f) ->
@@ -314,7 +314,7 @@ module Expr = struct
     make ?pos ?t (Ref e)
 
   let alloc ?pos t =
-    app ?pos ~t (make (Cst (Alloc t))) []
+    make ?pos ~t (Alloc t)
 
   let get_ref ?t r =
     app ?t (make (Cst Get)) ["",r]
@@ -399,13 +399,11 @@ module Expr = struct
     (* Printf.printf "infer_type:\n%s\n\n\n%!" (to_string e); *)
     let infer_type = infer_type ~annot in
 
-    let infer_type env e =
-      let ans = infer_type env e in
-      Printf.printf "infer_type:\n%s\n=>\n%s\n:\n%s\n\n\n%!" (to_string e) (to_string ans) (T.to_string (typ ans));
-      ans
-    in
-
-    let (<:) = T.subtype (T.Env.defs env) in
+    (* let infer_type env e = *)
+      (* let ans = infer_type env e in *)
+      (* Printf.printf "infer_type:\n%s\n=>\n%s\n:\n%s\n\n\n%!" (to_string e) (to_string ans) (T.to_string (typ ans)); *)
+      (* ans *)
+    (* in *)
 
     (* let infer_type env e = *)
     (* let e = infer_type env e in *)
@@ -424,11 +422,10 @@ module Expr = struct
       else
         infer_type env e
     in
-
+    let (<:) = T.subtype (T.Env.defs env) in
     let type_error e s =
       Printf.ksprintf (fun s -> annot e; raise (Typing (e.pos, s))) s
     in
-
     (** Try to coerce e into a value of type t. *)
     let coerce e t =
       (* Printf.printf "...coerce: %s : %s\n%!" (to_string e) (T.to_string t); *)
@@ -496,7 +493,7 @@ module Expr = struct
       | Ident x ->
         (
           try
-            let t = T.Env.typ env x () in
+            let t = T.instantiate (T.Env.typ env x) in
             ret desc t
           with
           | Not_found -> type_error e "Unbound value %s." x
@@ -518,7 +515,7 @@ module Expr = struct
             ) a
         in
         let a, ta = List.split a in
-        let env' = List.map (fun (l,x,t,o) -> x,(fun () -> t)) ta in
+        let env' = List.map (fun (l,x,t,o) -> x,([],t)) ta in
         let env = T.Env.merge env' env in
         let e = infer_type env e in
         let ta = List.map (fun (l,x,t,o) -> l,(t,o)) ta in
@@ -652,6 +649,12 @@ module Expr = struct
             let t = T.arr ["",(arg,false)] m in
             ret t
         )
+      | Alloc t ->
+        (* We don't want this variable to be generalized, ever. Or do we? We
+           should at least lower the level so that the variable doesn't immediately
+           get generalized. *)
+        let t = T.fresh_var ~level:(-1) () in
+        ret (Alloc t) t
       | Coerce (e, t) ->
         let e = infer_type env e in
         let t = T.expand env t in
@@ -875,7 +878,7 @@ module Expr = struct
 
     (** Perform a substitution. *)
     let rec substs ss e =
-      let d =
+      let desc =
         (* Printf.printf "subst: %s\n%!" (to_string e); *)
         match e.desc with
         | Ident x ->
@@ -917,7 +920,7 @@ module Expr = struct
           let r = substs ss r in
           let l = List.map (fun (l,(e,o)) -> l,(substs ss e,o)) l in
           Replace_fields (r, l)
-        | Cst _ | External _ as e -> e
+        | Alloc _ | Cst _ | External _ as e -> e
         | Module m ->
           let m = List.map (fun (l,e) -> l, substs ss e) m in
           Module m
@@ -928,7 +931,7 @@ module Expr = struct
         | While (b,e) ->
           While (substs ss b, substs ss e)
       in
-      { e with desc = d }
+      { e with desc }
     in
     let s = substs subst in
     let state, e =
@@ -1080,12 +1083,13 @@ module Expr = struct
             reduce ~subst ~state l.body
       | Ref e ->
         let t = typ e in
+        let pos = e.pos in
         let state, s = RS.state state in
         let state, sr = RS.fresh_var ~name:"ref" state in
         let state = RS.add_state state sr t in
-        let r = field ~t s sr in
+        let r = field ~pos ~t s sr in
         let e = init (set_ref r e) (unit ()) in
-        let e = seq e r in
+        let e = seq ~pos e r in
         reduce ~state e
       | Array a ->
         let state, a = List.fold_map (fun state e -> reduce ~state e) state a in
@@ -1139,7 +1143,7 @@ module Expr = struct
       | Variant(l,e) ->
         let state, e = reduce ~state e in
         state, variant l e
-      | Cst _ | External _ -> state, expr
+      | Alloc _ | Cst _ | External _ -> state, expr
     in
     (* Printf.printf "reduce: %s\n=>\n%s\n\n%!" (to_string expr) (to_string e); *)
     (* Ensure that types and locations are preserved. *)
@@ -1197,8 +1201,7 @@ module Expr = struct
           in
           let a = Array.of_list a in
           e.ext_backend (typ ext) prog a
-        | App ({ desc = Cst (Alloc t) }, a) ->
-          assert (a = []);
+        | Alloc t ->
           prog, B.E.alloc (T.emit t)
         | App ({ desc = Cst If }, a) ->
           let b,t,e = bte a in
