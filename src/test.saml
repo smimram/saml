@@ -3,7 +3,7 @@
 (* Test file *)
 
 include "builtin.saml"
-include "pervasives.saml"
+(* include "pervasives.saml" *)
 
 
 let array =
@@ -87,7 +87,8 @@ let s() = f(fun ()->sine(220.))
 (* let s() = f(fun () -> dt) *)
 
 
-let () = play(fun () -> osc.sine(220.))
+(* let () = play(fun () -> osc.sine(220.)) *)
+let () = play(s)
 
 
 

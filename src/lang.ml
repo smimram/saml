@@ -912,10 +912,20 @@ module Expr = struct
           aux ss
         | Fun (x,e) ->
           let x = List.map (fun (l,(x,o)) -> l,(x,Option.map (substs ss) o)) x in
+          let xsx = List.map (fun (l,(x,o)) ->
+            let x' = fresh_var ~name:"l" () in
+            (l,(x',o)),(x,ident x')) x
+          in
+          let x, sx = List.split xsx in
+          let ss = sx@ss in
+          Fun (x, substs ss e)
+(*
+        | Fun (x,e) ->
+          let x = List.map (fun (l,(x,o)) -> l,(x,Option.map (substs ss) o)) x in
           let bv = List.map (fun (l,(x,o)) -> x) x in
           let ss = List.remove_all_assocs bv ss in
           Fun (x, substs ss e)
-(*
+*)
         | Let l ->
           if l.recursive then
             let var = fresh_var ~name:"l" () in
@@ -934,7 +944,7 @@ module Expr = struct
               let ss = (l.var,ident var)::ss in
               let body = substs ss l.body in
               Let { l with var; def; body }
-*)
+(*
         | Let l ->
           (* l.var is supposed to be already alpha-converted so that there is no
              capture. *)
@@ -943,6 +953,7 @@ module Expr = struct
           let ss = ss' in
           let body = substs ss l.body in
           Let { l with def; body }
+*)
         | App (e, a) ->
           let a = List.map (fun (l,e) -> l, substs ss e) a in
           App (substs ss e, a)
@@ -966,6 +977,7 @@ module Expr = struct
           let m = List.map (fun (l,e) -> l, substs ss e) m in
           Module m
         | For (i,b,e,f) ->
+          (* TODO: refresh i *)
           let ss = List.remove_all_assoc i ss in
           let s = substs ss in
           For (i, s b, s e, s f)
