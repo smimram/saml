@@ -47,6 +47,7 @@ let mop name ?i ?b t =
   in
   externals := e :: !externals
 
+(** Declare an external backend operator whose implementation is an operator. *)
 let op name t ?i b =
   let b _ prog a = prog, B.Op(b,a) in
   mop name ?i ~b t
@@ -86,8 +87,15 @@ let () = op "or" T.bb_b (B.extern ~saml:(fun a -> B.V.bool ((B.V.get_bool a.(0))
 let () = op "not" T.b_b (B.extern ~saml:(fun a -> B.V.bool (not (B.V.get_bool a.(0)))) ~ocaml:"( not )" "not")
 
 
+(** {2 Meta operators} *)
 
-(** {2 Specific implementations } *)
+let () =
+  let name = "init" in
+  let t _ = T.arrnl [] T.bool in
+  let i _ = E.ident E.Ident.dt in
+  mop name ~i t
+
+(** {2 Specific implementations} *)
 
 let () =
   let name = "exit" in
@@ -229,7 +237,7 @@ let () =
     writer#write [|buf|] 0 (Array.length buf);
     B.V.unit
   in
-  let extern = B.extern ~saml "array_play" in
+  let extern = B.extern ~saml name in
   op name (fun _ -> T.arrnl [T.fresh_var()] T.unit) extern
 
 (* TODO: reimplement using array_play *)
@@ -308,6 +316,8 @@ let play_song =
   (* let t _ = T.arrnl [t] (T.unit()) in *)
   (* let b _ = B.Unit in *)
   (* mop "dssi" t b *)
+
+(** {2 Arrays} *)
 
 let () =
   let name = "array_create" in

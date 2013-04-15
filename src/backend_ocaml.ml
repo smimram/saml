@@ -27,13 +27,18 @@ let rec emit_type = function
   | T.Float -> "float"
   | T.Unit -> "unit"
 
+let emit_value v =
+  match v with
+  | V.I n -> Printf.sprintf "(%d)" n
+  | V.F f -> Printf.sprintf "(%F)" f
+  | V.B b -> Printf.sprintf "%b" b
+  | V.S s -> Printf.sprintf "\"%s\"" s
+
 let rec emit_expr prog e =
   (* Printf.printf "B.OCaml.emit_expr: %s\n%!" (string_of_expr e); *)
+  let emit_cmds prog cmds = Printf.sprintf "(%s)" (emit_cmds prog cmds) in
   match e with
-  | Int n -> Printf.sprintf "(%d)" n
-  | Float f -> Printf.sprintf "(%F)" f
-  | Bool b -> Printf.sprintf "%b" b
-  | String s -> Printf.sprintf "\"%s\"" s
+  | Val v -> emit_value v
   | Var n -> Printf.sprintf "(!%s)" (string_of_var n)
   | Op (op, args) ->
     let args = Array.to_list args in
@@ -42,25 +47,17 @@ let rec emit_expr prog e =
     Printf.sprintf "(%s %s)" (emit_op op) args
   | If (b,t,e) ->
     let b = emit_expr prog b in
-    let emit_eqs prog eqs = "(" ^ String.concat "; " (List.map (emit_eq prog) eqs) ^ ")" in
-    let t = emit_eqs prog t in
+    let t = emit_cmds prog t in
     let e =
       match e with
-      | [_,Unit] -> ""
-      | _ -> " else " ^ emit_eqs prog e
+      | [Val V.U] -> ""
+      | _ -> " else " ^ emit_cmds prog e
     in
     Printf.sprintf "(if %s then %s%s)" b t e
-  | Return x -> emit_expr prog (Var x)
+  | Return e -> emit_expr prog e
 
-and emit_eq prog (x,e) =
-  (* if static then Printf.sprintf "let %s = %s in" (string_of_var x) (emit_expr prog e) else *)
-  if typ prog x = T.Unit then
-    Printf.sprintf "%s" (emit_expr prog e)
-  else
-    Printf.sprintf "%s := %s" (string_of_loc x) (emit_expr prog e)
-
-and emit_eqs prog eqs =
-  String.concat ";\n" (List.map (emit_eq prog) eqs)
+and emit_cmds prog cmds =
+  String.concat ";\n" (List.map (emit_expr prog) cmds)
 
 (*
   (** Get names for fields of a record of a given type. *)
@@ -76,6 +73,7 @@ and emit_eqs prog eqs =
 *)
 
 let default_value t =
+  Printf.printf "default_value: %s\n%!" (T.to_string t);
   match t with
   | T.Unit -> "()"
   | T.Int -> "0"
@@ -91,10 +89,9 @@ let emit prog =
         if t = T.Unit then
           None
         else
-          Some (Printf.sprintf "let %s = ref %s in" (string_of_var i) (default_value t))
+          Some (Printf.sprintf "let %s = ref %s" (string_of_var i) (default_value t))
       ) vars
   in
   let vars = String.concat "\n" vars in
-  let init = Printf.sprintf "let init () =\n%s\nin" (emit_eqs prog prog.init) in
-  let loop =  Printf.sprintf "let loop () =\n%s\nin" (emit_eqs prog prog.loop) in
-  Printf.sprintf "let program () =\n\n%s\n\n%s\n\n%s\n\nlet first = ref true in\nfun () -> if !first then (first := false; init ()) else loop()" vars init loop
+  let cmds = emit_cmds prog prog.cmds in
+  Printf.sprintf "%s\n\nlet () =\n%s\n" vars cmds

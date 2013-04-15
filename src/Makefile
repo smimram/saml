@@ -1,5 +1,5 @@
 SOURCES = stdlib.ml saml_dssi.ml common.ml config.ml \
-	backend.ml backend_interp.ml \
+	backend.ml backend_interp.ml backend_ocaml.ml \
 	lang_types.ml lang.ml builtin.ml parser.mly lexer.mll saml.ml
 # backend_ocaml.ml backend_c.ml
 RESULT = saml

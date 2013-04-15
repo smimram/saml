@@ -3,7 +3,7 @@
 (* Test file *)
 
 include "builtin.saml"
-(* include "pervasives.saml" *)
+include "pervasives.saml"
 
 
 let array =
