@@ -915,6 +915,7 @@ module Expr = struct
           let bv = List.map (fun (l,(x,o)) -> x) x in
           let ss = List.remove_all_assocs bv ss in
           Fun (x, substs ss e)
+(*
         | Let l ->
           if l.recursive then
             let var = fresh_var ~name:"l" () in
@@ -933,7 +934,7 @@ module Expr = struct
               let ss = (l.var,ident var)::ss in
               let body = substs ss l.body in
               Let { l with var; def; body }
-(*
+*)
         | Let l ->
           (* l.var is supposed to be already alpha-converted so that there is no
              capture. *)
@@ -942,7 +943,6 @@ module Expr = struct
           let ss = ss' in
           let body = substs ss l.body in
           Let { l with def; body }
-*)
         | App (e, a) ->
           let a = List.map (fun (l,e) -> l, substs ss e) a in
           App (substs ss e, a)
@@ -1141,7 +1141,9 @@ module Expr = struct
               let subst = (l.var,def)::subst in
               reduce ~subst ~state l.body
             else
-              let state = { state with rs_let = (l.var,def)::state.rs_let } in
+              let state, var = RS.fresh_var state in
+              let state = { state with rs_let = (var,def)::state.rs_let } in
+              let subst = (l.var,ident var)::subst in
               reduce ~subst ~state l.body
       | Ref e ->
         let t = typ e in
