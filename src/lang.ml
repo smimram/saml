@@ -344,9 +344,15 @@ module Expr = struct
     cond b e0 ~el:e
 
   let fresh_var =
-    let n = ref 0 in
+    let counter = ref [] in
     fun ?(name="tmp") () ->
-      incr n;
+      let n = ref (-1) in
+      let rec aux = function
+        | (x,k)::t when x = name -> n := k; (x,k+1)::t
+        | xk::t -> xk::(aux t)
+        | [] -> aux [name,0]
+      in
+      counter := aux !counter;
       Printf.sprintf "_%s%d" name !n
 
 
@@ -485,11 +491,8 @@ module Expr = struct
       (* | None -> *)
       let desc = e.desc in
       match desc with
-      | Ident "#dt" ->
-        let t = T.arr [] T.float in
-        ret desc t
-      | Ident "#init" ->
-        ret desc T.bool
+      | Ident "#dt" -> ret desc T.float
+      | Ident "#init" -> ret desc T.bool
       | Ident x ->
         (
           try
@@ -615,7 +618,7 @@ module Expr = struct
           ret (Let { l with def; body }) (typ body)
         else
           let def = infer_type ~level:true env l.def in
-          let def = if l.var = "#dt" then coerce def (T.arr [] T.float) else def in
+          let def = if l.var = "#dt" then coerce def T.float else def in
           let env = T.Env.add env l.var (T.generalize (typ def)) in
           let body = infer_type env l.body in
           ret (Let { l with def; body }) (typ body)
@@ -812,7 +815,8 @@ module Expr = struct
   let rec is_value e =
     (* Printf.printf "is_value: %s\n%!" (to_string e); *)
     match e.desc with
-      | Ident _ | Fun _ | Cst _ | External _ -> true
+      | Ident x -> not (Ident.is_meta x)
+      | Fun _ | Cst _ | External _ -> true
       | Record r ->
         (* TODO *)
         (* assert (List.for_all (fun (l,e) -> is_value e) r); *)
@@ -879,7 +883,20 @@ module Expr = struct
       builtins-reductions. *)
   let rec reduce ~subst ~state expr =
     (* Printf.printf "reduce: %s\n\n%!" (to_string expr); *)
+    (* Printf.printf "subst: %s\n\n%!" (String.concat_map ", " (fun (x,e) -> if List.mem x ["#dt";"id"] then Printf.sprintf "%s <- %s" x (to_string e) else "") subst); *)
     let reduce ?(subst=subst) ~state expr = reduce ~subst ~state expr in
+
+    (** Meta-variables get added at the end of substitutions. This is really
+        weired but I think this is the right way... *)
+    let subst_add_meta ss x e =
+      let rec aux l =
+        match l with
+        | (y,_)::_ when Ident.is_meta y -> (x,e)::l
+        | s::t -> s::(aux t)
+        | [] -> [x,e]
+      in
+      aux ss
+    in
 
     (** Perform a substitution. *)
     let rec substs ss e =
@@ -894,19 +911,38 @@ module Expr = struct
           in
           aux ss
         | Fun (x,e) ->
+          let x = List.map (fun (l,(x,o)) -> l,(x,Option.map (substs ss) o)) x in
           let bv = List.map (fun (l,(x,o)) -> x) x in
           let ss = List.remove_all_assocs bv ss in
           Fun (x, substs ss e)
         | Let l ->
+          if l.recursive then
+            let var = fresh_var ~name:"l" () in
+            let ss = (l.var,ident var)::ss in
+            let def = substs ss l.def in
+            let body = substs ss l.body in
+            Let { l with var; def; body }
+          else
+            let def = substs ss l.def in
+            if Ident.is_meta l.var then
+              let ss = List.remove_all_assoc l.var ss in
+              let body = substs ss l.body in
+              Let { l with def; body }
+            else
+              let var = fresh_var ~name:"l" () in
+              let ss = (l.var,ident var)::ss in
+              let body = substs ss l.body in
+              Let { l with var; def; body }
+(*
+        | Let l ->
           (* l.var is supposed to be already alpha-converted so that there is no
              capture. *)
-          (* TODO: actually the renaming already performed is not at all
-             sufficient for all the situations, we should rename. *)
           let ss' = List.remove_all_assoc l.var ss in
           let def = substs (if l.recursive then ss' else ss) l.def in
           let ss = ss' in
           let body = substs ss l.body in
           Let { l with def; body }
+*)
         | App (e, a) ->
           let a = List.map (fun (l,e) -> l, substs ss e) a in
           App (substs ss e, a)
@@ -992,6 +1028,7 @@ module Expr = struct
                 let state, el = reduce_quote ~subst ~state el [] in
                 state, app e ["",b; "then", quote th; "else", quote el]
             )
+          (* | Cst Expand -> state, app e args *)
           | Cst Expand ->
             let f = List.assoc "" args in
             let mstate = RS.create () in
@@ -1060,32 +1097,52 @@ module Expr = struct
         )
       | Let l ->
         if l.recursive then
-          (* Create a reference (on bot) for the recursive value. *)
-          let t = typ l.def in
-          let tref = T.ref t in
-          let r = bot ~t:t () in
-          let r = reference ~t:tref r in
-          let state, rx = RS.fresh_var state in
-          let irx = ident ~t:tref rx in
-          let state = { state with rs_let = (rx,r)::state.rs_let } in
-          let def = l.def in
-          let state, def = reduce ~subst:((l.var,get_ref ~t irx)::subst) ~state def in
-          let body = l.body in
-          let body = letin l.var (get_ref ~t irx) body in
-          let e = seq (set_ref irx def) body in
-          (* Printf.printf "RECURSIVE: %s\n=>\n%s\n%!" (to_string expr) (to_string e); *)
-          reduce ~subst ~state e
+          (
+            assert (not (Ident.is_meta l.var));
+            (* TODO: think hard about this *)
+            let _ = assert false in
+            (* Create a reference (on bot) for the recursive value. *)
+            let t = typ l.def in
+            let tref = T.ref t in
+            let r = bot ~t:t () in
+            let r = reference ~t:tref r in
+            let state, rx = RS.fresh_var state in
+            let irx = ident ~t:tref rx in
+            let state = { state with rs_let = (rx,r)::state.rs_let } in
+            let def = l.def in
+            let state, def = reduce ~subst:((l.var,get_ref ~t irx)::subst) ~state def in
+            let body = l.body in
+            let body = letin l.var (get_ref ~t irx) body in
+            let e = seq (set_ref irx def) body in
+            (* Printf.printf "RECURSIVE: %s\n=>\n%s\n%!" (to_string expr) (to_string e); *)
+            reduce ~subst ~state e
+          )
         else
-          let state, def = reduce ~subst ~state l.def in
-          if is_value def then
-            let subst = (l.var,def)::subst in
-            reduce ~subst ~state l.body
+          if Ident.is_meta l.var then
+            if is_value l.def then
+              let state, def = reduce ~subst ~state l.def in
+              (* let state, body = reduce ~subst ~state l.body in *)
+              (* let state, body = expand_let state body in *)
+              (* reduce ~subst:[l.var,l.def] ~state body *)
+              let subst = subst_add_meta subst l.var l.def in
+              reduce ~subst ~state l.body
+            else
+              let var = fresh_var ~name:"meta" () in
+              let e = letin l.var (ident var) l.body in
+              let e = letin var l.def e in
+              (* Printf.printf "*** META:\n%s\n\n%!" (to_string e); *)
+              (* let state, ans = reduce ~subst ~state e in *)
+              (* Printf.printf "*** META ans:\n%s\n\n%!" (to_string (snd (expand_let state ans))); *)
+              (* state, ans *)
+              reduce ~subst ~state e
           else
-            (* We have to rename x in order for substitution to be capture-free. *)
-            let state, y = RS.fresh_var state in
-            let subst = (l.var,ident y)::subst in
-            let state = { state with rs_let = (y,def)::state.rs_let } in
-            reduce ~subst ~state l.body
+            let state, def = reduce ~subst ~state l.def in
+            if is_value def then
+              let subst = (l.var,def)::subst in
+              reduce ~subst ~state l.body
+            else
+              let state = { state with rs_let = (l.var,def)::state.rs_let } in
+              reduce ~subst ~state l.body
       | Ref e ->
         let t = typ e in
         let pos = e.pos in

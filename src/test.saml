@@ -3,14 +3,8 @@
 (* Test file *)
 
 include "builtin.saml"
-(* include "pervasives.saml" *)
+include "pervasives.saml"
 
-
-let () =
-  let osc = expand(fun () -> 3.) in
-  (* let x = ref 0. in *)
-  (* !x + 2. *)
-  (osc : unit)
 
 let array =
   struct
@@ -21,7 +15,7 @@ let array =
 
 let play(buflen=1024,osc) =
   let osc() =
-    let dt() = 1. / 44100. in
+    let dt = 1. / 44100. in
     osc()
   in
   let buf = array.create(buflen,0.) in
@@ -45,18 +39,18 @@ let id(x) = x
 let euler(reset=id,phase=0.,f') =
   let x = ref phase in
   let ans = !x in
-  x := !x + dt() * f';
+  x := !x + dt * f';
   x := reset(!x);
   ans
 
 let sine(freq,phase=0.) = sin(2. * pi * euler(freq,phase=))
 
-let osc =
-  struct
-    let sine = sine
+(* let osc = *)
+  (* struct *)
+    (* let sine = sine *)
 
-    let play = play
-  end
+    (* let play = play *)
+  (* end *)
 
 (* let s() = *)
   (* let dt() = 1. / 44100. in *)
@@ -81,13 +75,32 @@ let osc =
 
 (* let s() = time.accelerate(440+60*time.accelerate(10*time.now,fun()->osc.sine(1)),fun()->osc.saw(1.)) *)
 
-let s() = osc.sine(220.)
+(* let s() = sine(220.) *)
 
-let f(s) = let dt() = 666. * dt() in s
 
-let s = f(fun() -> osc.sine(220.))
 
-let () = osc.play(s)
+let f(s) = let dt = 666. * dt in s()
+(* let f = id *)
+
+let s() = f(fun ()->sine(220.))
+(* let s()=sine(220.) *)
+(* let s() = f(fun () -> dt) *)
+
+
+let () = play(fun () -> osc.sine(220.))
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 (* Test generalization. *)
 (* let f(x) = prev(false,x) *)

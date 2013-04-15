@@ -83,7 +83,7 @@ let integrator =
     let euler(reset=id,phase=0.,f') =
       let x = ref phase in
       let ans = !x in
-      x := !x + dt() * f';
+      x := !x + dt * f';
       x := reset(!x);
       ans
   end
@@ -93,7 +93,7 @@ let time =
     let now() = integrator.euler(1.)
 
     let distort(f,s) =
-      let dt() = f(dt()) in
+      let dt = f(dt) in
       s()
 
     let accelerate(freq,phase=0.,x) = distort(fun (t) -> freq*t+phase, x)
@@ -125,7 +125,7 @@ let osc =
 
     let play(buflen=1024,osc) =
       let osc() =
-        let dt() = 1. / 44100. in
+        let dt = 1. / 44100. in
         osc()
       in
       let buf = array.create(buflen,0.) in
@@ -198,7 +198,7 @@ let filter =
     struct
       let low_pass(freq,x) =
         let rc = 1./(2.*pi*freq) in
-        let a = dt()/(rc+dt()) in
+        let a = dt/(rc+dt) in
         let rec y =
           let y' = prev(0.,y) in
           y'+a*(x-y')
@@ -208,7 +208,7 @@ let filter =
 
       let high_pass(freq,x) =
         let rc = 1./(2.*pi*freq) in
-        let a = rc/(rc+dt()) in
+        let a = rc/(rc+dt) in
         let rec y =
           a*(prev(0.,y)+x-prev(0.,x))
         in
@@ -230,7 +230,7 @@ let filter =
     let biquad =
     struct
       let high_pass(freq,q,x) =
-        let w0 = 2.*pi*freq*dt() in
+        let w0 = 2.*pi*freq*dt in
         let alpha = sin(w0)/(2.*q) in
         let a = [1.+alpha,-2.*cos(w0),1.-alpha] in
         let b = [(1.+cos(w0))/2.,-(1.+cos(w0)),(1.+cos(w0))/2.] in
@@ -298,7 +298,7 @@ let instrument =
 
     let adsr(a,d,s,r,x) =
       let period = ref (1./44100.) in
-      let dt() = !period in
+      let dt = !period in
       let n = ref 69 in
       let x = (x:(float)->float) in
       let x = x(midi.freq(!n)) in
@@ -326,7 +326,7 @@ let instrument =
 (*
     let play(s) =
       let player() =
-        let dt() = 1./44100. in
+        let dt = 1./44100. in
         let s = (s : ()->instrument) in
         let prog = compile(s) in
         let state = prog.alloc() in

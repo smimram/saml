@@ -271,3 +271,9 @@ module String = struct
   let spaces n =
     String.make n ' '
 end
+
+module Option = struct
+  let map f = function
+    | Some x -> Some (f x)
+    | None -> None
+end
