@@ -882,8 +882,8 @@ module Expr = struct
   (** Normalize an expression by performing beta-reductions and
       builtins-reductions. *)
   let rec reduce ~subst ~state expr =
-    Printf.printf "reduce:\n%s\n\n%!" (to_string expr);
-    Printf.printf "subst: %s\n\n%!" (String.concat_map ", " (fun (x,e) -> if List.mem x ["#dt";"_meta0";"_meta1";"_l100"] then Printf.sprintf "%s <- %s" x (to_string e) else "") subst);
+    (* Printf.printf "reduce:\n%s\n\n%!" (to_string expr); *)
+    (* Printf.printf "subst: %s\n\n%!" (String.concat_map ", " (fun (x,e) -> if List.mem x ["#dt";"_meta0";"_meta1"] then Printf.sprintf "%s <- %s" x (to_string e) else "") subst); *)
     let reduce ?(subst=subst) ~state expr = reduce ~subst ~state expr in
 
     (** Meta-variables get added at the end of substitutions. This is really
@@ -1131,21 +1131,17 @@ module Expr = struct
         else
           if Ident.is_meta l.var then
             if is_value l.def then
-              let () = Printf.printf "*** META:\n%s\n\n%!" (to_string expr) in
+              (* let () = Printf.printf "*** META:\n%s\n\n%!" (to_string expr) in *)
               let state, def = reduce ~subst ~state l.def in
               let subst = List.remove_all_assoc l.var subst in
               let state' = { state with rs_let = [] } in
               let state', body = reduce ~subst ~state:state' l.body in
               let state', body = expand_let state' body in
               let state = { state' with rs_let = state.rs_let } in
-              let () = Printf.printf "*** META let:\n%s\n\n%!" (to_string body) in
+              (* let () = Printf.printf "*** META let:\n%s\n\n%!" (to_string body) in *)
               let state, ans = reduce ~subst:[l.var,def] ~state body in
-              Printf.printf "*** META ans:\n%s\n\n%!" (to_string (snd (expand_let state ans)));
+              (* Printf.printf "*** META ans:\n%s\n\n%!" (to_string (snd (expand_let state ans))); *)
               state, ans
-              (* reduce ~subst:[l.var,def] ~state body *)
-
-              (* let subst = subst_add_meta subst l.var l.def in *)
-              (* reduce ~subst ~state l.body *)
             else
               (* TODO: use state *)
               let var = fresh_var ~name:"meta" () in
@@ -1341,8 +1337,9 @@ module Expr = struct
                polymorphism... *)
             List.index_pred (fun (l',_) -> l' = l) r
           in
+          let t = B.T.get_record (T.emit (typ e)) in
           let prog, e = emit_expr prog e in
-          prog, B.E.field e l
+          prog, B.E.field t e l
         | Array _ ->
           failwith "Trying to emit constructed array."
       in

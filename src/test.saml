@@ -14,9 +14,9 @@ let array =
   end
 
 let play(buflen=1024,osc) =
-  let osc =
+  let osc() =
     let dt = 1. / 44100. in
-    osc
+    osc()
   in
   let buf = array.create(buflen,0.) in
   let osc = expand(osc) in
@@ -77,14 +77,18 @@ let sine(freq,phase=0.) = sin(2. * pi * euler(freq,phase=))
 
 (* let s() = sine(220.) *)
 
+let distort(f,s) =
+  let dt = f(dt) in
+  s()
 
-
-let f(s) = fun () -> let dt = 4. * dt in s()
+(* let f(s) = fun () -> let dt = 4. * dt in s() *)
+(* let f(s) = let dt = 4. * dt in s() *)
+let f(s) = distort (fun(t) -> 3.*t,s)
 (* let f = id *)
 
 (* let s = f(fun ()->dt) *)
-let s()=sine(220.)
-let s = f(s)
+let s() = sine(220.)
+let s() = f(s)
 (* let s() = f(fun () -> dt) *)
 
 

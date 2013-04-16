@@ -25,6 +25,10 @@ module Type = struct
       Printf.sprintf "{ %s }" t
     | Array t -> Printf.sprintf "%s array" (to_string t)
     | Ptr t -> Printf.sprintf "*%s" (to_string t)
+
+  let get_record = function
+    | Record r -> r
+    | _ -> assert false
 end
 
 module T = Type
@@ -147,7 +151,7 @@ type expr =
 | If of expr * cmds * cmds
 | For of var * expr * expr * cmds
 | While of expr * cmds
-| Field of expr * int (** Field of a record. *)
+| Field of T.t array * expr * int (** Field of a record with given fields. *)
 | Cell of expr * expr (** Cell of an array. *)
 | Return of expr (** Return a value. *)
 (** An equation of the form x = e. *)
@@ -214,7 +218,7 @@ let rec string_of_expr ?(tab=0) e =
   | Val v -> V.to_string v
   | Var v -> string_of_var v
   | Arg n -> string_of_arg n
-  | Field (x,i) -> Printf.sprintf "%s.%d" (string_of_expr x) i
+  | Field (t,x,i) -> Printf.sprintf "%s.%d" (string_of_expr x) i
   | Cell (x,i) -> Printf.sprintf "%s[%s]" (string_of_expr x) (string_of_expr i)
   | Op (Set, [|x;e|]) ->
     Printf.sprintf "%s := %s" (string_of_expr x) (string_of_expr e)
@@ -274,8 +278,8 @@ module Expr = struct
     in
     Op(Alloc t, a)
 
-  let field e l =
-    Field(e,l)
+  let field t e l =
+    Field(t,e,l)
 end
 module E = Expr
 

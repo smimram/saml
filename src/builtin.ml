@@ -237,7 +237,8 @@ let () =
     writer#write [|buf|] 0 (Array.length buf);
     B.V.unit
   in
-  let extern = B.extern ~saml name in
+  let ocaml = "Array.play" in
+  let extern = B.extern ~saml ~ocaml name in
   op name (fun _ -> T.arrnl [T.fresh_var()] T.unit) extern
 
 (* TODO: reimplement using array_play *)

@@ -50,7 +50,7 @@ let rec eval_expr prog state e =
   | Val v -> v
   | Var v -> State.get state v
   | Arg n -> State.get_arg state n
-  | Field (e,i) ->
+  | Field (t,e,i) ->
     let e = eval_expr prog state e in
     let e = V.get_record e in
     e.(i)
@@ -67,7 +67,7 @@ let rec eval_expr prog state e =
     (
       match x with
       | Var x -> State.set state x v
-      | Field (x,i) ->
+      | Field (t,x,i) ->
         let x = eval_expr prog state x in
         let x = V.get_record x in
         x.(i) <- v

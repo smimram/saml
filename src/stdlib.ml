@@ -277,3 +277,10 @@ module Option = struct
     | Some x -> Some (f x)
     | None -> None
 end
+
+module File = struct
+  let write fname s =
+    let oc = open_out fname in
+    output_string oc s;
+    close_out oc
+end

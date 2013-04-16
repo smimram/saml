@@ -47,6 +47,6 @@ saml_dssi.ml: saml_dssi.c
 
 doc_html: htdoc
 
-# include Makefile.defs
-# include Makefile.rules
+.PHONY: backends
+
 include OCamlMakefile
