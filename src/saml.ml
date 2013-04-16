@@ -93,5 +93,5 @@ let () =
   Printf.printf "****** ML program *****\n\n%!";
   Printf.printf "%s\n%!" (Backend_ocaml.emit prog);
   File.write "out/output.ml" (Backend_ocaml.emit prog);
-  (* Backend_interp.emit prog; *)
+  Backend_interp.emit prog;
   ()

@@ -1248,9 +1248,9 @@ module Expr = struct
 
   (** Emit the programs. *)
   let rec emit prog expr =
-    (* Printf.printf "emit: %s\n\n" (to_string expr); *)
+    (* Printf.printf "emit:\n%s\n\n" (to_string expr); *)
     let rec aux prog expr =
-      (* Printf.printf "emit: %s\n\n" (to_string expr); *)
+      (* Printf.printf "emit:\n%s\n\n" (to_string expr); *)
       let emit prog expr = aux prog expr in
       let emit_eqs prog expr =
         let prog = BB.push prog in
@@ -1261,6 +1261,7 @@ module Expr = struct
       let etyp e = emit_type e in
       let rec emit_expr prog expr =
         (* Printf.printf "emit_expr:\n%s\n\n%!" (to_string expr); *)
+        (* Printf.printf "of type: %s\n\n%!" (T.to_string (typ expr)); *)
         match expr.desc with
         | Ident x ->
           prog, BB.var prog x

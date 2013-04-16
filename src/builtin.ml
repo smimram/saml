@@ -90,9 +90,15 @@ let () = op "not" T.b_b (B.extern ~saml:(fun a -> B.V.bool (not (B.V.get_bool a.
 (** {2 Meta operators} *)
 
 let () =
+  let name = "bot" in
+  let t _ = T.arrnl [] (T.fresh_var ()) in
+  let i _ = E.bot () in
+  mop name ~i t
+
+let () =
   let name = "init" in
   let t _ = T.arrnl [] T.bool in
-  let i _ = E.ident E.Ident.dt in
+  let i _ = E.ident E.Ident.init in
   mop name ~i t
 
 (** {2 Specific implementations} *)
@@ -239,7 +245,38 @@ let () =
   in
   let ocaml = "Array.play" in
   let extern = B.extern ~saml ~ocaml name in
-  op name (fun _ -> T.arrnl [T.fresh_var()] T.unit) extern
+  op name (fun _ -> T.arrnl [T.array T.float] T.unit) extern
+
+let () =
+  let name = "array_play_stereo" in
+  let channels = 1 in
+  let sr = 44100 in
+  let writer = ref None in
+  let saml a =
+    (* Printf.printf "array_play: %s\n%!" (B.V.to_string a.(0)); *)
+    let buf = a.(0) in
+    let buf = B.V.get_array buf in
+    let buf =
+      Array.map (fun cbuf ->
+        let cbuf = B.V.get_array cbuf in
+        Array.map B.V.get_float cbuf
+      ) buf
+    in
+    let writer =
+      match !writer with
+      | Some w -> w
+      | None ->
+        let w = new Samlib.pulseaudio_writer "SAML" "sound" channels sr in
+        (* let w = new Audio.IO.Writer.to_wav_file channels sr "output.wav" in *)
+        writer := Some w;
+        w
+    in
+    writer#write buf 0 (Array.length buf.(0));
+    B.V.unit
+  in
+  let ocaml = "Array.play_stereo" in
+  let extern = B.extern ~saml ~ocaml name in
+  op name (fun _ -> T.arrnl [T.array (T.array T.float)] T.unit) extern
 
 (* TODO: reimplement using array_play *)
 let play =

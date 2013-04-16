@@ -20,6 +20,7 @@ OCAMLDOC = ocamldoc.opt
 
 test: all
 	OCAMLRUNPARAM=b ./saml test.saml
+	# OCAMLRUNPARAM=b ./saml mini_test.saml
 
 dssi: dssi_out.so
 analyze: dssi

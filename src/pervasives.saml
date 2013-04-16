@@ -33,6 +33,8 @@ let on(b,f) =
 
 let meta =
   struct
+    let bot = (builtin "bot") ()
+
     let init = (builtin "init") ()
   end
 
@@ -44,13 +46,15 @@ let array =
 
     let length = builtin "array_length"
 
-    (* TODO: bad implementation, the array is cleared each time... *)
-    (* let init (n,x) = *)
-      (* let a = create(n,x) in *)
-      (* for i = 0 to n - 1 do *)
-        (* a[i] := x *)
-      (* done; *)
-      (* a *)
+    let init(n,f) =
+      (* TODO: we have to hack here because externals are always generalized at
+         application for now... *)
+      let a = (create(n, meta.bot) : float array) in
+      if meta.init then
+        for i = 0 to n - 1 do
+          a[i] := f(i)
+        done;
+      a
 
     let iter(f,a) =
       for i = 0 to length(a)-1 do
@@ -62,6 +66,8 @@ let array =
     let tl = builtin "array_tail"
 
     let play = builtin "array_play"
+
+    let play_stereo = builtin "array_play_stereo"
   end
 
 let file =
@@ -72,13 +78,13 @@ let file =
 (** Dummy implementation of events. *)
 let event =
   struct
-    let create (x) =
+    let create(x) =
       ref (event=false,value=x)
 
-    let emit (e,x) =
+    let emit(e,x) =
       e := (event=true,value=x)
 
-    let handle (e,f) =
+    let handle(e,f) =
       if (!e).event then f((!e).value);
       e := (event=false, value=(!e).value)
   end
@@ -134,6 +140,24 @@ let osc =
         osc()
       in
       let buf = array.create(buflen,0.) in
+      let osc = expand(osc) in
+      let state = osc.alloc() in
+      let x = ref (osc.loop(init=true,state)) in
+      while true do
+        for i = 0 to buflen - 1 do
+          buf[i] := !x;
+          x := osc.loop(state)
+        done;
+        array.play(buf)
+      done;
+      ()
+
+    let play_stereo(chans=2,buflen=1024,osc) =
+      let osc() =
+        let dt = 1. / 44100. in
+        osc()
+      in
+      let buf = array.init(chans,fun(_)->array.create(buflen,0.)) in
       let osc = expand(osc) in
       let state = osc.alloc() in
       let x = ref (osc.loop(init=true,state)) in

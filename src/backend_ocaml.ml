@@ -91,12 +91,13 @@ let rec emit_expr prog e =
       | Field _ | Cell _ -> (emit_expr a.(0))
     )
   | Op (Set,a) ->
-    (
-      match a.(0) with
-      | Var n -> Printf.sprintf "(%s := %s)" (string_of_var n) (emit_expr a.(1))
-      | Field(t,e,n) -> Printf.sprintf "(%s.%s <- %s)" (emit_expr e) (record_field prog t n) (emit_expr a.(1))
-      | Cell(e,n) -> Printf.sprintf "(%s.(%s) <- %s)" (emit_expr e) (emit_expr n) (emit_expr a.(1))
-    )
+    if a.(1) = Val V.Z then "()" else
+      (
+        match a.(0) with
+        | Var n -> Printf.sprintf "(%s := %s)" (string_of_var n) (emit_expr a.(1))
+        | Field(t,e,n) -> Printf.sprintf "(%s.%s <- %s)" (emit_expr e) (record_field prog t n) (emit_expr a.(1))
+        | Cell(e,n) -> Printf.sprintf "(%s.(%s) <- %s)" (emit_expr e) (emit_expr n) (emit_expr a.(1))
+      )
   | Op (op, args) ->
     let args = Array.to_list args in
     let args = List.map emit_expr args in
@@ -114,7 +115,7 @@ let rec emit_expr prog e =
   | While (b,e) -> Printf.sprintf "(while %s do\n%s\ndone)" (emit_expr b) (emit_cmds e)
   | For(i,a,b,e) ->
     let i = string_of_var i in
-    Printf.sprintf "(%s := %s;\nwhile !%s <= %s do\n%s; incr %s\ndone)" i (emit_expr a) i (emit_expr b) (emit_cmds e) i
+    Printf.sprintf "(%s := %s;\nwhile !%s <= %s do\n%s;\nincr %s\ndone)" i (emit_expr a) i (emit_expr b) (emit_cmds e) i
   | Return e -> emit_expr e
 
 and emit_cmds prog cmds =

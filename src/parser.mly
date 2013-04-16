@@ -238,6 +238,7 @@ simple_expr:
 
 typ:
     | IDENT { type_of_string $1 }
+    | IDENT IDENT { assert ($2 = "array"); T.array (type_of_string $1) }
     | typ_record ARR typ { T.arr $1 $3 }
     | typ_record { T.record $1 }
 
