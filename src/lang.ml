@@ -882,8 +882,8 @@ module Expr = struct
   (** Normalize an expression by performing beta-reductions and
       builtins-reductions. *)
   let rec reduce ~subst ~state expr =
-    (* Printf.printf "reduce: %s\n\n%!" (to_string expr); *)
-    (* Printf.printf "subst: %s\n\n%!" (String.concat_map ", " (fun (x,e) -> if List.mem x ["#dt";"id"] then Printf.sprintf "%s <- %s" x (to_string e) else "") subst); *)
+    Printf.printf "reduce:\n%s\n\n%!" (to_string expr);
+    Printf.printf "subst: %s\n\n%!" (String.concat_map ", " (fun (x,e) -> if List.mem x ["#dt";"_meta0";"_meta1";"_l100"] then Printf.sprintf "%s <- %s" x (to_string e) else "") subst);
     let reduce ?(subst=subst) ~state expr = reduce ~subst ~state expr in
 
     (** Meta-variables get added at the end of substitutions. This is really
@@ -1040,7 +1040,6 @@ module Expr = struct
                 let state, el = reduce_quote ~subst ~state el [] in
                 state, app e ["",b; "then", quote th; "else", quote el]
             )
-          (* | Cst Expand -> state, app e args *)
           | Cst Expand ->
             let f = List.assoc "" args in
             let mstate = RS.create () in
@@ -1132,13 +1131,23 @@ module Expr = struct
         else
           if Ident.is_meta l.var then
             if is_value l.def then
+              let () = Printf.printf "*** META:\n%s\n\n%!" (to_string expr) in
               let state, def = reduce ~subst ~state l.def in
-              (* let state, body = reduce ~subst ~state l.body in *)
-              (* let state, body = expand_let state body in *)
-              (* reduce ~subst:[l.var,l.def] ~state body *)
-              let subst = subst_add_meta subst l.var l.def in
-              reduce ~subst ~state l.body
+              let subst = List.remove_all_assoc l.var subst in
+              let state' = { state with rs_let = [] } in
+              let state', body = reduce ~subst ~state:state' l.body in
+              let state', body = expand_let state' body in
+              let state = { state' with rs_let = state.rs_let } in
+              let () = Printf.printf "*** META let:\n%s\n\n%!" (to_string body) in
+              let state, ans = reduce ~subst:[l.var,def] ~state body in
+              Printf.printf "*** META ans:\n%s\n\n%!" (to_string (snd (expand_let state ans)));
+              state, ans
+              (* reduce ~subst:[l.var,def] ~state body *)
+
+              (* let subst = subst_add_meta subst l.var l.def in *)
+              (* reduce ~subst ~state l.body *)
             else
+              (* TODO: use state *)
               let var = fresh_var ~name:"meta" () in
               let e = letin l.var (ident var) l.body in
               let e = letin var l.def e in
