@@ -1,5 +1,5 @@
-SOURCES = samlib.ml
-RESULT = samlib
+SOURCES = samlrun.ml
+RESULT = samlrun
 INCDIRS = +pulseaudio
 ANNOTATE = true
 

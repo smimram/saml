@@ -8,8 +8,8 @@ ANNOTATE = yes
 DOC_FILES = lang.ml
 OCAMLOPT = ocamlopt.opt
 OCAMLFLAGS = -w -8-23
-INCDIRS = +pulseaudio backends/ocaml
-LIBS = pulseaudio samlib
+INCDIRS = +pulseaudio runtime/ocaml
+LIBS = pulseaudio samlrun
 
 OCAMLDOCFLAGS = -sort -stars
 DOC_FILES = $(filter %.ml, $(SOURCES))
@@ -31,10 +31,10 @@ liq: dssi
 %.so: %.c
 	gcc -fPIC -shared -Wall -Wno-unused-variable -g -lm $^ -o $@
 
-all: backends saml_dssi.ml dnc
+all: runtime saml_dssi.ml dnc
 
-backends:
-	$(MAKE) -C backends
+runtime:
+	$(MAKE) -C $@
 
 conflicts:
 	rm -f parser.conflicts
@@ -48,6 +48,6 @@ saml_dssi.ml: saml_dssi.c
 
 doc_html: htdoc
 
-.PHONY: backends
+.PHONY: runtime
 
 include OCamlMakefile

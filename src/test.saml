@@ -38,7 +38,7 @@ let s() = (1.+osc.sine(4.)*0.1)*(envelope.adsr(0.5,0.4,0.7,1.,osc.triangle(440.)
 let s() =
   let a = osc.sine(6.) in
   let x = s() in
-  (x*a, (1.-x)*a)
+  (left=x*a, right=(1.-x)*a)
 
 (* let s() = sine(220.) *)
 

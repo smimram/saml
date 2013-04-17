@@ -155,9 +155,6 @@ module Env = struct
     }
 end
 
-let show_unique_names = false
-let show_levels = false
-
 let to_string ?env t =
   let un = univ_namer () in
   let en = univ_namer () in
@@ -185,8 +182,8 @@ let to_string ?env t =
         match !v with
         | Link t -> Printf.sprintf "[%s]" (to_string false t)
         | FVar (name,level) ->
-          let s = if show_unique_names then name else un v in
-          if show_levels then s ^ "@" ^ string_of_int !level else s
+          let s = if !Config.Debug.Typing.show_unique_names then name else un v in
+          if !Config.Debug.Typing.show_levels then s ^ "@" ^ string_of_int !level else s
       )
     | EVar v ->
       (
@@ -215,7 +212,7 @@ let to_string ?env t =
       let r, v = Record.canonize r in
       let v =
         if v = None then "" else
-          if show_unique_names then
+          if !Config.Debug.Typing.show_unique_names then
             (to_string false (make (Var (get_some v)))) ^ ">"
           else
             ">"
@@ -298,6 +295,9 @@ let rec free_vars ?(multiplicities=false) t =
     )
   | Int | Float | String | Bool | Ident _ -> []
 
+let is_closed t =
+  free_vars t = []
+
 (** Update the level of variables by lowering them to [l]. *)
 let rec update_level l t =
   let rec aux t =
@@ -326,28 +326,31 @@ let rec update_level l t =
 exception Cannot_unify
 
 let subtype defs t1 t2 =
+  (* Printf.printf "subtype: %s with %s\n%!" (to_string t1) (to_string t2); *)
   let def l = List.assoc l defs in
   let rec ( <: ) t1 t2 =
-    (* Printf.printf "unify: %s with %s\n%!" (to_string t1) (to_string t2); *)
+    (* Printf.printf "subtype: %s with %s\n%!" (to_string t1) (to_string t2); *)
     let t1 = unvar t1 in
     let t2 = unvar t2 in
     match t1.desc, t2.desc with
     | Var v1, Var v2 when v1 == v2 -> ()
-    | Var ({ contents = FVar (_,l) } as v1), _ ->
-      if List.memq v1 (free_vars t2) then
-        raise Cannot_unify
-      else
-        (
-          update_level !l t2;
-          v1 := Link t2
-        )
     | _, Var ({ contents = FVar (_,l) } as v2) ->
       if List.memq v2 (free_vars t1) then
         raise Cannot_unify
       else
         (
           update_level !l t1;
+          if !Config.Debug.Typing.show_assignations then Printf.printf "%s <- %s\n%!" (to_string t2) (to_string t1);
           v2 := Link t1
+        )
+    | Var ({ contents = FVar (_,l) } as v1), _ ->
+      if List.memq v1 (free_vars t2) then
+        raise Cannot_unify
+      else
+        (
+          update_level !l t2;
+          if !Config.Debug.Typing.show_assignations then Printf.printf "%s <- %s\n%!" (to_string t1) (to_string t2);
+          v1 := Link t2
         )
     | EVar v1, EVar v2 when v1 == v2 -> ()
     | Ident a, Ident b when b = a -> ()
@@ -368,7 +371,9 @@ let subtype defs t1 t2 =
             (* TODO: it this really safe? *)
             if not o1 then raise Cannot_unify
         ) t1'
-    | Ref t1, Ref t2 -> t1 <: t2
+    | Ref t1, Ref t2 ->
+      (* TODO: think about this, I think we need value restriction. *)
+      t1 <: t2; t2 <: t1
     | Bool, Bool -> ()
     | Int, Int -> ()
     | Float, Float -> ()
@@ -507,6 +512,11 @@ let record ?(row=false) r =
 let record_with_row t row =
   match (unvar t).desc with
   | Record(r,_) -> { t with desc = Record(r,row) }
+  | _ -> assert false
+
+let get_record t =
+  match (unvar t).desc with
+  | Record(r,_) -> r
   | _ -> assert false
 
 let unit = record []

@@ -12,7 +12,21 @@ module Compiler = struct
   let optimize = ref false
 end
 
-(** Debuggin options. *)
+(** Debugging options. *)
 module Debug = struct
   let reduce = ref true
+
+  module Typing = struct
+    (** Show types of variables declared by lets. *)
+    let show_decl_types = ref false
+
+    (** Show assignations of universal variables (during unification). *)
+    let show_assignations = ref false
+
+    (** Show unique names for universal variables. *)
+    let show_unique_names = ref false
+
+    (** Show typing levels for universal variables. *)
+    let show_levels = ref false
+  end
 end

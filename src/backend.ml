@@ -83,6 +83,8 @@ module Value = struct
 
   let bot = Z
 
+  let record r = R r
+
   let array n t =
     R (Array.init n (fun _ -> default t))
 
@@ -142,6 +144,8 @@ type op =
 (** Free an allocated value. *)
 | Call of string
 (** Call an internal procedure. *)
+| Record of T.t array
+(** Allocate a record with given values. *)
 
 type expr =
 | Val of V.t
@@ -201,6 +205,7 @@ let string_of_op = function
   | Free -> "free"
   | Call s -> Printf.sprintf "+%s" s
   | Botop -> "⊥"
+  | Record _ -> "record"
 
 let rec string_of_expr ?(tab=0) e =
   let string_of_expr ?(tab=tab) = string_of_expr ~tab in
@@ -269,6 +274,9 @@ module Expr = struct
 
   let record r =
     Val (V.R r)
+
+  let build_record t r =
+    Op(Record t, Array.of_list r)
 
   let alloc ?n t =
     let a =

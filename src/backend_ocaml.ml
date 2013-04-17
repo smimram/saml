@@ -62,6 +62,7 @@ let rec emit_type prog = function
   | T.Int -> "int"
   | T.Float -> "float"
   | T.Unit -> "unit"
+  | T.Record r -> record_type_name prog r
 
 let emit_value v =
   match v with
@@ -71,7 +72,7 @@ let emit_value v =
   | V.S s -> Printf.sprintf "\"%s\"" s
 
 let rec emit_expr prog e =
-  Printf.printf "B.OCaml.emit_expr: %s\n%!" (string_of_expr e);
+  (* Printf.printf "B.OCaml.emit_expr: %s\n%!" (string_of_expr e); *)
   let emit_expr = emit_expr prog in
   let emit_cmds cmds = Printf.sprintf "(%s)" (emit_cmds prog cmds) in
   match e with
@@ -98,6 +99,12 @@ let rec emit_expr prog e =
         | Field(t,e,n) -> Printf.sprintf "(%s.%s <- %s)" (emit_expr e) (record_field prog t n) (emit_expr a.(1))
         | Cell(e,n) -> Printf.sprintf "(%s.(%s) <- %s)" (emit_expr e) (emit_expr n) (emit_expr a.(1))
       )
+  | Op (Record t, a) ->
+    assert (Array.length t = Array.length a);
+    let rf = record_field prog t in
+    let r = List.init (Array.length a) (fun i -> Printf.sprintf "%s = %s;" (rf i) (emit_expr a.(i))) in
+    let r = String.concat " " r in
+    Printf.sprintf "{ %s }" r
   | Op (op, args) ->
     let args = Array.to_list args in
     let args = List.map emit_expr args in
@@ -144,8 +151,8 @@ let emit prog =
     String.concat_map "\n" (fun (r,n) ->
       let r = Array.to_list r in
       let r = List.mapi (fun i t -> Printf.sprintf "mutable %s_%d : %s;" n i (emit_type p t)) r in
-      let r = String.concat "" r in
+      let r = String.concat " " r in
       Printf.sprintf "type %s = { %s }" n r
     ) p.records
   in
-  Printf.sprintf "open Samlib\n\n%s\n\n%s\n\nlet () =\n%s\n" recs vars cmds
+  Printf.sprintf "open Samlrun\n\n%s\n\n%s\n\nlet () =\n%s\n" recs vars cmds

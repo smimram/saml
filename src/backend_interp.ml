@@ -114,6 +114,7 @@ let rec eval_expr prog state e =
         Printf.printf "%f%!" x;
         V.unit
       | External ext -> ext.ext_saml a
+      | Record t -> V.record a
       | Alloc t ->
         if Array.length a = 0 then
           V.default ~bot:false t

@@ -531,7 +531,10 @@ module Expr = struct
             (* Printf.printf "external app: %s\n%!" (to_string expr); *)
             let a = List.map (fun (l,e) -> l, typ e) a in
             let t = ext.ext_t a in
-            ret e.desc t
+            if T.is_closed t then
+              ret e.desc t
+            else
+              infer_type env e
           | _ -> infer_type env e
         in
         let t = typ e in
@@ -618,6 +621,7 @@ module Expr = struct
           ret (Let { l with def; body }) (typ body)
         else
           let def = infer_type ~level:true env l.def in
+          if !Config.Debug.Typing.show_decl_types then Printf.printf "%s : %s\n\n%!" l.var (T.to_string (typ def));
           let def = if l.var = "#dt" then coerce def T.float else def in
           let env = T.Env.add env l.var (T.generalize (typ def)) in
           let body = infer_type env l.body in
@@ -626,7 +630,7 @@ module Expr = struct
         (
           let ret t = ret (Cst c) t in
           match c with
-          | Bot -> ret (T.fresh_var ())
+          | Bot -> ret (T.fresh_var ~level:(-1) ())
           | Int _ -> ret T.int
           | Float _ -> ret T.float
           | Bool _ -> ret T.bool
@@ -671,7 +675,7 @@ module Expr = struct
         let t = T.ref t in
         ret (Ref e) t
       | External ext ->
-        ret desc (ext.ext_t [])
+        ret (External ext) (ext.ext_t [])
       | Array a ->
         let t = T.fresh_var () in
         let a =
@@ -1326,6 +1330,12 @@ module Expr = struct
           emit_expr prog e
         | Record [] ->
           prog, B.E.unit
+        | Record r ->
+          (* TODO: cleanly handle commutativity and subtyping... *)
+          let t = etyp expr in
+          let t = B.T.get_record t in
+          let prog, r = List.fold_map (fun prog (l,e) -> emit_expr prog e) prog r in
+          prog, B.E.build_record t r
         | Field (e, l) ->
           (* Printf.printf "field: %s.%s : %s\n%!" (to_string e) l (T.to_string (typ e)); *)
           let l =

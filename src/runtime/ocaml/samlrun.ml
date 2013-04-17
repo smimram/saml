@@ -33,4 +33,17 @@ module Array = struct
           wr
       in
     w#write [|buf|] 0 (Array.length buf)
+
+  let play_stereo =
+    let w = ref None in
+    fun ?(samplerate=44100) (bufl,bufr) ->
+      let w =
+        match !w with
+        | Some w -> w
+        | None ->
+          let wr = new pulseaudio_writer "SAML" "sound" 2 samplerate in
+          w := Some wr;
+          wr
+      in
+    w#write [|bufl; bufr|] 0 (Array.length bufl)
 end
