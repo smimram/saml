@@ -36,7 +36,7 @@ module Array = struct
 
   let play_stereo =
     let w = ref None in
-    fun ?(samplerate=44100) (bufl,bufr) ->
+    fun ?(samplerate=44100) bufl bufr ->
       let w =
         match !w with
         | Some w -> w
