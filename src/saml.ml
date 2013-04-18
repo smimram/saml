@@ -91,7 +91,12 @@ let () =
   let prog = Lang.E.BB.prog prog in
   Printf.printf "%s\n%!" (Backend.to_string prog);
   Printf.printf "****** ML program *****\n\n%!";
-  Printf.printf "%s\n%!" (Backend_ocaml.emit prog);
-  File.write "out/output.ml" (Backend_ocaml.emit prog);
+  let ml = Backend_ocaml.emit prog in
+  Printf.printf "%s\n%!" ml;
+  File.write "out/output.ml" ml;
+  Printf.printf "****** C program *****\n\n%!";
+  let c = Backend_c.emit prog in
+  Printf.printf "%s\n%!" c;
+  File.write "out/output.c" c;
   Backend_interp.emit prog;
   ()

@@ -304,8 +304,9 @@ let () =
     writer#write buf 0 (Array.length buf.(0));
     B.V.unit
   in
+  let c a = Printf.sprintf "samlrun_array_play_stereo(%s,%s)" a.(0) a.(1) in
   let ocaml = "Array.play_stereo" in
-  let extern = B.extern ~saml ~ocaml name in
+  let extern = B.extern ~saml ~ocaml ~c name in
   op name (fun _ -> T.arrnl [T.array T.float; T.array T.float] T.unit) extern
 
 (* TODO: reimplement using array_play *)
