@@ -5,6 +5,9 @@ open Common
 
 module B = Backend
 
+(* TODO: handle other monads such as costreams *)
+type monad = Stream
+
 (** A type. *)
 type t =
   {
@@ -33,6 +36,7 @@ and desc =
 | Record of ((string * (t * bool)) list * var option)
 (** Records may have optional types and have optional row type variables which
     might point to other records. *)
+| Monad of monad * t
 and var = var_contents ref
 and var_contents =
 | FVar of var_name * int ref
@@ -56,6 +60,10 @@ let arr a r = make (Arr (a, r))
 let arrnl a r =
   let a = List.map (fun t -> "",(t,false)) a in
   arr a r
+
+(** Construt a stream. *)
+let stream t =
+  make (Monad (Stream, t))
 
 let check_record r =
   (* TODO: check that we don't have multiply defined labels, some being
@@ -224,6 +232,7 @@ let to_string ?env t =
              Printf.sprintf "%s%s%s" x (if o then "?" else "") (to_string false t)
            ) r)
     | Variant -> "variant"
+    | Monad (Stream, t) -> "!" ^ to_string true t
   in
   to_string false t
 

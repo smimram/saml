@@ -33,6 +33,12 @@ module Expr = struct
         incr n; Printf.sprintf "%sstate%d" prefix !n
   end
 
+  type monad_op =
+    | Stream_return
+    | Stream_bind
+    | Stream_dt
+    | Stream_init
+
   type t =
     {
       desc : desc;
@@ -62,9 +68,8 @@ module Expr = struct
   | Variant of string * t
   | For of string * t * t * t
   | While of t * t
-  (** A value at initialization, and another one at other times. *)
   | Alloc of T.t
-  (** Dynamically a value. *)
+  (** Dynamically allocate a value. *)
   and constant =
   | Bot
   (** Dummy value used internally to declare references. *)
@@ -76,7 +81,7 @@ module Expr = struct
   | Set
   | If
   (** Conditional branching. Takes 3 arguments : "", then, ?else. *)
-  | Expand (** Expand the monad implementation. *)
+  | Monad of monad_op
   (** External values. *)
   and extern =
     {
@@ -166,7 +171,6 @@ module Expr = struct
           | Get -> "get"
           | Set -> "set"
           | If -> "if"
-          | Expand -> "expand"
         )
       | Alloc t -> Printf.sprintf "alloc[%s]" (T.to_string t)
       | Coerce (e,t) ->
@@ -337,11 +341,13 @@ module Expr = struct
     in
     app ?t (make (Cst If)) (["",b; "then",th]@el)
 
+(*
   let init e0 e =
-    let b = ident ~t:T.bool Ident.init in
+    let b = ident Cst (Monad (T.Stream, )) in
     let e0 = quote e0 in
     let e = quote e in
     cond b e0 ~el:e
+*)
 
   let fresh_var =
     let counter = ref [] in
@@ -354,17 +360,6 @@ module Expr = struct
       in
       counter := aux !counter;
       Printf.sprintf "_%s%d" name !n
-
-
-  (** Execute a program. *)
-  let run e =
-    let e = app (make (Cst Expand)) ["",quote e] in
-    let x = fresh_var () in
-    let state = fresh_var () in
-    let run = app (field (ident x) "loop") ["init", bool true; "", ident state] in
-    let run = letin state (app (field (ident x) "alloc") []) run in
-    let e = letin x e run in
-    e
 
   (** Split the bool / then / else in the arguments of an if. *)
   let bte args =
@@ -441,10 +436,11 @@ module Expr = struct
         if te <: t then
           e
         else if !Config.Compiler.coerce then
-          (
+          begin
             let pos = e.pos in
             (* Try to perform some simple coercions. *)
             match te.T.desc with
+            (*
             (* Apply unit to functions. *)
             | T.Arr (a, t') when List.for_all (fun (l,(x,o)) -> o) a ->
               if not (T.is_arr t') && not (T.is_arr t) then
@@ -461,6 +457,7 @@ module Expr = struct
               let t',o = List.assoc "" r in
               assert (not o);
               test (field ~pos ~t:t' e "") t
+            *)
             (* Convert ints into floats. *)
             | T.Int when T.is_float t ->
               (
@@ -472,7 +469,7 @@ module Expr = struct
             (* | _ when not (T.is_record te) && is_unary_record t -> *)
             (* test (record ~t:(T.record ["",(te,false)]) ["",e]) t *)
             | _ -> raise Exit
-          )
+          end
         else
           raise Exit
       in
@@ -484,15 +481,12 @@ module Expr = struct
         type_error e "This expression has type %s but expected to be of type %s." (T.to_string te) (T.to_string ~env t)
     in
 
-    let ret desc t = { e with desc = desc; t = Some t } in
     let ans =
-      (* match e.t with *)
-      (* | Some t -> e *)
-      (* | None -> *)
+      let ret desc t = { pos = e.pos; desc = desc; t = Some t } in
       let desc = e.desc in
       match desc with
-      | Ident "#dt" -> ret desc T.float
-      | Ident "#init" -> ret desc T.bool
+      | Ident "#dt" -> infer_type env { e with desc = Cst (Monad Stream_dt) }
+      | Ident "#init" -> ret desc (T.stream T.bool)
       | Ident x ->
         (
           try
@@ -627,7 +621,7 @@ module Expr = struct
           let body = infer_type env l.body in
           ret (Let { l with def; body }) (typ body)
       | Cst c ->
-        (
+        begin
           let ret t = ret (Cst c) t in
           match c with
           | Bot -> ret (T.fresh_var ~level:(-1) ())
@@ -648,14 +642,14 @@ module Expr = struct
             let arg = T.arr [] a in
             let t = T.arr ["",(T.bool,false); "then",(arg,false); "else",(arg,false)] a in
             ret t
-          | Expand ->
-            let a = T.fresh_var () in
-            let s = T.fresh_evar () in
-            let m = T.monad s a in
-            let arg = T.arr [] a in
-            let t = T.arr ["",(arg,false)] m in
-            ret t
-        )
+          | Monad m ->
+             begin
+               match m with
+               | Stream_dt -> ret (T.stream T.float)
+               | Stream_init -> ret (T.stream T.bool)
+               | _ -> failwith "TODO"
+             end
+        end
       | Alloc t ->
         (* We don't want this variable to be generalized, ever. Or do we? We
            should at least lower the level so that the variable doesn't immediately
@@ -663,10 +657,13 @@ module Expr = struct
         let t = T.fresh_var ~level:(-1) () in
         ret (Alloc t) t
       | Coerce (e, t) ->
+        (*
         let e = infer_type env e in
         let t = T.expand env t in
         let e = coerce e t in
         e
+        *)
+        failwith "TODO"
       | Ref e ->
         let e = infer_type env e in
         if T.is_arr (typ e) then
@@ -878,6 +875,7 @@ module Expr = struct
       { rs with rs_refs = (state,refs) }
   end
 
+  (*
   let expand_let state prog =
     let prog = List.fold_left (fun e (x,v) -> letin x v e) prog state.rs_let in
     let state = { state with rs_let = [] } in
@@ -1401,6 +1399,7 @@ module Expr = struct
 
   let emit ?(builder=BB.create ()) e =
     emit builder e
+  *)
 end
 
 module E = Expr

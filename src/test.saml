@@ -2,8 +2,10 @@
 
 (* Test file *)
 
-include "pervasives.saml"
+(* include "pervasives.saml" *)
 
+let x =
+  5. * dt
 
 (* let osc = *)
   (* struct *)
@@ -34,11 +36,13 @@ include "pervasives.saml"
 
 (* let s() = time.accelerate(440.+60.*time.accelerate(10.*time.now(),fun()->osc.sine(1.)),fun()->osc.saw(1.)) *)
 
+(*
 let s() = (1.+osc.sine(4.)*0.1)*(envelope.adsr(0.5,0.4,0.7,1.,osc.triangle(440.))).
 let s() =
   let a = osc.sine(6.) in
   let x = s() in
   (left=x*a, right=(1.-x)*a)
+*)
 
 (* let s() = sine(220.) *)
 
@@ -58,7 +62,7 @@ let s() =
 
 
 (* let () = play(fun () -> osc.sine(220.)) *)
-let () = osc.play_stereo(s)
+(* let () = osc.play_stereo(s) *)
 
 
 

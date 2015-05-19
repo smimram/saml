@@ -81,22 +81,22 @@ let () =
   in
   let prog = pass_module "Parsing program" id prog in
   let prog = Lang.M.to_expr prog in
-  let prog = Lang.E.run prog in
-  (* Printf.printf "****** Program *****\n\n%s\n\n%!" (Lang.E.to_string prog); *)
+  (* let prog = Lang.E.run prog in *)
+  Printf.printf "****** Program *****\n\n%s\n\n%!" (Lang.E.to_string prog);
   let prog = pass "Infering type" (Lang.E.infer_type ~annot:true) prog in
-  let prog = pass "Reducing program" (fun e -> Lang.E.reduce e) prog in
-  let prog = pass "Infering type" (Lang.E.infer_type ~annot:false) prog in
-  Printf.printf "****** Emit program *****\n\n%!";
-  let prog = Lang.E.emit prog in
-  let prog = Lang.E.BB.prog prog in
-  Printf.printf "%s\n%!" (Backend.to_string prog);
-  Printf.printf "****** ML program *****\n\n%!";
-  let ml = Backend_ocaml.emit prog in
-  Printf.printf "%s\n%!" ml;
-  File.write "out/output.ml" ml;
-  Printf.printf "****** C program *****\n\n%!";
-  let c = Backend_c.emit prog in
-  Printf.printf "%s\n%!" c;
-  File.write "out/output.c" c;
-  Backend_interp.emit prog;
+  (* let prog = pass "Reducing program" (fun e -> Lang.E.reduce e) prog in *)
+  (* let prog = pass "Infering type" (Lang.E.infer_type ~annot:false) prog in *)
+  (* Printf.printf "****** Emit program *****\n\n%!"; *)
+  (* let prog = Lang.E.emit prog in *)
+  (* let prog = Lang.E.BB.prog prog in *)
+  (* Printf.printf "%s\n%!" (Backend.to_string prog); *)
+  (* Printf.printf "****** ML program *****\n\n%!"; *)
+  (* let ml = Backend_ocaml.emit prog in *)
+  (* Printf.printf "%s\n%!" ml; *)
+  (* File.write "out/output.ml" ml; *)
+  (* Printf.printf "****** C program *****\n\n%!"; *)
+  (* let c = Backend_c.emit prog in *)
+  (* Printf.printf "%s\n%!" c; *)
+  (* File.write "out/output.c" c; *)
+  (* Backend_interp.emit prog; *)
   ()

@@ -1,6 +1,6 @@
 BACKEND = backend_types.ml backend_values.ml backend.ml backend_interp.ml backend_ocaml.ml backend_c.ml
 SOURCES = stdlib.ml saml_dssi.ml common.ml config.ml $(BACKEND) \
-	lang_types.ml lang.ml builtin.ml parser.mly lexer.mll saml.ml
+	lang_types.ml lambda.ml lang.ml builtin.ml parser.mly lexer.mll saml.ml
 RESULT = saml
 #PACKS = llvm-2_8 llvm-2_8.analysis llvm-2_8.bitwriter
 ANNOTATE = yes

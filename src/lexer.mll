@@ -29,7 +29,6 @@
       "with", WITH;
       "type", TYPE;
       "include", INCLUDE;
-      "expand", EXPAND;
       "dt", IDENT Lang.Expr.Ident.dt;
     ]
 }
