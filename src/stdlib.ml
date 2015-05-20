@@ -1,7 +1,12 @@
+(** Enhanced standard library. *)
+
+(** Identity function. *)
 let id x = x
 
+(** Pi. *)
 let pi = 4. *. atan 1.
 
+(** Integer power function. *)
 let rec pow a b =
   assert (b >= 0);
   if b = 0 then 1 else a * (pow a (b-1))
@@ -31,6 +36,7 @@ let snd3 (_,x,_) = x
 
 let thd3 (_,_,x) = x
 
+(** Fixpoint of a function. *)
 let fixpoint ?(compare=compare) f x =
   let x = ref x in
   let loop = ref true in
@@ -279,6 +285,7 @@ module Option = struct
 end
 
 module File = struct
+  (** Write a string to a file. *)
   let write fname s =
     let oc = open_out fname in
     output_string oc s;

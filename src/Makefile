@@ -1,6 +1,6 @@
 BACKEND = backend_types.ml backend_values.ml backend.ml backend_interp.ml backend_ocaml.ml backend_c.ml
 SOURCES = stdlib.ml saml_dssi.ml common.ml config.ml $(BACKEND) \
-	lang_types.ml lang.ml builtin.ml parser.mly lexer.mll saml.ml
+	lang_types.ml lang.ml builtin.ml parser.mly lexer.mll saml.mli saml.ml
 RESULT = saml
 #PACKS = llvm-2_8 llvm-2_8.analysis llvm-2_8.bitwriter
 ANNOTATE = yes
@@ -41,7 +41,9 @@ conflicts:
 	less parser.conflicts
 
 saml_dssi.ml: saml_dssi.c
-	echo 'let c = "' > $@
+	echo '(** Functions for emitting DSSI plugins. *)\n' > $@
+	echo '(** C code common to all DSSI plugins. *)' >> $@
+	echo 'let c = "' >> $@
 	cat $^ | sed 's/\\n/\\\\n/g' | sed 's/"/\\"/g' >> $@
 	echo '"' >> $@
 

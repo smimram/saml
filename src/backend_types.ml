@@ -1,3 +1,5 @@
+(** Types used in the backend. *)
+
 open Stdlib
 
 type t =

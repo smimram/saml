@@ -2,19 +2,25 @@
 
 open Stdlib
 
+(** Print a debugging message. *)
 let debug = Printf.printf
 
+(** Print an error. *)
 let error s =
   Printf.eprintf "%s\n%!" s;
   exit 1
 
+(** Print a warning. *)
 let warning s =
   Printf.eprintf "Warning: %s\n%!" s
 
+(** A position in source file. *)
 type pos = Lexing.position * Lexing.position
 
+(** Dummy position. *)
 let dummy_pos = Lexing.dummy_pos, Lexing.dummy_pos
 
+(** String representation of a position. *)
 let string_of_pos (p1,p2) =
   let l1 = p1.Lexing.pos_lnum in
   let l2 = p2.Lexing.pos_lnum in
@@ -68,6 +74,7 @@ let string_of_univ =
   in
   n ""
 
+(** Namer for universal variables. *)
 let univ_namer () =
   let vars = ref [] in
   fun v ->

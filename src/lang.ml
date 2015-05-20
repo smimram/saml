@@ -1,7 +1,8 @@
 (** Internal representation of the language and operations to manipulate it
     (typechecking, reduction, etc.). *)
 
-(* TODO: check that no dt occurs at toplevel *)
+(* TODO: check that no dt occurs at toplevel by propagating whether we use the
+   monad in types. *)
 (* TODO: think about partial evaluation *)
 (* TODO: functions can be curryfied as usual now that we have records with
    optional types. *)
@@ -14,29 +15,37 @@ module B = Backend
 
 module T = Lang_types
 
+(** Operations on expressions. *)
 module Expr = struct
+  (** Special identifiers. *)
   module Ident = struct
     type t = string
 
+    (** Prefix for special variables, also called meta-variables (prefixed
+        variables are guaranteed not to occur in saml files). *)
     let prefix = "#"
 
+    (** Is a variable a meta-variable? *)
     let is_meta x = x.[0] = '#'
 
+    (** Dt meta-variable. *)
     let dt = prefix ^ "dt"
 
-    (** Boolean variable indicating whether we are on first round. *)
+    (** Boolean meta-variable indicating whether we are on first round. *)
     let init = prefix ^ "init"
 
+    (** Meta-variable for state record. *)
     let state =
       let n = ref (-1) in
       fun () ->
         incr n; Printf.sprintf "%sstate%d" prefix !n
   end
 
+  (** An expression. *)
   type t =
     {
-      desc : desc;
-      pos : pos;
+      desc : desc; (** The expression. *)
+      pos : pos; (** Position in source file. *)
       mutable t : T.t option; (** Infered type. *)
     }
   and desc =
@@ -101,6 +110,7 @@ module Expr = struct
   (** Raised by ext_implems when it is not implemented. *)
   exception Cannot_reduce
 
+  (** Create an expression. *)
   let make ?(pos=dummy_pos) ?t e =
     {
       desc = e;
@@ -108,8 +118,7 @@ module Expr = struct
       t = t;
     }
 
-  let backend_get = ref (fun (_:string) -> (assert false : t))
-
+  (** String representation of an expression. *)
   let to_string e =
     let pa p s = if p then Printf.sprintf "(%s)" s else s in
     let rec to_string ~tab p e =
@@ -190,11 +199,14 @@ module Expr = struct
     in
     to_string ~tab:0 false e
 
+  (** Type of an expression. Types should have been infered before using
+      this. *)
   let typ e =
     match e.t with
     | Some t -> T.unvar t
     | None -> failwith (Printf.sprintf "Couldn't get type for %s." (to_string e))
 
+  (** Create a function. *)
   let rec fct ?(pos=dummy_pos) ?t args e =
     let t =
       match t with
@@ -211,6 +223,7 @@ module Expr = struct
     in
     make ~pos ?t (Fun (args, e))
 
+  (** Quote an expression: transforms e into fun () -> e. *)
   let quote ?pos e =
     let t =
       match e.t with
@@ -219,11 +232,13 @@ module Expr = struct
     in
     fct ?pos ?t [] e
 
+  (** Unquote an expression: transforms e into e (). *)
   let unquote e =
     match e.desc with
     | Fun ([], e) -> e
     | _ -> assert false
 
+  (** Apply a function to labeled arguments. *)
   let app ?(pos=dummy_pos) ?t e args =
     make ~pos ?t (App (e, args))
 
@@ -322,6 +337,7 @@ module Expr = struct
   let set_ref r e =
     app ~t:T.unit (make (Cst Set)) ["",r; "",e]
 
+  (** Build a conditional. *)
   let cond ?t b ?el th =
     let t =
       if th.t <> None then
@@ -337,12 +353,14 @@ module Expr = struct
     in
     app ?t (make (Cst If)) (["",b; "then",th]@el)
 
+  (**  *)
   let init e0 e =
     let b = ident ~t:T.bool Ident.init in
     let e0 = quote e0 in
     let e = quote e in
     cond b e0 ~el:e
 
+  (** Create a fresh (temporary) variable. *)
   let fresh_var =
     let counter = ref [] in
     fun ?(name="tmp") () ->
@@ -354,7 +372,6 @@ module Expr = struct
       in
       counter := aux !counter;
       Printf.sprintf "_%s%d" name !n
-
 
   (** Execute a program. *)
   let run e =
@@ -376,6 +393,7 @@ module Expr = struct
     (* Printf.printf "emit_type: %s:%s\n%!" (to_string e) (T.to_string (typ e)); *)
     T.emit (typ e)
 
+  (** Operations on free variables. *)
   module FV = struct
     include Set.Make (struct type t = string let compare = compare end)
 
@@ -400,7 +418,6 @@ module Expr = struct
   (** Typing error. *)
   exception Typing of pos * string
 
-  (** Infer the type of an expression. *)
   let rec infer_type ?(annot=fun e -> ()) env e =
     (* Printf.printf "infer_type:\n%s\n\n\n%!" (to_string e); *)
     let infer_type = infer_type ~annot in
@@ -767,6 +784,7 @@ module Expr = struct
     );
     ans
 
+  (** Infer the type of an expression. *)
   let infer_type ?(annot=false) ?(env=T.Env.empty) e =
     let annotations = ref [] in
     let out fname x =
@@ -872,12 +890,14 @@ module Expr = struct
       let state, _ = rs.rs_refs in
       rs, state
 
+    (** Add a reference to a state. *)
     let add_state rs r t =
       let state, refs = rs.rs_refs in
       let refs = (r,t)::refs in
       { rs with rs_refs = (state,refs) }
   end
 
+  (** Add the let declarations of a state to a program. *)
   let expand_let state prog =
     let prog = List.fold_left (fun e (x,v) -> letin x v e) prog state.rs_let in
     let state = { state with rs_let = [] } in
@@ -1070,7 +1090,7 @@ module Expr = struct
             let f_alloc = fct [] (alloc mstate_t) in
             let f_loop = fct ["init",(Ident.init,Some (bool false)); "",(mstate_ident,None)] f in
             let ans = record ["alloc", f_alloc; "loop", f_loop] in
-            Printf.printf "<<<\nexpand:\n%s\nexpanded:\n%s\n>>>\n\n%!" (to_string f) (to_string ans);
+            (* Printf.printf "<<<\nexpand:\n%s\nexpanded:\n%s\n>>>\n\n%!" (to_string f) (to_string ans); *)
             state, ans
           | External ext when not (T.is_arr (typ expr)) ->
             (* Printf.printf "EXT %s\n%!" (to_string expr); *)
@@ -1245,12 +1265,12 @@ module Expr = struct
     let state = { state with rs_let = old_let } in
     state, prog
 
+  (** Reduce a program. *)
   let reduce ?(subst=[]) ?(state=RS.create ()) e =
     let state, e = reduce ~subst ~state e in
     let state, e = expand_let state e in
     e
 
-  (** Emit the programs. *)
   let rec emit prog expr =
     (* Printf.printf "emit:\n%s\n\n" (to_string expr); *)
     let rec aux prog expr =
@@ -1399,12 +1419,14 @@ module Expr = struct
     in
     aux prog expr
 
+  (** Emit a program: generate backend code. *)
   let emit ?(builder=BB.create ()) e =
     emit builder e
 end
 
 module E = Expr
 
+(** Operations on modules. *)
 module Module = struct
   type instr =
   | Decl of string * E.t

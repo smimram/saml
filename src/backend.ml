@@ -1,4 +1,4 @@
-(** We support various backend: interpreter, C, OCaml. *)
+(** We support various backends: interpreter, C, OCaml. *)
 
 open Stdlib
 
@@ -558,9 +558,10 @@ module Builder = struct
       ident : (string * var) list;
       (** Declared variables. *)
       prog : prog;
-      (** Stacks are used to temporarily emit instructions into a buffer instead of
-          loop, for emitting if for instance. *)
+      (** The program being built. *)
       stack : cmds list;
+      (** Stacks are used to temporarily emit instructions into a buffer instead
+          of loop, for emitting "if" for instance. *)
     }
 
   (** Create a program with output of given type and initial value. *)
@@ -571,16 +572,20 @@ module Builder = struct
       stack = [];
     }
 
+  (** Start a subprogram. *)
   let push b =
     { b with stack = []::b.stack }
 
+  (** End a subprogram. *)
   let pop b =
     { b with stack = List.tl b.stack }, List.hd b.stack
 
+  (** Allocate a memory. *)
   let alloc_anon b t =
     let prog, v = alloc b.prog t in
     { b with prog }, v
 
+  (** Allocate a memory with given name. *)
   let alloc b x t =
     (* In theory, we could have masking but in practice we rename all the
        variables, so it's safer this way for now. *)
@@ -591,11 +596,13 @@ module Builder = struct
       prog;
       ident = (x,v)::b.ident }
 
+  (** Add procedures. *)
   let procs b procs =
     let prog = b.prog in
     let prog = { prog with procs = prog.procs@procs } in
     { b with prog }
 
+  (** Create a variable. *)
   let var b x =
     try
       Var (List.assoc x b.ident)
@@ -614,9 +621,11 @@ module Builder = struct
       let prog = cmd b.prog e in
       { b with prog }
 
+  (** Add an equation (assign a value to a variable). *)
   let eq b x e =
     cmd b (E.set x e)
 
+  (** Return a value. *)
   let return b e =
     cmd b (Return e)
 

@@ -779,6 +779,3 @@ let get ?pos x =
     | None -> e
   with
   | Not_found -> failwith (Printf.sprintf "Internal command %s was not found. Please report." x)
-
-let () =
-  Lang.E.backend_get := get

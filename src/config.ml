@@ -2,13 +2,16 @@
 
 (** Compiler related options. *)
 module Compiler = struct
+  (** Use coercions based on types. *)
   let coerce = ref false
 
+  (** Coercion options. *)
   module Coerce = struct
     (** Coerce (x,a=...,b=...) into x. *)
     let records = ref true
   end
 
+  (** Optimize generated code. *)
   let optimize = ref false
 end
 
@@ -16,6 +19,7 @@ end
 module Debug = struct
   let reduce = ref true
 
+  (** Typing options. *)
   module Typing = struct
     (** Show types of variables declared by lets. *)
     let show_decl_types = ref false

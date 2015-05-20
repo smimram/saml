@@ -3,6 +3,7 @@
 open Stdlib
 open Common
 
+(** Parse a saml file. *)
 let parse_file f =
   let sin =
     let fi = open_in f in
@@ -81,8 +82,9 @@ let () =
   in
   let prog = pass_module "Parsing program" id prog in
   let prog = Lang.M.to_expr prog in
+  let prog = pass "Expansing module" id prog in
   let prog = Lang.E.run prog in
-  (* Printf.printf "****** Program *****\n\n%s\n\n%!" (Lang.E.to_string prog); *)
+  let prog = pass "Runing program" id prog in
   let prog = pass "Infering type" (Lang.E.infer_type ~annot:true) prog in
   let prog = pass "Reducing program" (fun e -> Lang.E.reduce e) prog in
   let prog = pass "Infering type" (Lang.E.infer_type ~annot:false) prog in

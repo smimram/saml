@@ -1,0 +1,86 @@
+(* -*- tuareg -*- *)
+
+(* Test file *)
+
+include "pervasives.saml"
+
+
+(* let osc = *)
+  (* struct *)
+    (* let sine = sine *)
+
+    (* let play = play *)
+  (* end *)
+
+(* let s() = *)
+  (* let dt() = 1. / 44100. in *)
+  (* sine(440,phase=0.777) *)
+
+(* let () = *)
+  (* let buflen = 1024 in *)
+  (* let a = array.create(buflen,0.) in *)
+  (* let osc = expand(s) in *)
+  (* let s = osc.alloc() in *)
+  (* let x = ref (osc.loop(init=true,s)) in *)
+  (* while true do *)
+    (* for i = 0 to buflen - 1 do *)
+      (* a[i] := osc.loop(s) *)
+    (* done; *)
+    (* array.play(a) *)
+  (* done; *)
+  (* () *)
+
+(* let s() = osc.sine(440.*(osc.saw(1.)+1.+osc.sine(20.))) *)
+
+(* let s() = time.accelerate(440.+60.*time.accelerate(10.*time.now(),fun()->osc.sine(1.)),fun()->osc.saw(1.)) *)
+
+let s() = (1.+osc.sine(4.)*0.1)*(envelope.adsr(0.5,0.4,0.7,1.,osc.triangle(440.))).
+let s() =
+  let a = osc.sine(6.) in
+  let x = s() in
+  (left=x*a, right=(1.-x)*a)
+
+(* let s() = sine(220.) *)
+
+(* let distort(f,s) = *)
+  (* let dt = f(dt) in *)
+  (* s() *)
+
+(* let f(s) = fun () -> let dt = 4. * dt in s() *)
+(* let f(s) = let dt = 4. * dt in s() *)
+(* let f(s) = distort (fun(t) -> 3.*t,s) *)
+(* let f = id *)
+
+(* let s = f(fun ()->dt) *)
+(* let s() = sine(220.) *)
+(* let s() = f(s) *)
+(* let s() = f(fun () -> dt) *)
+
+
+(* let () = play(fun () -> osc.sine(220.)) *)
+let () = osc.play_stereo(s)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+(* Test generalization. *)
+(* let f(x) = prev(false,x) *)
+(* let f(x) = prev(0.,x) *)
+
+(* let f(x) = *)
+  (* let r = ref x in *)
+  (* () *)
+
+(* let () = *)
+  (* f(false); *)
+  (* f(0.) *)

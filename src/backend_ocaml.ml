@@ -1,3 +1,5 @@
+(** OCaml backend. *)
+
 open Stdlib
 open Backend
 

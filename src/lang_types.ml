@@ -57,6 +57,7 @@ let arrnl a r =
   let a = List.map (fun t -> "",(t,false)) a in
   arr a r
 
+(** Check that a record is well-formed. *)
 let check_record r =
   (* TODO: check that we don't have multiply defined labels, some being
      optional. *)
@@ -87,6 +88,7 @@ module Record = struct
     r, v
 end
 
+(** Follow links in variables. *)
 let unvar t =
   let rec aux t =
     match t.desc with
@@ -97,6 +99,7 @@ let unvar t =
   in
   aux t
 
+(** Is a type a variable? *)
 let is_var t =
   match (unvar t).desc with
   | Var v -> true
@@ -106,6 +109,7 @@ let is_var t =
 module Env = struct
   type typ = t
 
+  (** A typing environment. *)
   type t =
     {
       (** Type of free variables. *)
@@ -116,6 +120,7 @@ module Env = struct
       variants : (string * typ) list;
     }
 
+  (** Emtpy typing environment. *)
   let empty =
     {
       t = [];
@@ -147,6 +152,7 @@ module Env = struct
   let add_variant env x t =
     { env with variants = (x,t)::env.variants }
 
+  (** Merge two envrionments, the first having highest priority. *)
   let merge env' env =
     {
       t = env'@env.t;
@@ -227,7 +233,7 @@ let to_string ?env t =
   in
   to_string false t
 
-(** Inline idents in a type. *)
+(** Inline identifiers in a type. *)
 let expand env t =
   (* Printf.printf "expand: %s\n%!" (to_string t); *)
   let rec aux t =
@@ -249,9 +255,12 @@ let expand env t =
   in
   aux t
 
-(** Current level for generalization. *)
+(** Current level for generalization. Levels should be incremented after
+    lets. *)
 let current_level = ref 0
+(** Increment current level. *)
 let enter_level () = incr current_level
+(** Decrement current level. *)
 let leave_level () = decr current_level
 
 let fresh_invar =
@@ -295,6 +304,7 @@ let rec free_vars ?(multiplicities=false) t =
     )
   | Int | Float | String | Bool | Ident _ -> []
 
+(** Is a type closed (i.e. contains no free variable)? *)
 let is_closed t =
   free_vars t = []
 
@@ -325,6 +335,7 @@ let rec update_level l t =
 
 exception Cannot_unify
 
+(** Is a type a subtype of another? *)
 let subtype defs t1 t2 =
   (* Printf.printf "subtype: %s with %s\n%!" (to_string t1) (to_string t2); *)
   let def l = List.assoc l defs in
@@ -432,6 +443,8 @@ let subtype defs t1 t2 =
 (* Printf.printf "subtype %s and %s : %B\n%!" (to_string t1) (to_string t2) ans; *)
 (* ans *)
 
+(** Generalize a type, i.e. universally quantify free variables (at current
+    level). *)
 let generalize t : scheme =
   let current_level = !current_level in
   (* Printf.printf "generalize %s at %d\n%!" (to_string t) current_level; *)
@@ -460,6 +473,8 @@ let generalize t : scheme =
   in
   aux t, t
 
+(** Instantiate a type scheme: replace universally quantified variables with
+    fresh variables. *)
 let instantiate ((g,t):scheme) =
   let s = List.map (fun name -> name, fresh_invar ()) g in
   let rec aux t =
@@ -588,7 +603,7 @@ let set_evar evar t =
     v := Some t
   | _ -> assert false
 
-(** Emit a type. This should not be used directly but rather E.emit_type. *)
+(** Emit a type. This should not be used directly but rather [E.emit_type]. *)
 let rec emit t =
   (* Printf.printf "T.emit: %s\n" (to_string t); *)
   match (unvar t).desc with

@@ -1,3 +1,5 @@
+(** C backend. *)
+
 (*
 open Stdlib
 open Backend
