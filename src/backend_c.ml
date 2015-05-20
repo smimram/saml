@@ -254,6 +254,7 @@ let record_field prog t =
 let rec default_value prog t =
   (* Printf.printf "default_value: %s\n%!" (T.to_string t); *)
   match t with
+  | T.Unit -> "0"
   | T.Int -> "0"
   | T.Bool -> "0"
   | T.Float -> "0."
@@ -268,6 +269,7 @@ let rec default_value prog t =
   | T.Array _ -> "[||]"
 
 let rec emit_type prog = function
+  | T.Unit -> "int"
   | T.Int -> "int"
   | T.Float -> "double"
   | T.Unit -> "unit"

@@ -674,11 +674,14 @@ module Expr = struct
             ret t
         )
       | Alloc t ->
+        (*
         (* We don't want this variable to be generalized, ever. Or do we? We
            should at least lower the level so that the variable doesn't immediately
            get generalized. *)
         let t = T.fresh_var ~level:(-1) () in
         ret (Alloc t) t
+        *)
+         ret (Alloc t) t
       | Coerce (e, t) ->
         let e = infer_type env e in
         let t = T.expand env t in
@@ -1460,136 +1463,6 @@ module Module = struct
         | Type _ -> ee
         | Variant _ -> ee
       ) (E.unit ()) (List.rev m)
-
-(*
-  let infer_type ?(annot=false) ?(env=T.Env.empty) m =
-    let annotations = ref [] in
-    let out fname x =
-      annotations := List.map_assoc ~d:"" (fun y -> y ^ x) fname !annotations
-    in
-    let annot_type (p1,p2) t =
-      let fname = p2.Lexing.pos_fname in
-      let a =
-        Printf.sprintf "\"%s\" %d %d %d \"%s\" %d %d %d\n%s(\n  %s\n)\n"
-          fname
-          p1.Lexing.pos_lnum
-          p1.Lexing.pos_bol
-          p1.Lexing.pos_cnum
-          fname
-          p2.Lexing.pos_lnum
-          p2.Lexing.pos_bol
-          p2.Lexing.pos_cnum
-          "type"
-          (T.to_string t)
-      in
-      if p1.Lexing.pos_lnum > 0 then out fname a
-    in
-    let annot, annot_final =
-      if annot then
-        (fun e -> try annot_type e.E.pos (E.typ e) with _ -> ()),
-        (fun () ->
-          List.iter
-            (fun (fname,x) ->
-              if fname <> "" then
-                Common.file_out (Filename.chop_extension fname ^ ".annot") x
-            ) !annotations)
-      else
-        (fun _ -> ()), (fun () -> ())
-    in
-    let aux env = function
-      | Decl (x,e) ->
-        let e = E.infer_type ~annot env e in
-        let t = E.typ e in
-        Printf.printf "%s : %s\n\n%!" x (T.to_string t);
-        let env = T.Env.add_t env x t in
-        env, Decl (x, e)
-      | Expr e ->
-        let e = E.infer_type ~annot env e in
-        env, Expr e
-      | Type (l,t) ->
-        let env = T.Env.add_def env l t in
-        env, Type (l,t)
-      | Variant (x,t) ->
-        let env = T.Env.add_variant env x t in
-        env, Variant (x,t)
-    in
-    try
-      let env, m = List.fold_map aux env m in
-      annot_final ();
-      m
-    with
-    | e -> annot_final (); raise e
-
-  let infer_type ?annot p =
-    try
-      infer_type ?annot p
-    with
-    | E.Typing (pos, msg) ->
-      let msg =
-        Printf.sprintf "\nError %s: %s"
-          (string_of_pos pos)
-          msg
-      in
-      error msg
-*)
-
-(*
-  let reduce ?(subst=[]) ?(state=E.RS.empty) m =
-    let emit_let state =
-      { state with E.rs_let = [] }, List.map (fun (x,e) -> Decl (x, e)) (List.rev state.E.rs_let)
-    in
-    let aux subst state = function
-      | Decl (x, e) ->
-        (* let expr = e in *)
-        let state, e = E.reduce ~subst ~state e in
-        let state, m = emit_let state in
-        let subst =
-          if E.is_value e then
-            (x,e)::subst
-          else
-            subst
-        in
-        (* if !Config.Debug.reduce then *)
-        (* Printf.printf "reduce %s: %s\n=>\n%s\n\n%!" x (E.to_string expr) (E.to_string e); *)
-        (subst, state), m@[Decl (x, e)]
-      | Expr e ->
-        let state, e = E.reduce ~subst ~state e in
-        let state, m = emit_let state in
-        (subst, state), m@[Expr e]
-      | Type (l,t) ->
-        let state = { state with E.rs_types = (l,t)::state.E.rs_types } in
-        (subst, state), m
-      | Variant (l,t) ->
-        let state = { state with E.rs_variants = (l,t)::state.E.rs_variants } in
-        (subst, state), m
-    in
-    let _, m = List.fold_map (fun (subst,state) d -> aux subst state d) (subst,state) m in
-    let m = List.concat m in
-    m
-*)
-
-  (* let reduce ?(subst=[]) ?(state=E.reduce_state_empty) m = *)
-    (* let e = to_expr m in *)
-    (* let state, e = E.reduce ~subst ~state e in *)
-    (* [Expr e] *)
-
-(*
-  let emit m =
-    let e =
-      let n = ref (-1) in
-      let fresh () = incr n; Printf.sprintf "_m%d" !n in
-      List.fold_left
-        (fun ee e ->
-          match e with
-          | Expr e -> E.letin (fresh ()) e ee
-          | Decl (x, e) -> E.letin x e ee
-          | Type _ -> ee
-          | Variant _ -> ee
-        ) (E.unit ()) (List.rev m)
-    in
-    Printf.printf "emit:\n%s\n\n%!" (E.to_string e);
-    E.emit (E.BB.create ()) e
-*)
 end
 
 module M = Module

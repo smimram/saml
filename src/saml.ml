@@ -96,9 +96,9 @@ let () =
   let ml = Backend_ocaml.emit prog in
   Printf.printf "%s\n%!" ml;
   File.write "out/output.ml" ml;
-  Printf.printf "****** C program *****\n\n%!";
-  let c = Backend_c.emit prog in
-  Printf.printf "%s\n%!" c;
-  File.write "out/output.c" c;
+  (* Printf.printf "****** C program *****\n\n%!"; *)
+  (* let c = Backend_c.emit prog in *)
+  (* Printf.printf "%s\n%!" c; *)
+  (* File.write "out/output.c" c; *)
   Backend_interp.emit prog;
   ()
