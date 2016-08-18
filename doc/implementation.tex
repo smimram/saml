@@ -1,0 +1,20 @@
+\documentclass[a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[english]{babel}
+\usepackage{macros}
+
+\title{SAML: the implementation}
+\author{Samuel Mimram}
+
+\begin{document}
+\maketitle
+
+\section{The monad}
+The ``expansion'' of the monad returns a record  with two fields
+\begin{verbatim}
+alloc : unit -> record
+loop : init:bool -> record -> 'a
+\end{verbatim}
+
+\end{document}
