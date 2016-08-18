@@ -7,6 +7,12 @@
 (* TODO: functions can be curryfied as usual now that we have records with
    optional types. *)
 (* TODO: in records we should let ... otherwise {x = !r} does get propagated *)
+(* TODO: add "run" as a constant in the language (we don't want it by default) *)
+(* TODO: propagate purity in types *)
+(* TODO: backend for records is really bad, we should have records with labelled
+   arguments and arrays with indices *)
+(* TODO: init and dt should be numbered too (if we have multiple layers) *)
+(* TODO: for state, we do not really need numbers, we could use a "super" too *)
 
 open Stdlib
 open Common
@@ -49,7 +55,7 @@ module Expr = struct
       mutable t : T.t option; (** Infered type. *)
     }
   and desc =
-  | Ident of Ident.t
+  | Ident of Ident.t (** A variable *)
   | Fun of (string * (string * t option)) list * t
   (** A function. Arguments are labelled (or not if the label is ""), have a
       variable, and optionally a default value. *)
@@ -66,25 +72,22 @@ module Expr = struct
       previously defined values, e.g. \{ a = 5; b = 2*a \}. *)
   | Field of t * string
   | Replace_fields of t * (string * (t * bool)) list
-  (** Replace or add some fields in a record. If the bool is true, the value is
-      optional and replaces the value only if not already present. *)
+  (** Replace or add some fields in a record. If the boolean is [true], the
+      value is optional and replaces the value only if not already present. *)
+  | Set_field of t * string * t (** Change a value in a mutable record. *)
   | Variant of string * t
   | For of string * t * t * t
   | While of t * t
-  (** A value at initialization, and another one at other times. *)
-  | Alloc of T.t
-  (** Dynamically a value. *)
+  | Alloc of T.t (** Dynamically allocate a value. *)
   and constant =
-  | Bot
-  (** Dummy value used internally to declare references. *)
+  | Bot (** Dummy value used internally to declare references. *)
   | Int of int
   | Float of float
   | Bool of bool
   | String of string
-  | Get
-  | Set
-  | If
-  (** Conditional branching. Takes 3 arguments : "", then, ?else. *)
+  | Get (** Retrieve the value of a reference. *)
+  | Set (** Set the value of a reference. *)
+  | If (** Conditional branching. Takes 3 arguments : "", then, ?else. *)
   | Expand (** Expand the monad implementation. *)
   (** External values. *)
   and extern =
@@ -195,6 +198,8 @@ module Expr = struct
       | Field (r,x) -> Printf.sprintf "%s.%s" (to_string ~tab true r) x
       | Replace_fields (r,l) ->
         Printf.sprintf "( %s with %s )" (to_string ~tab true r) (String.concat_map ", " (fun (l,(e,o)) -> Printf.sprintf "%s =%s %s" l (if o then "?" else "") (to_string ~tab false e)) l)
+      | Set_field (r,l,e) ->
+        Printf.sprintf "set(%s.%s, %s)" (to_string ~tab true r) l (to_string ~tab false e)
       | Variant (l,e) -> Printf.sprintf "`%s(%s)" l (to_string ~tab false e)
     in
     to_string ~tab:0 false e
@@ -337,6 +342,9 @@ module Expr = struct
   let set_ref r e =
     app ~t:T.unit (make (Cst Set)) ["",r; "",e]
 
+  let set_field ?pos r l e =
+    make ?pos ~t:T.unit (Set_field (r, l, e))
+
   (** Build a conditional. *)
   let cond ?t b ?el th =
     let t =
@@ -353,7 +361,7 @@ module Expr = struct
     in
     app ?t (make (Cst If)) (["",b; "then",th]@el)
 
-  (**  *)
+  (** Value at initialization. *)
   let init e0 e =
     let b = ident ~t:T.bool Ident.init in
     let e0 = quote e0 in
@@ -409,9 +417,6 @@ module Expr = struct
         | Record r -> List.fold_left (fun v (l,e) -> union (fv e) v) empty r
         | Fun (a, e) -> List.fold_left (fun fv (_,(x,_)) -> remove x fv) (fv e) a
   end
-
-  (** Raised by SAML implementations when reduction is not possible. *)
-  exception Cannot_reduce
 
   (** {2 Type inference} *)
 
@@ -734,6 +739,15 @@ module Expr = struct
         if not (tr <: (T.record ~row:true [l,(t,false)])) then
           type_error r "This record does not have a member %s." l;
         ret (Field (r,l)) t
+      | Set_field (r, l, e) ->
+        let r = infer_type env r in
+        let tr = typ r in
+        if not (tr <: (T.record ~row:true [])) then
+          type_error r "This expression has type %s but expected to be a record." (T.to_string (typ r));
+        let t = T.fresh_var () in
+        if not (tr <: (T.record ~row:true [l,(t,false)])) then
+          type_error r "This record does not have a member %s." l;
+        ret (Set_field (r, l, e)) T.unit
       | Replace_fields (r, l) ->
         let r = infer_type env r in
         let tr = typ r in
@@ -995,7 +1009,11 @@ module Expr = struct
         | Field (e, l) ->
           let e = substs ss e in
           Field (e, l)
-        | Replace_fields (r,l) ->
+        | Set_field (r, l, e) ->
+          let r = substs ss r in
+          let e = substs ss e in
+          Set_field (r, l, e)
+        | Replace_fields (r, l) ->
           let r = substs ss r in
           let l = List.map (fun (l,(e,o)) -> l,(substs ss e,o)) l in
           Replace_fields (r, l)
@@ -1148,6 +1166,7 @@ module Expr = struct
             let irx = ident ~t:tref rx in
             let state = { state with rs_let = (rx,r)::state.rs_let } in
             let def = l.def in
+            (* TODO: bad way of accessing memory values *)
             let state, def = reduce ~subst:((l.var,get_ref ~t irx)::subst) ~state def in
             let body = l.body in
             let body = letin l.var (get_ref ~t irx) body in
@@ -1193,10 +1212,10 @@ module Expr = struct
         let t = typ e in
         let pos = e.pos in
         let state, s = RS.state state in
-        let state, sr = RS.fresh_var ~name:"ref" state in
+        let state, sr = RS.fresh_var ~name:"r" state in
         let state = RS.add_state state sr t in
+        let e = init (set_field ~pos s sr e) (unit ()) in
         let r = field ~pos ~t s sr in
-        let e = init (set_ref r e) (unit ()) in
         let e = seq ~pos e r in
         reduce ~state e
       | Array a ->
@@ -1231,6 +1250,10 @@ module Expr = struct
             (* failwith (Printf.sprintf "Cannot reduce field \"%s\" of %s : %s." l (to_string r) (T.to_string (typ r))) *)
             state, field ~t:(typ expr) r l
         )
+      | Set_field (r, l, e) ->
+        let state, r = reduce ~state r in
+        let state, e = reduce ~state e in
+        state, set_field r l e
       | Replace_fields (r, l) ->
         let state, r = reduce ~state r in
         (
@@ -1292,13 +1315,6 @@ module Expr = struct
         match expr.desc with
         | Ident x ->
           prog, BB.var prog x
-        | App ({ desc = Cst Get }, ["",x]) ->
-          let prog, x = emit_expr prog x in
-          prog, B.E.get x
-        | App ({ desc = Cst Set }, ["",x; "",e]) ->
-          let prog, x = emit_expr prog x in
-          let prog, e = emit_expr prog e in
-          prog, B.E.set x e
         | App ({ desc = External e } as ext, a) ->
           let prog, a =
             List.fold_map
@@ -1346,6 +1362,25 @@ module Expr = struct
             | Bool b -> prog, B.Val (B.V.bool b)
             | Bot -> prog, B.Val B.V.bot
           )
+        (*
+        | App ({ desc = Cst Get }, ["",x]) ->
+          let prog, x = emit_expr prog x in
+          prog, B.E.get
+        | App ({ desc = Cst Set }, ["",x; "",e]) ->
+          let prog, x = emit_expr prog x in
+          let prog, e = emit_expr prog e in
+          prog, B.E.set x e
+        *)
+        | Set_field (r,l,e) ->
+          let t = B.T.get_record (T.emit (typ r)) in
+          let l =
+            (* TODO: this numbering is really bad... *)
+            List.index_pred (fun (l',_) -> l' = l) (T.get_record (typ r))
+          in
+          let prog, r = emit_expr prog r in
+          let x = B.E.field t r l in
+          let prog, e = emit_expr prog e in
+          prog, B.E.set x e
         | External e ->
           (* For constants such as pi. *)
           e.ext_backend (typ expr) prog [||]
@@ -1362,14 +1397,9 @@ module Expr = struct
         | Field (e, l) ->
           (* Printf.printf "field: %s.%s : %s\n%!" (to_string e) l (T.to_string (typ e)); *)
           let l =
-            let r =
-              match (T.unvar (typ e)).T.desc with
-              | T.Record (r,_) -> r
-              | _ -> assert false
-            in
             (* TODO: ensure in some way that this numbering won't be broken by
                polymorphism... *)
-            List.index_pred (fun (l',_) -> l' = l) r
+            List.index_pred (fun (l',_) -> l' = l) (T.get_record (typ e))
           in
           let t = B.T.get_record (T.emit (typ e)) in
           let prog, e = emit_expr prog e in
@@ -1452,6 +1482,7 @@ module Module = struct
   let parse_file_fun : (string -> t) ref = ref (fun _ -> assert false)
   let parse_file f = !parse_file_fun f
 
+  (** Expression corresponding to the evaluation of the module. *)
   let to_expr m =
     let n = ref (-1) in
     let fresh () = incr n; Printf.sprintf "_m%d" !n in

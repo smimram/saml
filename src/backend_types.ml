@@ -27,4 +27,4 @@ let rec to_string = function
 
 let get_record = function
   | Record r -> r
-  | _ -> assert false
+  | t -> failwith ("Record expected but we have: " ^ to_string t)

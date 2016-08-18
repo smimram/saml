@@ -1,6 +1,6 @@
 SOURCES = samlrun.ml
 RESULT = samlrun
-INCDIRS = +pulseaudio
+INCDIRS = +../pulseaudio
 ANNOTATE = true
 
 all: ncl

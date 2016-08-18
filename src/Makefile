@@ -7,7 +7,7 @@ ANNOTATE = yes
 DOC_FILES = lang.ml
 OCAMLOPT = ocamlopt.opt
 OCAMLFLAGS = -w -8-23
-INCDIRS = +pulseaudio runtime/ocaml
+INCDIRS = +../pulseaudio runtime/ocaml
 LIBS = pulseaudio samlrun
 
 OCAMLDOCFLAGS = -sort -stars

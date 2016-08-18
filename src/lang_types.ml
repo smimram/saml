@@ -1,4 +1,4 @@
-(** Types. *)
+(** Operation on types. *)
 
 open Stdlib
 open Common
@@ -578,6 +578,7 @@ let split_arr t =
   | Arr (a,t) -> a, unvar t
   | _ -> assert false
 
+(** Type of a monadic type. *)
 let monad state t =
   let r =
     [

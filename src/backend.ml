@@ -12,10 +12,10 @@ type var = int
 (** An external function along with its implementations in various backends. *)
 type extern =
   {
-    ext_name : string;
-    ext_saml : V.t array -> V.t;
-    ext_ocaml : unit -> string;
-    ext_c : string array -> string;
+    ext_name : string; (** Name of the function. *)
+    ext_saml : V.t array -> V.t; (** Bytecode implementation. *)
+    ext_ocaml : unit -> string; (** OCaml implementation. *)
+    ext_c : string array -> string; (** C implementation. *)
   }
 
 (** Operators. Non-prefixed operators operate on floats. *)
@@ -41,6 +41,7 @@ type op =
 | Record of T.t array
 (** Allocate a record with given values. *)
 
+(** Expressions. *)
 type expr =
 | Val of V.t
 | Var of var (** A local variable. *)
@@ -392,6 +393,7 @@ let subst_eqs prog (x,e) = subst_eqs (x,e,FV.expr (FV.create prog) e)
 (** Optimizations on the code. *)
 module Opt = struct
   (** Simple algebraic simplification of expressions. *)
+  (* TODO: we should reach a fixpoint *)
   let simpl p =
     let rec simpl_expr = function
       | Op(op,a) ->

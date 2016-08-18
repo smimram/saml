@@ -250,7 +250,7 @@ let () =
   let b t prog args =
     let t, _ = T.split_arr t in
     let t = T.unvar (fst (List.assoc "" t)) in
-    prog, B.Op(B.Print (T.emit t),args)
+    prog, B.Op (B.Print (T.emit t),args)
   in
   mop name t ~i ~b
 
