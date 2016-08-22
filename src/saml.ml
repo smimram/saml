@@ -4,7 +4,7 @@ open Stdlib
 open Common
 
 (** Parse a saml file. *)
-let parse_file f =
+let parse_file parse f =
   let sin =
     let fi = open_in f in
     let flen = in_channel_length fi in
@@ -17,7 +17,7 @@ let parse_file f =
   lexbuf.Lexing.lex_start_p <- { lexbuf.Lexing.lex_start_p with Lexing.pos_fname = f };
   lexbuf.Lexing.lex_curr_p <- { lexbuf.Lexing.lex_curr_p with Lexing.pos_fname = f };
   try
-    Parser.prog Lexer.token lexbuf
+    parse Lexer.token lexbuf
   with
     (* TODO: use string_of_pos *)
     | Failure s when s = "lexing: empty token" ->
@@ -40,7 +40,10 @@ let parse_file f =
       in
       error err
 
-let () = Lang.parse_file_fun := parse_file
+let parse_file_ctx = parse_file Parser.prog_ctx
+let parse_file = parse_file Parser.prog
+
+let () = Lang.parse_file_ctx_fun := parse_file_ctx
 
 let output_file = ref "out.ml"
 
@@ -67,16 +70,16 @@ let () =
     try
       Printf.printf "****** %s *****\n\n%!" name;
       let prog = f prog in
-      Printf.printf "%s\n\n%!" (Lang.E.to_string prog);
+      Printf.printf "%s\n\n%!" (Lang.to_string prog);
       prog
     with
-    | Lang.E.Typing (pos, msg) ->
+    | Lang.Typing (pos, msg) ->
       let err = Printf.sprintf "Typing error at %s: %s" (Common.string_of_pos pos) msg in
       error err
   in
   let prog = pass "Parsing program" id prog in
-  let prog = pass "Infering type" (fun prog -> let t = Lang.E.infer_type prog in prog) prog in
-  (* let prog = pass "Reducing program" (fun e -> Lang.E.reduce e) prog in *)
+  let prog = pass "Infering type" (fun prog -> let t = Lang.infer_type prog in prog) prog in
+  let prog = pass "Reducing program" (fun e -> Lang.reduce e) prog in
   (* let prog = pass "Infering type" (Lang.E.infer_type ~annot:false) prog in *)
   (* Printf.printf "****** Emit program *****\n\n%!"; *)
   (* let prog = Lang.E.emit prog in *)

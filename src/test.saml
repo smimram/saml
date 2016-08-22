@@ -1,3 +1,16 @@
-def f(t) = 3 * dt + t end
-x = 5
-y = f(x) + 2.
+include("builtin.saml")
+
+def fst(x) = x.fst end
+def snd(x) = x.snd end
+
+p = { fst = 0 snd = 1 }
+z = p.fst
+print(z)
+
+# def integrate(z) =
+  # x = ref(0.)
+  # y = !x
+  # x := !x + z
+  # y
+# end 
+# integrate(1.)+integrate(2.)

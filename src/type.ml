@@ -10,10 +10,10 @@ type t =
   }
  and desc =
    | Unit
+   | Bool
    | Int
    | Float
    | String
-   | Bool
    (* | Ident of string (\** A variable identifier. *\) *)
    | Var of var (** A type variable. *)
    | EVar of t option ref
@@ -23,6 +23,7 @@ known at typing time). They cannot be substituted by types with universal
 variables. *)
    | Arr of (string * (t * bool)) list * t
    (** Arrow type, the boolean indicates whether the argument is optional. *)
+   | Record of (string * t) list
    | Monadic of monadic
  and monadic =
    | Ref of t
@@ -40,9 +41,15 @@ let make t =
               
 let unit () = make Unit
 
-let float () = make Float
+let bool () = make Bool
 
 let int () = make Int
+
+let float () = make Float
+
+let string () = make String
+
+let record l = make (Record l)
 
 let invar =
   let n = ref 0 in
@@ -58,9 +65,13 @@ let evar () =
 
 let arr a t = make (Arr (a, t))
 
+(** Arrow type without labels. *)
 let arrnl a t =
   let a = List.map (fun t -> "",(t,false)) a in
   arr a t
+
+let reference t =
+  make (Monadic (Ref t))
 
 (** Follow links in variables. *)
 let unvar t =
@@ -83,7 +94,10 @@ let to_string t =
     | Var v ->
        (
          match !v with
-         | Link t -> Printf.sprintf "[%s]" (to_string false t)
+         | Link t ->
+            if !Config.Debug.Typing.show_links
+            then Printf.sprintf "[%s]" (to_string false t)
+            else to_string false t
          | FVar level ->
             un v ^ (if !Config.Debug.Typing.show_levels then "@" ^ string_of_int !level else "")
        )
@@ -98,6 +112,9 @@ let to_string t =
     | Float -> "float"
     | String -> "string"
     | Bool -> "bool"
+    | Record l ->
+       let l = String.concat_map " , " (fun (x,t) -> Printf.sprintf "%s : %s" x (to_string false t)) l in
+       Printf.sprintf "{ %s }" l
     | Arr (a,t) ->
        let a =
          String.concat_map
@@ -149,12 +166,121 @@ module Env = struct
 
   let level env = env.level
 
-  let bind env l =
+  let enter env = { env with level = env.level + 1 }
+  (* let leave env = { env with level = env.level - 1 } *)
+
+  let bind env x l =
+    { env with t = (x,l)::env.t }
+
+  let binds env l =
     { env with t = l@env.t }
 end
 
+let rec free_vars t =
+  (* Printf.printf "free_vars: %s\n%!" (to_string t); *)
+  let u fv1 fv2 = fv1@fv2 in
+  let fv = free_vars in
+  match t.desc with
+  | Arr (a, t) -> List.fold_left (fun v (_,(t,_)) -> u (fv t) v) (fv t) a
+  | Var { contents = Link t } -> fv t
+  | Var v -> [v]
+  | EVar { contents = Some t } -> fv t
+  | EVar _ -> []
+  | Unit | Int | Float | String | Bool -> []
+  | Record l -> List.fold_left (fun v (_,t) -> u (fv t) v) [] l
+  | Monadic (Ref t) -> fv t
+
+let update_level l t =
+  let rec aux t =
+    let update_var v =
+      match !v with
+      | Link t -> aux t
+      | FVar l' -> l' := min l !l'
+    in
+    match t.desc with
+    | Arr (a, t) -> aux t
+    | Var v -> update_var v
+    | EVar v -> (match !v with Some t -> aux t | None -> ())
+    | Unit | Int | Float | String | Bool -> ()
+    | Record l -> List.iter (fun (_,t) -> aux t) l
+    | Monadic (Ref t) -> aux t
+  in
+  aux t
+
+exception Cannot_unify
+
 let subtype (env:Env.t) (t1:t) (t2:t) =
-  (assert false : bool)
+  let rec ( <: ) t1 t2 =
+    (* Printf.printf "subtype: %s with %s\n%!" (to_string t1) (to_string t2); *)
+    let t1 = unvar t1 in
+    let t2 = unvar t2 in
+    match t1.desc, t2.desc with
+    | Var v1, Var v2 when v1 == v2 -> ()
+    | _, Var ({ contents = FVar l } as v2) ->
+       if List.memq v2 (free_vars t1) then
+         raise Cannot_unify
+       else
+         (
+           update_level !l t1;
+           if !Config.Debug.Typing.show_assignations then Printf.printf "%s <- %s\n%!" (to_string t2) (to_string t1);
+           v2 := Link t1
+         )
+    | Var _, _ -> t2 <: t1
+    | EVar v1, EVar v2 when v1 == v2 -> ()
+    | Arr (t1', t1''), Arr (t2', t2'') ->
+       t1'' <: t2'';
+       let a2 = ref t2' in
+       List.iter
+         (fun (l,(t1,o1)) ->
+           try
+             let t2,o2 = List.assoc l !a2 in
+             a2 := List.remove_assoc l !a2;
+             if o2 && not o1 then raise Cannot_unify;
+             t2 <: t1
+           with
+           | Not_found ->
+              if not o1 then raise Cannot_unify
+         ) t1';
+       if List.exists (fun (_,(_,o)) -> not o) !a2 then raise Cannot_unify
+    | Record l1, Record l2 ->
+       begin
+         try
+           List.iter (fun (x,t) -> List.assoc x l1 <: t) l2
+         with
+         | Not_found -> raise Cannot_unify
+       end
+    | Monadic (Ref t1), Monadic (Ref t2) -> t1 <: t2
+    | Unit, Unit -> ()
+    | Bool, Bool -> ()
+    | Int, Int -> ()
+    | Float, Float -> ()
+    | String, String -> ()
+    | _, _ -> raise Cannot_unify
+  in
+  try
+    t1 <: t2;
+    true
+  with
+  | Cannot_unify -> false
+
+let generalize level t : scheme =
+  let rec aux t =
+    let generalize_var v =
+      match !v with
+      | FVar l -> if !l > level then [v] else []
+      | Link _ -> assert false
+    in
+    match (unvar t).desc with
+    | Var v -> generalize_var v
+    | EVar v -> []
+    | Arr (a, t) ->
+       let a = List.concat_map (fun (l,(t,o)) -> aux t) a in
+       (aux t)@a
+    | Record l -> List.concat_map (fun (x,t) -> aux t) l
+    | Unit | Bool | Int | Float | String -> []
+    | Monadic (Ref t) ->  aux t
+  in
+  aux t, t
 
 (** Instantiate a type scheme: replace universally quantified variables
     with fresh variables. *)
@@ -166,10 +292,18 @@ let instantiate ((l,t):scheme) =
       | Var x ->
          let x = try List.assq x s with Not_found -> x in
          Var x
+      | EVar v -> EVar v
       | Arr (a, t) ->
          let a = List.map (fun (l,(t,o)) -> l,(aux t,o)) a in
          let t = aux t in
          Arr (a, t)
+      | Record l ->
+         let l = List.map (fun (x,t) -> x, aux t) l in
+         Record l
+      | Unit | Bool | Int | Float | String as t -> t
+      | Monadic (Ref t) ->
+         let t = aux t in
+         Monadic (Ref t)
     in
     { desc }
   in

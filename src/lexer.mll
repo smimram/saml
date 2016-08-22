@@ -52,6 +52,8 @@ rule token = parse
   | ")" { RPAR }
   | "[" { LARR }
   | "]" { RARR }
+  | "{" { LACC }
+  | "}" { RACC }
   | "->" { ARR }
   | "+" { PLUS }
   | "-" { MINUS }

@@ -1,0 +1,3 @@
+print = builtin("print")
+
+sin = builtin("sin")

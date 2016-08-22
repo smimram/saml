@@ -1,7 +1,6 @@
 %{
-  open Lang
-  open Expr
   open Stdlib
+  open Lang
 
   let defpos = function
     | Some pos -> pos
@@ -9,34 +8,35 @@
 
   let mk ?pos e =
     let pos = defpos pos in
-    E.make ~pos e
+    make ~pos e
 
   let mk_val ?pos =
     let pos = defpos pos in
-    E.value ~pos
+    value ~pos
 
   let mk_seq ?pos =
     let pos = defpos pos in
-    E.seq ~pos
+    seq ~pos
 
   let mk_fun ?pos =
     let pos = defpos pos in
-    E.fct ~pos
+    fct ~pos
 
   let mk_app ?pos =
     let pos = defpos pos in
-    E.app ~pos
+    app ~pos
 
   (** A builtin applied to arguments. *)
   let mk_bapp ?pos b args =
-    mk_app ?pos (Builtin.get b) (List.map (fun e -> "", e) args)
+    let pos = defpos pos in
+    mk_app ~pos (Builtin.get ~pos b) (List.map (fun e -> "", e) args)
 
   let mk_ident ?pos x =
     mk ?pos (Ident x)
 
-  let mk_decl ?pos (x, e) =
+  let mk_let ?pos (x, e) e' =
     let pos = defpos pos in
-    E.decl ~pos x e
+    letin ~pos x e e'
 
   let mk_module ?pos decls =
     failwith "TODO"
@@ -49,7 +49,7 @@
 %token CMP LE GE LT GT
 %token BAND BOR BNOT
 %token IF THEN ELSE
-%token LPAR RPAR LARR RARR
+%token LPAR RPAR LARR RARR LACC RACC
 %token SEMICOLON COLON COMMA MAYBE
 %token EQ PLUS MINUS TIMES DIV POW
 %token EXPAND
@@ -79,11 +79,16 @@
 %nonassoc UMINUS
 
 %start prog
-%type <Lang.Expr.t> prog
+%type <Lang.t> prog
+%start prog_ctx
+%type <Lang.t -> Lang.t> prog_ctx
 %%
 
 prog:
     | expr EOF { $1 }
+
+prog_ctx:
+    | expr_ctx EOF { $1 }
 
 // A very simple expression
 vsexpr:
@@ -95,9 +100,12 @@ vsexpr:
     | DT { mk (Monadic Dt) }
     | BEGIN expr END { $2 }
     | MODULE decls END { mk_module $2 }
-    | BUILTIN STRING { Builtin.get ~pos:(defpos None) $2 }
+    | BUILTIN LPAR STRING RPAR { Builtin.get ~pos:(defpos None) $3 }
 
-// A simple expression (essentially, we forbid sequences)
+ident:
+    | IDENT { mk_ident $1 }
+
+// A simple expression
 sexpr:
     | vsexpr { $1 }
     | sexpr PLUS sexpr { mk_bapp "fadd" [$1; $3] }
@@ -115,16 +123,28 @@ sexpr:
     | BNOT sexpr { mk_bapp "not" [$2] }
     | vsexpr app_args { mk_app $1 $2 }
     | REF LPAR sexpr RPAR { mk (Monadic (Ref $3)) }
-    | GET IDENT { mk (Monadic (RefGet $2)) }
-    | IDENT SET sexpr { mk (Monadic (RefSet ($1, $3))) }
+    | GET ident { mk (Monadic (RefGet $2)) }
+    | ident SET sexpr { mk (Monadic (RefSet ($1, $3))) }
+    | LACC decls RACC { mk (Record $2) }
+    | sexpr DOT IDENT { mk (Field ($1, $3)) }
+
+// A simple expression with parenthesis
+psexpr:
+    | sexpr { $1 }
+    | LPAR psexpr RPAR { $2 }
 
 expr:
-    | oneexpr { $1 }
-    | oneexpr expr { mk_seq [$1; $2] }
-
-oneexpr:
+    | INCLUDE LPAR STRING RPAR expr { (parse_file_ctx $3) $5 }
     | sexpr { $1 }
-    | decl { mk_decl $1 }
+    | sexpr expr { mk_seq $1 $2 }
+    | decl { mk_let $1 (unit ()) }
+    | decl expr { mk_let $1 $2 }
+
+// An expression context, this is used for includes
+expr_ctx:
+    | { fun e -> e }
+    | sexpr expr_ctx { fun e -> mk_seq $1 ($2 e) }
+    | decl expr_ctx { fun e -> mk_let $1 ($2 e) }
 
 decl:
     | IDENT EQ sexpr { ($1, $3) }

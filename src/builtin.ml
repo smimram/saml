@@ -1,12 +1,14 @@
 (** Builtin operations. *)
 
 open Stdlib
-open Lang
+module E = Lang
 
 type t = E.extern
 
 module T = struct
   include Type
+
+  let f_f = arrnl [float ()] (float ())
 
   let ff_f = arrnl [float (); float ()] (float ())
 end
@@ -33,7 +35,11 @@ let op name ?r t =
 
 let () =
   op "fadd" T.ff_f;
-  op "fmul" T.ff_f
+  op "fmul" T.ff_f;
+  op "sin" T.f_f
+
+let () =
+  op "print" (T.arrnl [T.var (-1)] (T.unit ()))
 
 let externals =
   List.map (fun e -> e.E.ext_name, E.make (E.External e)) !externals
