@@ -1,0 +1,33 @@
+include("builtin.saml")
+
+def printnl(x) =
+  print(x)
+  print("\n")
+end
+
+def id(x) = x end
+
+def prev(init, x) =
+  y = ref(init)
+  ans = !y
+  y := x
+  ans
+end
+
+module integrator =
+  def euler(reset=id, freq) =
+    x = ref(0.)
+    ans = !x
+    x := !x + dt * freq
+    x := reset(!x)
+    ans
+  end
+end
+
+module array =
+  create = builtin("array_create")
+
+  get = builtin("array_get")
+
+  set = builtin("array_set")
+end

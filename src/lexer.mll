@@ -26,7 +26,8 @@
       "include", INCLUDE;
       "expand", EXPAND;
       "dt", DT;
-      "init", INIT;
+      "unref", UNREF;
+      "undt", UNDT;
     ]
 }
 

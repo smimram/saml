@@ -1,16 +1,23 @@
-include("builtin.saml")
+# include("builtin.saml")
+include("pervasives.saml")
 
-def fst(x) = x.fst end
-def snd(x) = x.snd end
+# def fst(x) = x.fst end
+# def snd(x) = x.snd end
 
-p = { fst = 0 snd = 1 }
-z = p.fst
-print(z)
+# p = { fst = 0 snd = 1 }
+# z = p.fst
+# print(z)
 
 # def integrate(z) =
   # x = ref(0.)
   # y = !x
-  # x := !x + z
+  # x := !x + z * dt
   # y
-# end 
-# integrate(1.)+integrate(2.)
+# end
+# ir = unref(integrate(1.))
+# init = ir.init
+# run = ir.run
+# x = run(init)
+# run(init)
+# undt(integrate(1.))
+s = integrator.euler(440.)

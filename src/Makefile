@@ -5,6 +5,10 @@ ANNOTATE = true
 all: dnc
 	./saml test.saml
 
+ci:
+	git ci . -m "Progress on SAML."
+	git push
+
 conflicts:
 	rm -f parser.conflicts
 	menhir --explain parser.mly

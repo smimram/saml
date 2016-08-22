@@ -39,12 +39,13 @@
     letin ~pos x e e'
 
   let mk_module ?pos decls =
-    failwith "TODO"
+    let pos = defpos pos in
+    mk ~pos (Module decls)
 %}
 
 %token DEF BEGIN END FUN ARR DOT
 %token MODULE BUILTIN INCLUDE
-%token REF GET SET DT INIT
+%token REF GET SET UNREF DT UNDT
 %token FOR WHILE TO DO DONE
 %token CMP LE GE LT GT
 %token BAND BOR BNOT
@@ -101,6 +102,7 @@ vsexpr:
     | BEGIN expr END { $2 }
     | MODULE decls END { mk_module $2 }
     | BUILTIN LPAR STRING RPAR { Builtin.get ~pos:(defpos None) $3 }
+    | sexpr DOT IDENT { mk (Field ($1, $3)) }
 
 ident:
     | IDENT { mk_ident $1 }
@@ -125,8 +127,9 @@ sexpr:
     | REF LPAR sexpr RPAR { mk (Monadic (Ref $3)) }
     | GET ident { mk (Monadic (RefGet $2)) }
     | ident SET sexpr { mk (Monadic (RefSet ($1, $3))) }
-    | LACC decls RACC { mk (Record $2) }
-    | sexpr DOT IDENT { mk (Field ($1, $3)) }
+    | UNREF LPAR sexpr RPAR { mk (Monadic (RefFun $3)) }
+    | UNDT LPAR sexpr RPAR { mk (Monadic (DtFun $3)) }
+    | LACC decls RACC { mk (Record (false, $2)) }
 
 // A simple expression with parenthesis
 psexpr:
@@ -134,21 +137,23 @@ psexpr:
     | LPAR psexpr RPAR { $2 }
 
 expr:
-    | INCLUDE LPAR STRING RPAR expr { (parse_file_ctx $3) $5 }
     | sexpr { $1 }
     | sexpr expr { mk_seq $1 $2 }
     | decl { mk_let $1 (unit ()) }
     | decl expr { mk_let $1 $2 }
+    | INCLUDE LPAR STRING RPAR expr { (parse_file_ctx $3) $5 }
 
 // An expression context, this is used for includes
 expr_ctx:
     | { fun e -> e }
     | sexpr expr_ctx { fun e -> mk_seq $1 ($2 e) }
     | decl expr_ctx { fun e -> mk_let $1 ($2 e) }
+    | INCLUDE LPAR STRING RPAR expr_ctx { fun e -> (parse_file_ctx $3) ($5 e) }
 
 decl:
-    | IDENT EQ sexpr { ($1, $3) }
-    | DEF IDENT args EQ expr END { ($2, mk_fun $3 $5) }
+    | IDENT EQ sexpr { $1, $3 }
+    | DEF IDENT args EQ expr END { $2, mk_fun $3 $5 }
+    | MODULE IDENT EQ decls END { $2, mk_module $4 }
 
 decls:
     | decl decls { $1::$2 }

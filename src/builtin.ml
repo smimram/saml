@@ -33,13 +33,22 @@ let op name ?r t =
     end;
   externals := ext :: !externals
 
+(** Numeric operations. *)
 let () =
   op "fadd" T.ff_f;
   op "fmul" T.ff_f;
   op "sin" T.f_f
 
+(** Commands. *)
 let () =
   op "print" (T.arrnl [T.var (-1)] (T.unit ()))
+
+(** Arrays. *)
+let () =
+  let t = T.var (-1) in
+  op "array_create" (T.arrnl [T.int (); t] (T.array t));
+  op "array_get" (T.arrnl [T.array t; T.int ()] t);
+  op "array_set" (T.arrnl [T.array t; T.int (); t] (T.unit ()))
 
 let externals =
   List.map (fun e -> e.E.ext_name, E.make (E.External e)) !externals

@@ -24,6 +24,7 @@ variables. *)
    | Arr of (string * (t * bool)) list * t
    (** Arrow type, the boolean indicates whether the argument is optional. *)
    | Record of (string * t) list
+   | Array of t
    | Monadic of monadic
  and monadic =
    | Ref of t
@@ -50,6 +51,8 @@ let float () = make Float
 let string () = make String
 
 let record l = make (Record l)
+
+let array t = make (Array t)
 
 let invar =
   let n = ref 0 in
@@ -115,6 +118,8 @@ let to_string t =
     | Record l ->
        let l = String.concat_map " , " (fun (x,t) -> Printf.sprintf "%s : %s" x (to_string false t)) l in
        Printf.sprintf "{ %s }" l
+    | Array t ->
+       Printf.sprintf "[%s]" (to_string false t)
     | Arr (a,t) ->
        let a =
          String.concat_map
@@ -277,6 +282,7 @@ let generalize level t : scheme =
        let a = List.concat_map (fun (l,(t,o)) -> aux t) a in
        (aux t)@a
     | Record l -> List.concat_map (fun (x,t) -> aux t) l
+    | Array t -> aux t
     | Unit | Bool | Int | Float | String -> []
     | Monadic (Ref t) ->  aux t
   in
@@ -297,6 +303,8 @@ let instantiate ((l,t):scheme) =
          let a = List.map (fun (l,(t,o)) -> l,(aux t,o)) a in
          let t = aux t in
          Arr (a, t)
+      | Array t ->
+         Array (aux t)
       | Record l ->
          let l = List.map (fun (x,t) -> x, aux t) l in
          Record l

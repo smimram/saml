@@ -50,6 +50,7 @@ let output_file = ref "out.ml"
 let usage = "saml -- SAML Ain't a Monadic Language\nusage: saml [options] file"
 
 let () =
+  Printexc.record_backtrace true;
   let file_in = ref [] in
   Arg.parse
     (Arg.align
