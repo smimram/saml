@@ -10,8 +10,22 @@
 \begin{document}
 \maketitle
 
+\section{Type inference}
+\subsection{Declarations}
+Declarations can either be of the form
+\begin{verbatim}
+let x = e in e'
+\end{verbatim}
+or (sequences of)
+\begin{verbatim}
+x = e
+\end{verbatim}
+The first one has the advantage that program transformations are more easily
+implemented. For instance, with the second one, the typing function has to
+return the environment.
+
 \section{The monad}
-The ``expansion'' of the monad returns a record  with two fields
+The ``expansion'' of the monad returns a record with two fields
 \begin{verbatim}
 alloc : unit -> record
 loop : init:bool -> record -> 'a

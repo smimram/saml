@@ -8,7 +8,7 @@ let parse_file f =
   let sin =
     let fi = open_in f in
     let flen = in_channel_length fi in
-    let buf = Bytes.create flen in
+    let buf = String.create flen in
     really_input fi buf 0 flen;
     close_in fi;
     buf
@@ -20,8 +20,8 @@ let parse_file f =
     Parser.prog Lexer.token lexbuf
   with
     (* TODO: use string_of_pos *)
-    | Failure s when s = "lexing: empty token" ->
-      let pos = Lexing.lexeme_end_p lexbuf in
+    | Failure "lexing: empty token" ->
+      let pos = (Lexing.lexeme_end_p lexbuf) in
       let err =
         Printf.sprintf "Lexing error in file %s at line %d, character %d."
           pos.Lexing.pos_fname
@@ -40,18 +40,18 @@ let parse_file f =
       in
       error err
 
-let () = Lang.parse_file_fun := parse_file
+let () = Lang.M.parse_file_fun := parse_file
 
 let output_file = ref "out.ml"
 
-let usage = "saml -- SAML Ain't a Monadic Language\nusage: saml [options] file"
+let usage = "saml -- Stream Advanced Monadic Language\nusage: saml [options] file"
 
 let () =
   let file_in = ref [] in
   Arg.parse
     (Arg.align
        [
-         "-O", Arg.Int (fun n -> Config.Compiler.optimize := (n <> 0)), " Optimization level";
+         "-O", Arg.Int (fun n -> if n = 0 then Config.Compiler.optimize := false), " Optimization level";
          "-o", Arg.Set_string output_file, " Output file name.";
        ]
     )
@@ -63,6 +63,12 @@ let () =
     | _ -> error "Exactly one .saml file should be present on command-line."
   in
   let prog = parse_file fname in
+  let pass_module name f prog =
+    Printf.printf "****** %s *****\n\n%!" name;
+    let prog = f prog in
+    Printf.printf "%s\n\n%!" (Lang.M.to_string prog);
+    prog
+  in
   let pass name f prog =
     try
       Printf.printf "****** %s *****\n\n%!" name;
@@ -74,21 +80,25 @@ let () =
       let err = Printf.sprintf "Typing error at %s: %s" (Common.string_of_pos pos) msg in
       error err
   in
-  let prog = pass "Parsing program" id prog in
-  let prog = pass "Infering type" (fun prog -> let t = Lang.E.infer_type prog in prog) prog in
-  (* let prog = pass "Reducing program" (fun e -> Lang.E.reduce e) prog in *)
-  (* let prog = pass "Infering type" (Lang.E.infer_type ~annot:false) prog in *)
-  (* Printf.printf "****** Emit program *****\n\n%!"; *)
-  (* let prog = Lang.E.emit prog in *)
-  (* let prog = Lang.E.BB.prog prog in *)
-  (* Printf.printf "%s\n%!" (Backend.to_string prog); *)
-  (* Printf.printf "****** ML program *****\n\n%!"; *)
-  (* let ml = Backend_ocaml.emit prog in *)
-  (* Printf.printf "%s\n%!" ml; *)
-  (* File.write "out/output.ml" ml; *)
-  (* (\* Printf.printf "****** C program *****\n\n%!"; *\) *)
-  (* (\* let c = Backend_c.emit prog in *\) *)
-  (* (\* Printf.printf "%s\n%!" c; *\) *)
-  (* (\* File.write "out/output.c" c; *\) *)
-  (* Backend_interp.emit prog; *)
+  let prog = pass_module "Parsing program" id prog in
+  let prog = Lang.M.to_expr prog in
+  let prog = pass "Expansing module" id prog in
+  let prog = Lang.E.run prog in
+  let prog = pass "Runing program" id prog in
+  let prog = pass "Infering type" (Lang.E.infer_type ~annot:true) prog in
+  let prog = pass "Reducing program" (fun e -> Lang.E.reduce e) prog in
+  let prog = pass "Infering type" (Lang.E.infer_type ~annot:false) prog in
+  Printf.printf "****** Emit program *****\n\n%!";
+  let prog = Lang.E.emit prog in
+  let prog = Lang.E.BB.prog prog in
+  Printf.printf "%s\n%!" (Backend.to_string prog);
+  Printf.printf "****** ML program *****\n\n%!";
+  let ml = Backend_ocaml.emit prog in
+  Printf.printf "%s\n%!" ml;
+  File.write "out/output.ml" ml;
+  (* Printf.printf "****** C program *****\n\n%!"; *)
+  (* let c = Backend_c.emit prog in *)
+  (* Printf.printf "%s\n%!" c; *)
+  (* File.write "out/output.c" c; *)
+  Backend_interp.emit prog;
   ()

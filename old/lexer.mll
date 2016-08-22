@@ -6,27 +6,31 @@
   let keywords =
     [
       (***** Keywords *****)
-      "def", DEF;
-      "begin", BEGIN;
-      "end", END;
+      "fun", FUN;
+      "let", LET;
+      "in", IN;
       "true", BOOL true;
       "false", BOOL false;
       "if", IF;
       "then", THEN;
       "else", ELSE;
       "ref", REF;
+      "rec", REC;
       "for", FOR;
-      "to", TO;
       "while", WHILE;
+      "to", TO;
       "do", DO;
       "done", DONE;
       "module", MODULE;
+      "struct", MODULE;
+      "end", END;
       "builtin", BUILTIN;
       "not", BNOT;
+      "with", WITH;
+      "type", TYPE;
       "include", INCLUDE;
       "expand", EXPAND;
-      "dt", DT;
-      "init", INIT;
+      "dt", IDENT Lang.Expr.Ident.dt;
     ]
 }
 
@@ -58,7 +62,7 @@ rule token = parse
   | "*" { TIMES }
   | "/" { DIV }
   | "." { DOT }
-  (* | "`"([^' ']+ as s) { VARIANT s } *)
+  | "`"([^' ']+ as s) { VARIANT s }
 
   (***** Identifiers *****)
   | (['_''a'-'z''A'-'Z']['a'-'z''A'-'Z''0'-'9''_']*['\'']* as str)
@@ -75,5 +79,6 @@ rule token = parse
   (***** Non-meaningful characters *****)
   | space+ { token lexbuf }
   | "#"[^'\n']* { token lexbuf }
+  | "(*"([^'*']|'*'[^')'])*"*)" as comment { for i = 1 to String.count '\n' comment do Lexing.new_line lexbuf done; token lexbuf }
   | "\n" { Lexing.new_line lexbuf; token lexbuf }
   | eof { EOF }
