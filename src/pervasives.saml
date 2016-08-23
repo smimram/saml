@@ -14,14 +14,10 @@ def prev(init, x) =
   ans
 end
 
-module integrator =
-  def euler(reset=id, freq) =
-    x = ref(0.)
-    ans = !x
-    x := !x + dt * freq
-    x := reset(!x)
-    ans
-  end
+module int =
+  sub = builtin("isub")
+
+  to_float = builtin("float_of_int")
 end
 
 module array =
@@ -30,4 +26,22 @@ module array =
   get = builtin("array_get")
 
   set = builtin("array_set")
+end
+
+module integrator =
+  def euler(phase=0., reset=id, freq) =
+    x = ref(phase)
+    ans = !x
+    x := !x + dt * freq
+    x := reset(!x)
+    ans
+  end
+end
+
+module time =
+  def now() = integrator.euler(1.) end
+end
+
+module osc =
+  def sine(freq) = sin(2. * pi * integrator.euler(freq)) end
 end

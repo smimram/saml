@@ -102,7 +102,8 @@ vsexpr:
     | BEGIN expr END { $2 }
     | MODULE decls END { mk_module $2 }
     | BUILTIN LPAR STRING RPAR { Builtin.get ~pos:(defpos None) $3 }
-    | sexpr DOT IDENT { mk (Field ($1, $3)) }
+    | vsexpr DOT IDENT { mk (Field ($1, $3)) }
+    | vsexpr LARR sexpr RARR { mk_bapp "array_get" [$1; $3] }
 
 ident:
     | IDENT { mk_ident $1 }
@@ -130,6 +131,9 @@ sexpr:
     | UNREF LPAR sexpr RPAR { mk (Monadic (RefFun $3)) }
     | UNDT LPAR sexpr RPAR { mk (Monadic (DtFun $3)) }
     | LACC decls RACC { mk (Record (false, $2)) }
+    | vsexpr LARR sexpr RARR SET sexpr { mk_bapp "array_set" [$1; $3; $6] }
+    | FOR IDENT EQ sexpr TO sexpr DO expr DONE { mk (For ($2, $4, $6, $8)) }
+    | WHILE sexpr DO expr DONE { mk (While ($2, $4)) }
 
 // A simple expression with parenthesis
 psexpr:
@@ -183,3 +187,4 @@ app_arg:
 in_app_args:
     | app_arg { [$1] }
     | app_arg COMMA in_app_args { $1::$3 }
+    | { [] }

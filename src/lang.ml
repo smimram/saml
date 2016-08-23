@@ -1,6 +1,9 @@
 (** Internal representation of the language and operations to manipulate it
     (typechecking, reduction, etc.). *)
 
+(* TODO: propagate mutability of records in types *)
+(* TODO: propagate effects in types *)
+
 open Common
 open Stdlib
 
@@ -52,6 +55,7 @@ type t =
    | App of t * (string * t) list
    | Seq of t * t
    | External of extern
+   | Array of t array
    | Record of bool * (string * t) list (** A record, optionally mutable. *)
    | Module of (string * t) list
    (** Modules are basically the same as records except that members can use
@@ -59,8 +63,8 @@ type t =
    | Field of t * string (** Field of a record or a module. *)
    | ReplaceField of t * string * t (** Replace a field of a record. *)
    | SetField of t * string * t (** Modify a field in a pointed record. *)
-   (* | For of string * t * t * t *)
-   (* | While of t * t *)
+   | For of string * t * t * t
+   | While of t * t
    (* | If of t * t * t *)
    | AddressOf of t
    | Alloc of T.t (** Dynamically allocate a value. *)
@@ -81,7 +85,7 @@ type t =
      (* The mutable is to be able to fill in when there is no reduction. It
        should not be mutated otherwise. *)
      mutable ext_reduce : (string * t) list -> t; (** Reduction. *)
-     ext_exec : (string * t) list -> t; (** Execution. *)
+     ext_run : t array -> t; (** Execution. *)
    }
  (** Let declarations. *)
  and let_t =
@@ -128,7 +132,7 @@ let field ?pos e x =
   make ?pos (Field (e, x))
 
 (** String representation of an expression. *)
-let to_string e =
+let to_string e : string =
   let pa p s = if p then Printf.sprintf "(%s)" s else s in
   let rec to_string ~tab p e =
     let tabs ?(tab=tab) () = String.make (2*tab) ' ' in
@@ -169,10 +173,23 @@ let to_string e =
        in
        let body = to_string ~tab false l.body in
        pa p (Printf.sprintf "%s =%s\n%s%s" l.var def (tabs ()) body)
+    | While (c, e) ->
+       let c = to_string ~tab false c in
+       let e = to_string ~tab:(tab+1) false e in
+       pa p (Printf.sprintf "while %s do\n%s%s\n%sdone" c (tabss()) e (tabs()))
+    | For (i, a, b, e) ->
+       let a = to_string ~tab false a in
+       let b = to_string ~tab false b in
+       let e = to_string ~tab:(tab+1) false e in
+       pa p (Printf.sprintf "for %s = %s to %s do\n%s%s\n%sdone" i a b (tabss()) e (tabs()))
     | AddressOf e ->
        let e = to_string ~tab true e in
        Printf.sprintf "&%s" e
     | Alloc t -> Printf.sprintf "alloc[%s]" (T.to_string t)
+    | Array a ->
+       let a = Array.to_list a in
+       let a = String.concat_map " , " (to_string ~tab:(tab+1) false) a in
+       Printf.sprintf "[%s]" a
     | Record (m,r) ->
        if r = [] then "{}" else
          let r = List.map (fun (x,v) -> Printf.sprintf "%s%s = %s" (tabss()) x (to_string ~tab:(tab+1) false v)) r in
@@ -182,7 +199,7 @@ let to_string e =
        if r = [] then "module end" else
          let r = List.map (fun (x,v) -> Printf.sprintf "%s%s = %s" (tabss()) x (to_string ~tab:(tab+1) false v)) r in
          let r = String.concat "\n" r in
-         Printf.sprintf "(\n%s\n%s)" r (tabs())
+         Printf.sprintf "module\n%s\n%send" r (tabs())
     | Field (r,x) ->
        let r = to_string ~tab true r in
        Printf.sprintf "%s.%s" r x
@@ -215,6 +232,14 @@ let to_string e =
   in
   to_string ~tab:0 false e
 
+let rec free_vars e =
+  (* Printf.printf "free_vars: %s\n%!" (to_string e); *)
+  let u fv1 fv2 = fv1@fv2 in
+  let fv = free_vars in
+  match e.desc with
+  | Ident x -> [x]
+  | Value _ -> []
+
 (** {2 Type inference} *)
 
 (** Typing error. *)
@@ -223,6 +248,7 @@ exception Typing of pos * string
 (** Infer the type of an expression. *)
 let rec infer_type env e =
   (* Printf.printf "infer_type:\n%s\n\n\n%!" (to_string e); *)
+  (* Printf.printf "env: %s\n\n" (String.concat_map " , " (fun (x,(_,t)) -> x ^ ":" ^ T.to_string t) env.T.Env.t); *)
   let (<:) = T.subtype env in
   let type_error e s =
     Printf.ksprintf (fun s -> raise (Typing (e.pos, s))) s
@@ -281,6 +307,21 @@ let rec infer_type env e =
      let te' = T.arr ta tr in
      ensure e te te';
      tr
+  | While (c,e) ->
+     let tc = infer_type env c in
+     ensure c tc (T.bool ());
+     let te = infer_type env e in
+     ensure e te (T.unit ());
+     T.unit ()
+  | For (i,a,b,e) ->
+     let ta = infer_type env a in
+     ensure a ta (T.int ());
+     let tb = infer_type env b in
+     ensure b tb (T.int ());
+     let env = T.Env.bind env i (T.generalize (T.Env.level env) (T.int ())) in
+     let te = infer_type env e in
+     ensure e te (T.unit ());
+     T.unit ()
   | Module l | Record (_,l) ->
      let l = List.map (fun (x,e) -> x, infer_type env e) l in
      T.record l
@@ -290,6 +331,11 @@ let rec infer_type env e =
      let te' = T.record [x, t] in
      ensure e te te';
      t
+  | SetField (r,x,e) ->
+     let tr = infer_type env r in
+     let te = infer_type env e in
+     ensure r tr (T.record [x,te]);
+     T.unit ()
   | External ext -> T.instantiate (T.generalize 0 ext.ext_type)
   | Monadic Dt -> T.float ()
   | Monadic (DtFun e) ->
@@ -432,6 +478,10 @@ let rec reduce ~subst ~state expr =
          let e = substs ss e in
          SetField(r,x,e)
       | Monadic Dt -> e.desc
+      | Monadic (DtFun e) ->
+         (* TODO: dt could occur as free variable of some substitution... *)
+         let e = substs ss e in
+         Monadic (DtFun e)
       | Monadic (Ref e) ->
          let e = substs ss e in
          Monadic (Ref e)
@@ -453,157 +503,178 @@ let rec reduce ~subst ~state expr =
     { e with desc }
   in
   let s = substs subst in
+  let reduce_block ?(allow_refs=false) ~subst ~state e =
+    let cells = state.RS.cells in
+    let context = state.RS.context in
+    let state = { state with RS.context = id } in
+    let state, e = reduce ~subst ~state e in
+    let e = state.RS.context e in
+    let state = { state with RS.context } in
+    if not allow_refs then assert (List.length cells = List.length state.RS.cells);
+    state, e
+  in
   (* Printf.printf "reduce:\n%s\n\n%!" (to_string expr); *)
   let state, e =
-  match expr.desc with
-  | Ident x -> state, s expr
-  | Fun (a, e) ->
-     (* We have to substitute optionals and rename variables for
+    match expr.desc with
+    | Ident x -> state, s expr
+    | Fun (a, e) ->
+       (* We have to substitute optionals and rename variables for
            substitution to avoid captures. *)
-     let state, a =
-       List.fold_map
-         (fun state (l,(x,o)) ->
-           let o = Option.map s o in
-           let state, y = RS.var state in
-           state, ((x,ident y), (l,(y,o)))
-         ) state a
-     in
-     let s, a = List.split a in
-     let subst = s@subst in
-     let s = substs subst in
-     state, fct a (s e)
-  | App (e, args) ->
-     let state, e = reduce ~state e in
-     let state, args = List.fold_map (fun state (l,e) -> let state, e = reduce ~state e in state, (l,e)) state args in
-     begin
-       match e.desc with
-       | Fun (a,e) ->
-          let rec aux a e = function
-            | (l,v)::args ->
-               let (x,_), a = List.assoc_rm l a in
-               let e = letin x v e in
-               aux a e args
-            | [] ->
-               (* Printf.printf "app: %s\n%!" (to_string expr); *)
-               if List.for_all (fun (l,(x,o)) -> o <> None) a then
-                 (* All remaining arguments are optional *)
-                 List.fold_left (fun e (l,(x,o)) -> letin x (Option.get o) e) e a
-               else
-                 (* Partial application *)
-                 fct a e
-          in
-          reduce ~state (aux a e args)
-       | _ -> state, app e args
-     end
-  | Seq (e1, e2) ->
-     let state, e1 = reduce ~subst ~state e1 in
-     let state =
+       let state, a =
+         List.fold_map
+           (fun state (l,(x,o)) ->
+             let o = Option.map s o in
+             let state, y = RS.var state in
+             state, ((x,ident y), (l,(y,o)))
+           ) state a
+       in
+       let s, a = List.split a in
+       let subst = s@subst in
+       let s = substs subst in
+       state, fct a (s e)
+    | App (e, args) ->
+       let state, e = reduce ~state e in
+       let state, args = List.fold_map (fun state (l,e) -> let state, e = reduce ~state e in state, (l,e)) state args in
        begin
-         match e1.desc with
-         | Value Unit -> state
-         | _ -> RS.add_context state (fun e -> seq e1 e)
+         match e.desc with
+         | Fun (a,e) ->
+            let rec aux a e = function
+              | (l,v)::args ->
+                 let (x,_), a = List.assoc_rm l a in
+                 let e = letin x v e in
+                 aux a e args
+              | [] ->
+                 (* Printf.printf "app: %s\n%!" (to_string expr); *)
+                 if List.for_all (fun (l,(x,o)) -> o <> None) a then
+                   (* All remaining arguments are optional *)
+                   List.fold_left (fun e (l,(x,o)) -> letin x (Option.get o) e) e a
+                 else
+                   (* Partial application *)
+                   fct a e
+            in
+            reduce ~state (aux a e args)
+         | External ext -> state, ext.ext_reduce args
+         | _ -> state, app e args
        end
-     in
-     reduce ~subst ~state e2
-  | Let l ->
-     let state, def = reduce ~subst ~state l.def in
-     if inlinable def then
-       let subst = (l.var,def)::subst in
-       reduce ~subst ~state l.body
-     else
-       let state, var = RS.var state in
-       let state = RS.add_context state (fun e -> letin var def e) in
-       let subst = (l.var,ident var)::subst in
-       reduce ~subst ~state l.body
-  | Value _ | External _ -> state, expr
-  | AddressOf e ->
-     let state, e = reduce ~subst ~state e in
-     state, make (AddressOf e)
-  | Module m ->
-     (* TODO: this is a hack *)
-     (* TODO: handle duplicate labels... *)
-     let ctx = List.fold_left (fun ctx (l,e) e' -> ctx (letin l e e')) id m in
-     let m = List.map (fun (l,e) -> l, ident l) m in
-     reduce ~subst ~state (ctx (record false m))
-  | Record (m,l) ->
-     let state, l =
-       List.fold_map
-         (fun state (x,e) ->
-           let state, e = reduce ~subst ~state e in
-           state, (x,e))
-         state l
-     in
-     state, make (Record (m,l))
-  | Field (e, x) ->
-     let state, e = reduce ~subst ~state e in
-     begin
-       match e.desc with
-       | Record (_,l) -> state, List.assoc x l
-       | _ -> state, field e x
-     end
-  | ReplaceField (r,x,e) ->
-     let state, r = reduce ~subst ~state r in
-     let state, e = reduce ~subst ~state e in
-     state,
-     begin
-       match r.desc with
-       | Record (m,l) ->
-          let l = List.remove_assoc x l in
-          let l = (x,e)::l in
-          record m l
-       | _ -> make (ReplaceField (r,x,e))
-     end
-  | SetField (r,x,e) ->
-     let state, r = reduce ~subst ~state r in
-     let state, e = reduce ~subst ~state e in
-     state, make (SetField (r,x,e))
-  | Monadic Dt -> state, make (Ident Ident.dt)
-  | Monadic (DtFun e) ->
-     let context = state.context in
-     let state = { state with context = id } in
-     let state, e = reduce ~subst ~state e in
-     let e = RS.context state e in
-     let e = fct ["",(Ident.dt,None)] e in
-     let state = { state with context } in
-     state, e
-  | Monadic (Ref e) ->
-     let state, x = RS.cell state in
-     let state = RS.add_cell state x e in
-     let e = field (ident (Ident.state)) x in
-     let e = make (AddressOf e) in
-     reduce ~subst ~state e
-  | Monadic (RefGet r) ->
-     let state, r = reduce ~subst ~state r in
-     begin
-       match r.desc with
-       | AddressOf e -> state, e
-       | _ ->
-          (* TODO: this should not happen... *)
-          (* state, make (Monadic (RefGet r)) *)
-          assert false
-     end
-  | Monadic (RefSet (r, e)) ->
-     let state, r = reduce ~subst ~state r in
-     begin
-       match r.desc with
-       | AddressOf { desc = Field (r, x) } ->
-          reduce ~subst ~state (make (SetField (r, x, e)))
-       | _ ->
-          (* TODO: this should not happen... *)
-          (* state, make (Monadic (RefSet (r, e))) *)
-          assert false
-     end
-  | Monadic (RefFun e) ->
-     let cells = state.cells in
-     let context = state.context in
-     let state = { state with cells = []; context = id } in
-     let state, e = reduce ~subst ~state e in
-     let e = state.context e in
-     let init = record true state.cells in
-     let f = fct ["",(Ident.state,None)] e in
-     let e = record false ["init", init; "run", f] in
-     let state = { state with cells; context } in
-     state, e
+    | Seq (e1, e2) ->
+       let state, e1 = reduce ~subst ~state e1 in
+       let state =
+         begin
+           match e1.desc with
+           | Value Unit -> state
+           | _ -> RS.add_context state (fun e -> seq e1 e)
+         end
+       in
+       reduce ~subst ~state e2
+    | Let l ->
+       let state, def = reduce ~subst ~state l.def in
+       if inlinable def then
+         let subst = (l.var,def)::subst in
+         reduce ~subst ~state l.body
+       else
+         let state, var = RS.var state in
+         let state = RS.add_context state (fun e -> letin var def e) in
+         let subst = (l.var,ident var)::subst in
+         reduce ~subst ~state l.body
+    | While (c,e) ->
+       let state, c = reduce ~subst ~state c in
+       let state, e = reduce_block ~subst ~state e in
+       state, make (While (c,e))
+    | For (i,a,b,e) ->
+       let state, a = reduce ~subst ~state a in
+       let state, b = reduce ~subst ~state b in
+       let state, e = reduce_block ~subst ~state e in
+       state, make (For(i,a,b,e))
+    | Value _ | External _ -> state, expr
+    | AddressOf e ->
+       let state, e = reduce ~subst ~state e in
+       state, make (AddressOf e)
+    | Module m ->
+       (* TODO: this is a hack *)
+       (* TODO: handle duplicate labels... *)
+       let ctx = List.fold_left (fun ctx (l,e) e' -> ctx (letin l e e')) id m in
+       let m = List.map (fun (l,e) -> l, ident l) m in
+       reduce ~subst ~state (ctx (record false m))
+    | Record (m,l) ->
+       let state, l =
+         List.fold_map
+           (fun state (x,e) ->
+             let state, e = reduce ~subst ~state e in
+             state, (x,e))
+           state l
+       in
+       state, make (Record (m,l))
+    | Field (e, x) ->
+       let state, e = reduce ~subst ~state e in
+       begin
+         match e.desc with
+         | Record (_,l) -> state, List.assoc x l
+         | _ -> state, field e x
+       end
+    | ReplaceField (r,x,e) ->
+       let state, r = reduce ~subst ~state r in
+       let state, e = reduce ~subst ~state e in
+       state,
+       begin
+         match r.desc with
+         | Record (m,l) ->
+            let l = List.remove_assoc x l in
+            let l = (x,e)::l in
+            record m l
+         | _ -> make (ReplaceField (r,x,e))
+       end
+    | SetField (r,x,e) ->
+       let state, r = reduce ~subst ~state r in
+       let state, e = reduce ~subst ~state e in
+       state, make (SetField (r,x,e))
+    | Monadic Dt -> state, make (Ident Ident.dt)
+    | Monadic (DtFun e) ->
+       let context = state.RS.context in
+       let state = { state with RS.context = id } in
+       let state, e = reduce ~subst ~state e in
+       let e = RS.context state e in
+       let e = fct ["",(Ident.dt,None)] e in
+       let state = { state with RS.context } in
+       state, e
+    | Monadic (Ref e) ->
+       let state, x = RS.cell state in
+       (* assert (free_vars e = []); *)
+       let state = RS.add_cell state x e in
+       let e = field (ident (Ident.state)) x in
+       let e = make (AddressOf e) in
+       reduce ~subst ~state e
+    | Monadic (RefGet r) ->
+       let state, r = reduce ~subst ~state r in
+       begin
+         match r.desc with
+         | AddressOf e -> state, e
+         | _ ->
+            (* TODO: this should not happen... *)
+            (* state, make (Monadic (RefGet r)) *)
+            assert false
+       end
+    | Monadic (RefSet (r, e)) ->
+       let state, r = reduce ~subst ~state r in
+       begin
+         match r.desc with
+         | AddressOf { desc = Field (r, x) } ->
+            reduce ~subst ~state (make (SetField (r, x, e)))
+         | _ ->
+            (* TODO: this should not happen... *)
+            (* state, make (Monadic (RefSet (r, e))) *)
+            assert false
+       end
+    | Monadic (RefFun e) ->
+       let cells = state.RS.cells in
+       let context = state.RS.context in
+       let state = { state with RS.cells = []; context = id } in
+       let state, e = reduce ~subst ~state e in
+       let e = state.RS.context e in
+       let init = record true state.RS.cells in
+       let f = fct ["",(Ident.state,None)] e in
+       let e = record false ["init", init; "run", f] in
+       let state = { state with cells; context } in
+       state, e
   in
   (* Printf.printf "REDUCE\n%s\nTO\n%s\n\n" (to_string expr) (to_string (RS.context state e)); *)
   state, e
@@ -613,6 +684,95 @@ let reduce e =
   let state = RS.empty in
   let state, e = reduce ~subst ~state e in
   RS.context state e
+
+(** Run state. *)
+module Run = struct
+  (* We should only use value expressions. *)
+  type value = t
+  
+  type t = (string, value) Hashtbl.t
+
+  let empty () = Hashtbl.create 100
+
+  let get env x = Hashtbl.find env x
+  (* let get env x = let ans = get env x in Printf.printf "get %s is %s\n%!" x (to_string ans); ans *)
+
+  let set env x v = Hashtbl.replace env x v
+  (* let set env x v = Printf.printf "set %s to %s\n%!" x (to_string v); set env x v *)
+
+  exception Error of string
+
+  let to_error t e =
+    let s = Printf.sprintf "got %s but a %s is expected" (to_string e) t in
+    raise (Error s)
+
+  let to_bool e =
+    match e.desc with
+    | Value (Bool n) -> n
+    | _ -> to_error "bool" e
+
+  let to_int e =
+    match e.desc with
+    | Value (Int n) -> n
+    | _ -> to_error "int" e
+
+  let to_float e =
+    match e.desc with
+    | Value (Float n) -> n
+    | _ -> to_error "float" e
+
+  let to_string e =
+    match e.desc with
+    | Value (String s) -> s
+    | _ -> to_error "string" e
+
+  let to_array e =
+    match e.desc with
+    | Array a -> a
+    | _ -> to_error "array" e
+end
+
+let is_unit e =
+  match e.desc with
+  | Value Unit -> true
+  | _ -> false
+
+let rec run env e =
+  let run = run env in
+  (* Printf.printf "running:\n%s\n\n" (to_string e); *)
+  match e.desc with
+  | Seq (e1, e2) ->
+     let v = run e1 in
+     assert (is_unit v);
+     run e2
+  | Let l ->
+     Run.set env l.var (run l.def);
+     run l.body
+  | App ({ desc = External ext }, a) ->
+     let a = List.map (fun (l,v) -> assert (l = ""); run v) a in
+     let a = Array.of_list a in
+     ext.ext_run a
+  | While (c,e') ->
+     let c = Run.to_bool (run c) in
+     if c then
+       let e = seq e' e in
+       run e
+     else
+       unit ()
+  | For (i,a,b,e) ->
+     let a = run a in
+     let b = run b in
+     for k = Run.to_int a to Run.to_int b do
+       let e = letin i (value (Int k)) e in
+       let ans = run e in
+       assert (is_unit ans) 
+     done;
+     unit ()
+  | Ident x -> Run.get env x
+  | Value _ -> e
+  | Record _ -> e
+
+let run e = ignore (run (Run.empty ()) e)
 
 (* This wil be filled later on. *)
 let parse_file_ctx_fun = ref ((fun _ -> failwith "Parse file function should have been filled") : string -> t -> t)

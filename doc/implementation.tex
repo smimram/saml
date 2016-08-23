@@ -24,6 +24,14 @@ The first one has the advantage that program transformations are more easily
 implemented. For instance, with the second one, the typing function has to
 return the environment.
 
+\subsection{Application}
+\texttt{f(y)} reduces to
+\begin{verbatim}
+let x = y in f
+\end{verbatim}
+where \texttt{x} is the name of the variable of the function, in order to handle
+the case where \texttt{y} has effects (in which case it should not be inlined).
+
 \section{The monad}
 The ``expansion'' of the monad returns a record with two fields
 \begin{verbatim}

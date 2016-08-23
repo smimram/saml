@@ -185,13 +185,12 @@ let rec free_vars t =
   (* Printf.printf "free_vars: %s\n%!" (to_string t); *)
   let u fv1 fv2 = fv1@fv2 in
   let fv = free_vars in
-  match t.desc with
+  match (unvar t).desc with
   | Arr (a, t) -> List.fold_left (fun v (_,(t,_)) -> u (fv t) v) (fv t) a
-  | Var { contents = Link t } -> fv t
   | Var v -> [v]
-  | EVar { contents = Some t } -> fv t
   | EVar _ -> []
   | Unit | Int | Float | String | Bool -> []
+  | Array t -> fv t
   | Record l -> List.fold_left (fun v (_,t) -> u (fv t) v) [] l
   | Monadic (Ref t) -> fv t
 
@@ -207,6 +206,7 @@ let update_level l t =
     | Var v -> update_var v
     | EVar v -> (match !v with Some t -> aux t | None -> ())
     | Unit | Int | Float | String | Bool -> ()
+    | Array t -> aux t
     | Record l -> List.iter (fun (_,t) -> aux t) l
     | Monadic (Ref t) -> aux t
   in
@@ -247,6 +247,7 @@ let subtype (env:Env.t) (t1:t) (t2:t) =
               if not o1 then raise Cannot_unify
          ) t1';
        if List.exists (fun (_,(_,o)) -> not o) !a2 then raise Cannot_unify
+    | Array t1, Array t2 -> t1 <: t2
     | Record l1, Record l2 ->
        begin
          try

@@ -1,5 +1,7 @@
 let id x = x
 
+let pi = 4. *. atan 1.
+
 module List = struct
   include List
 
@@ -71,6 +73,10 @@ module Option = struct
   let get = function
     | Some x -> x
     | None -> raise Not_found
+
+  let default x = function
+    | Some x -> x
+    | None -> x
 end
 
 module String = struct

@@ -67,32 +67,20 @@ let () =
     | _ -> error "Exactly one .saml file should be present on command-line."
   in
   let prog = parse_file fname in
-  let pass name f prog =
+  let prog = ref prog in
+  let pass name f =
     try
       Printf.printf "****** %s *****\n\n%!" name;
-      let prog = f prog in
-      Printf.printf "%s\n\n%!" (Lang.to_string prog);
-      prog
+      let s = f !prog in
+      Printf.printf "%s\n\n%!" s
     with
     | Lang.Typing (pos, msg) ->
       let err = Printf.sprintf "Typing error at %s: %s" (Common.string_of_pos pos) msg in
       error err
   in
-  let prog = pass "Parsing program" id prog in
-  let prog = pass "Infering type" (fun prog -> let t = Lang.infer_type prog in prog) prog in
-  let prog = pass "Reducing program" (fun e -> Lang.reduce e) prog in
-  (* let prog = pass "Infering type" (Lang.E.infer_type ~annot:false) prog in *)
-  (* Printf.printf "****** Emit program *****\n\n%!"; *)
-  (* let prog = Lang.E.emit prog in *)
-  (* let prog = Lang.E.BB.prog prog in *)
-  (* Printf.printf "%s\n%!" (Backend.to_string prog); *)
-  (* Printf.printf "****** ML program *****\n\n%!"; *)
-  (* let ml = Backend_ocaml.emit prog in *)
-  (* Printf.printf "%s\n%!" ml; *)
-  (* File.write "out/output.ml" ml; *)
-  (* (\* Printf.printf "****** C program *****\n\n%!"; *\) *)
-  (* (\* let c = Backend_c.emit prog in *\) *)
-  (* (\* Printf.printf "%s\n%!" c; *\) *)
-  (* (\* File.write "out/output.c" c; *\) *)
-  (* Backend_interp.emit prog; *)
+  pass "Parsing program" Lang.to_string;
+  pass "Infering type" (fun e -> Type.to_string (Lang.infer_type e));
+  pass "Reducing program" (fun e -> prog := Lang.reduce e; Lang.to_string !prog);
+  pass "Infering type" (fun e -> Type.to_string (Lang.infer_type e));
+  pass "Running program" (fun e -> Lang.run e; "");
   ()
