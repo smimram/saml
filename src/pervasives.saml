@@ -40,8 +40,7 @@ module integrator =
   def euler(phase=0., reset=id, freq) =
     x = ref(phase)
     ans = !x
-    x := !x + dt * freq
-    x := reset(!x)
+    x := reset(!x + dt * freq)
     ans
   end
 end

@@ -134,6 +134,7 @@ sexpr:
     | vsexpr LARR sexpr RARR SET sexpr { mk_bapp "array_set" [$1; $3; $6] }
     | FOR IDENT EQ sexpr TO sexpr DO expr DONE { mk (For ($2, $4, $6, $8)) }
     | WHILE sexpr DO expr DONE { mk (While ($2, $4)) }
+//    | IF sexpr THEN expr ELSE expr END { mk
 
 // A simple expression with parenthesis
 psexpr:
@@ -141,9 +142,8 @@ psexpr:
     | LPAR psexpr RPAR { $2 }
 
 expr:
-    | sexpr { $1 }
+    | { unit () }
     | sexpr expr { mk_seq $1 $2 }
-    | decl { mk_let $1 (unit ()) }
     | decl expr { mk_let $1 $2 }
     | INCLUDE LPAR STRING RPAR expr { (parse_file_ctx $3) $5 }
 

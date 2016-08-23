@@ -694,6 +694,7 @@ let rec reduce ~subst ~state expr =
        (* Printf.printf "declare ref to\n%s\n\n%!" (to_string (RS.context state e)); *)
        let state = RS.add_cell state x e in
        let e = field (ident (Ident.state)) x in
+       (* The AddressOf is used to ensure that the value will get inlined. *)
        let e = make (AddressOf e) in
        reduce ~subst ~state e
     | Monadic (RefGet r) ->
