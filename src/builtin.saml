@@ -1,3 +1,4 @@
 print = builtin("print")
-pi = builtin("pi")()
+pi = builtin("pi")
+pi = pi()
 sin = builtin("sin")

@@ -69,5 +69,5 @@ rule token = parse
   (***** Non-meaningful characters *****)
   | space+ { token lexbuf }
   | "#"[^'\n']* { token lexbuf }
-  | "\n" { Lexing.new_line lexbuf; token lexbuf }
+  | "\n" { Lexing.new_line lexbuf; PP_NEWLINE }
   | eof { EOF }

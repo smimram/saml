@@ -17,7 +17,7 @@ let parse_file parse f =
   lexbuf.Lexing.lex_start_p <- { lexbuf.Lexing.lex_start_p with Lexing.pos_fname = f };
   lexbuf.Lexing.lex_curr_p <- { lexbuf.Lexing.lex_curr_p with Lexing.pos_fname = f };
   try
-    parse Lexer.token lexbuf
+    parse Preproc.token lexbuf
   with
     (* TODO: use string_of_pos *)
     | Failure s when s = "lexing: empty token" ->

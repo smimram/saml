@@ -50,10 +50,7 @@ def s() = s.run(s.init) end
 buflen = 44120
 buf = array.create(buflen, 0.)
 
-# loop = ref(0)
-
 while true do
-  # int.incr(loop)
   print("loop ")
   print(buf[0])
   print("\n")

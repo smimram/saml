@@ -258,7 +258,7 @@ let rec infer_type env e =
   in
   let ensure e t t' =
     if not (t <: t') then
-      type_error e "This expression has type %s but %s is expected." (T.to_string t) (T.to_string t');
+      type_error e "This expression has type %s but %s is expected. (%s)" (T.to_string t) (T.to_string t') (to_string e);
   in
   let var env = T.var (T.Env.level env) in
   match e.desc with

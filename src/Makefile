@@ -1,4 +1,4 @@
-SOURCES = stdlib.ml common.ml config.ml type.ml lang.ml builtin.ml parser.mly lexer.mll pa.ml saml.ml
+SOURCES = stdlib.ml common.ml config.ml type.ml lang.ml builtin.ml parser.mly lexer.mll preproc.ml pa.ml saml.ml
 RESULT = saml
 ANNOTATE = true
 PACKS = pulseaudio

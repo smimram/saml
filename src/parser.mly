@@ -39,8 +39,10 @@
     letin ~pos x e e'
 
   let mk_module ?pos decls =
-    let pos = defpos pos in
-    mk ~pos (Module decls)
+    mk ?pos (Module decls)
+
+  let mk_field ?pos r x =
+    mk ?pos (Field (r, x))
 %}
 
 %token DEF BEGIN END FUN ARR DOT
@@ -55,10 +57,11 @@
 %token EQ PLUS MINUS TIMES DIV POW
 %token EXPAND
 %token EOF
+%token PP_NEWLINE
 %token <int> INT
 %token <float> FLOAT
 %token <bool> BOOL
-%token <string> IDENT
+%token <string> IDENT IDENT_LPAR
 %token <string> STRING
 %token <string> VARIANT
 
@@ -74,10 +77,10 @@
 %nonassoc LARR
 %nonassoc GET
 %nonassoc SET
-%right DOT
 %left PLUS MINUS
 %left TIMES DIV
 %nonassoc UMINUS
+%left DOT
 
 %start prog
 %type <Lang.t> prog
@@ -86,85 +89,74 @@
 %%
 
 prog:
-    | expr EOF { $1 }
+    | exprs EOF { $1 }
 
 prog_ctx:
-    | expr_ctx EOF { $1 }
+    | exprs_ctx EOF { $1 }
 
-// A very simple expression
-vsexpr:
+expr:
     | IDENT { mk_ident $1 }
     | INT { mk_val (Int $1) }
     | FLOAT { mk_val (Float $1) }
     | BOOL { mk_val (Bool $1) }
     | STRING { mk_val (String $1) }
     | DT { mk (Monadic Dt) }
-    | BEGIN expr END { $2 }
+    | BEGIN exprs END { $2 }
     | MODULE decls END { mk_module $2 }
     | BUILTIN LPAR STRING RPAR { Builtin.get ~pos:(defpos None) $3 }
-    | vsexpr DOT IDENT { mk (Field ($1, $3)) }
-    | vsexpr LARR sexpr RARR { mk_bapp "array_get" [$1; $3] }
+    | expr DOT IDENT { mk_field $1 $3 }
+    | expr LARR expr RARR { mk_bapp "array_get" [$1; $3] }
+    | expr PLUS expr { mk_bapp "fadd" [$1; $3] }
+    | expr MINUS expr { mk_bapp "fsub" [$1; $3] }
+  //| MINUS psexpr %prec UMINUS { mk_bapp "fsub" [mk_val (Float 0.); $2] }
+    | expr TIMES expr { mk_bapp "fmul" [$1; $3] }
+    | expr DIV expr { mk_bapp "fdiv" [$1; $3] }
+    | expr LE expr { mk_bapp "le" [$1; $3] }
+    | expr GE expr { mk_bapp "le" [$3; $1] }
+    | expr LT expr { mk_bapp "lt" [$1; $3] }
+    | expr GT expr { mk_bapp "lt" [$3; $1] }
+    | expr CMP expr { mk_bapp "eq" [$1; $3] }
+    | expr BAND expr { mk_bapp "and" [$1; $3] }
+    | expr BOR expr { mk_bapp "or" [$1; $3] }
+    | BNOT expr { mk_bapp "not" [$2] }
+    | REF LPAR expr RPAR { mk (Monadic (Ref $3)) }
+    | IDENT_LPAR app_args RPAR { mk_app (ident $1) $2 }
+    | expr DOT IDENT_LPAR app_args RPAR { mk_app (mk_field $1 $3) $4 }
+    | GET ident { mk (Monadic (RefGet $2)) }
+    | ident SET expr { mk (Monadic (RefSet ($1, $3))) }
+    | UNREF LPAR expr RPAR { mk (Monadic (RefFun $3)) }
+    | UNDT LPAR expr RPAR { mk (Monadic (DtFun $3)) }
+    | LACC decls RACC { mk (Record (false, $2)) }
+    | expr LARR expr RARR SET expr { mk_bapp "array_set" [$1; $3; $6] }
+    | FOR IDENT EQ expr TO expr DO expr DONE { mk (For ($2, $4, $6, $8)) }
+    | WHILE expr DO exprs DONE { mk (While ($2, $4)) }
+//    | IF expr THEN expr ELSE expr END { mk
+
+exprs:
+    | expr { $1 }
+    | expr exprs { mk_seq $1 $2 }
+    | decl { mk_let $1 (Lang.unit ()) }
+    | decl exprs { mk_let $1 $2 }
+    | INCLUDE LPAR STRING RPAR exprs { (parse_file_ctx $3) $5 }
+
+// An expression context, this is used for includes
+exprs_ctx:
+    | { fun e -> e }
+    | expr exprs_ctx { fun e -> mk_seq $1 ($2 e) }
+    | decl exprs_ctx { fun e -> mk_let $1 ($2 e) }
+    | INCLUDE LPAR STRING RPAR exprs_ctx { fun e -> (parse_file_ctx $3) ($5 e) }
 
 ident:
     | IDENT { mk_ident $1 }
 
-// A simple expression
-sexpr:
-    | vsexpr { $1 }
-    | sexpr PLUS sexpr { mk_bapp "fadd" [$1; $3] }
-    | sexpr MINUS sexpr { mk_bapp "fsub" [$1; $3] }
-  //| MINUS sexpr %prec UMINUS { mk_bapp "fsub" [mk_val (Float 0.); $2] }
-    | sexpr TIMES sexpr { mk_bapp "fmul" [$1; $3] }
-    | sexpr DIV sexpr { mk_bapp "fdiv" [$1; $3] }
-    | sexpr LE sexpr { mk_bapp "le" [$1; $3] }
-    | sexpr GE sexpr { mk_bapp "le" [$3; $1] }
-    | sexpr LT sexpr { mk_bapp "lt" [$1; $3] }
-    | sexpr GT sexpr { mk_bapp "lt" [$3; $1] }
-    | sexpr CMP sexpr { mk_bapp "eq" [$1; $3] }
-    | sexpr BAND sexpr { mk_bapp "and" [$1; $3] }
-    | sexpr BOR sexpr { mk_bapp "or" [$1; $3] }
-    | BNOT sexpr { mk_bapp "not" [$2] }
-    | vsexpr app_args { mk_app $1 $2 }
-    | REF LPAR sexpr RPAR { mk (Monadic (Ref $3)) }
-    | GET ident { mk (Monadic (RefGet $2)) }
-    | ident SET sexpr { mk (Monadic (RefSet ($1, $3))) }
-    | UNREF LPAR sexpr RPAR { mk (Monadic (RefFun $3)) }
-    | UNDT LPAR sexpr RPAR { mk (Monadic (DtFun $3)) }
-    | LACC decls RACC { mk (Record (false, $2)) }
-    | vsexpr LARR sexpr RARR SET sexpr { mk_bapp "array_set" [$1; $3; $6] }
-    | FOR IDENT EQ sexpr TO sexpr DO expr DONE { mk (For ($2, $4, $6, $8)) }
-    | WHILE sexpr DO expr DONE { mk (While ($2, $4)) }
-//    | IF sexpr THEN expr ELSE expr END { mk
-
-// A simple expression with parenthesis
-psexpr:
-    | sexpr { $1 }
-    | LPAR psexpr RPAR { $2 }
-
-expr:
-    | { unit () }
-    | sexpr expr { mk_seq $1 $2 }
-    | decl expr { mk_let $1 $2 }
-    | INCLUDE LPAR STRING RPAR expr { (parse_file_ctx $3) $5 }
-
-// An expression context, this is used for includes
-expr_ctx:
-    | { fun e -> e }
-    | sexpr expr_ctx { fun e -> mk_seq $1 ($2 e) }
-    | decl expr_ctx { fun e -> mk_let $1 ($2 e) }
-    | INCLUDE LPAR STRING RPAR expr_ctx { fun e -> (parse_file_ctx $3) ($5 e) }
-
 decl:
-    | IDENT EQ sexpr { $1, $3 }
-    | DEF IDENT args EQ expr END { $2, mk_fun $3 $5 }
+    | IDENT EQ expr { $1, $3 }
+    | DEF IDENT_LPAR arg_list RPAR EQ exprs END { $2, mk_fun $3 $6 }
     | MODULE IDENT EQ decls END { $2, mk_module $4 }
 
 decls:
     | decl decls { $1::$2 }
     | { [] }
-
-args:
-    | LPAR arg_list RPAR { $2 }
 
 arg_list:
     | { [] }
@@ -174,17 +166,14 @@ arg_list:
 arg:
     | IDENT { "",($1,None) }
     | IDENT EQ { $1,($1,None) }
-    | IDENT EQ sexpr { $1,($1,Some $3) }
+    | IDENT EQ expr { $1,($1,Some $3) }
 
 app_args:
-    | LPAR in_app_args RPAR { $2 }
+    | app_arg { [$1] }
+    | app_arg COMMA app_args { $1::$3 }
+    | { [] }
 
 app_arg:
-    | sexpr { "",$1 }
-    | IDENT EQ sexpr { $1, $3 }
+    | expr { "",$1 }
+    | IDENT EQ expr { $1, $3 }
     | IDENT EQ { $1, mk_ident $1 }
-
-in_app_args:
-    | app_arg { [$1] }
-    | app_arg COMMA in_app_args { $1::$3 }
-    | { [] }
