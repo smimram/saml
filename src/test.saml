@@ -39,23 +39,29 @@ include("pervasives.saml")
   # print(a[i])
 # done
 
-def s() = osc.sine(440.) end
-def s() =
-  s = undt(s())
-  s(1./44100.)
+# def s() =
+  # s = undt(s())
+  # s(1./44100.)
+# end
+# s = unref(s())
+# def s() = s.run(s.init) end
+
+# buflen = 44120
+# buf = array.create(buflen, 0.)
+
+# while true do
+  # print("loop ")
+  # print(buf[0])
+  # print("\n")
+  # for i = 0 to int.sub(buflen, 1) do
+    # buf[i] := s()
+  # done
+  # array.play(buf)
+# done
+
+def freq() =
+  t = time.now ()
+  t * t
 end
-s = unref(s())
-def s() = s.run(s.init) end
-
-buflen = 44120
-buf = array.create(buflen, 0.)
-
-while true do
-  print("loop ")
-  print(buf[0])
-  print("\n")
-  for i = 0 to int.sub(buflen, 1) do
-    buf[i] := s()
-  done
-  array.play(buf)
-done
+def s() = osc.saw(10. * freq()) end
+osc.play(s)

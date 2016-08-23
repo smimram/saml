@@ -45,6 +45,7 @@ rule token = parse
   | "if" { IF }
   | "then" { THEN }
   | "else" { ELSE }
+  | "elseif" { ELIF }
   | "ref" { REF }
   | "for" { FOR }
   | "to" { TO }
@@ -59,6 +60,8 @@ rule token = parse
   | "dt" { DT }
   | "unref" { UNREF }
   | "undt" { UNDT }
+  | "fun" { FUN }
+  | "nop" { NOP }
 
   (***** Identifiers *****)
   | (['_''a'-'z''A'-'Z']['a'-'z''A'-'Z''0'-'9''_']*['\'']* as str) { IDENT str }

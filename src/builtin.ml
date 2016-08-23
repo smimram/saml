@@ -11,14 +11,20 @@ module T = struct
 
   let var () = var max_int
 
+  let bb_b = arrnl [bool (); bool ()] (bool ())
+
+  let ff_b = arrnl [float (); float ()] (bool ())
+
   let ii_i = arrnl [int (); int ()] (int ())
+
+  let ii_b = arrnl [int (); int ()] (bool ())
 
   let f_f = arrnl [float ()] (float ())
 
   let ff_f = arrnl [float (); float ()] (float ())
 end
 
-let externals = ref ([] : t list)
+let externals = ref []
 
 let op name ?reduce ?run t =
   let run =
@@ -45,7 +51,7 @@ let op name ?reduce ?run t =
          let a = List.map (fun e -> "",e) a in
          E.app (E.make (E.External ext)) a
     end;
-  externals := ext :: !externals
+  externals := (ext.E.ext_name, E.make (E.External ext)) :: !externals
 
 (** Integer operations. *)
 let () =
@@ -70,9 +76,19 @@ let () =
   (* in *)
   op "fmul" T.ff_f ~run:(ff_f_run ( *.));
   op "fdiv" T.ff_f ~run:(ff_f_run (/.));
+  op "pow" T.ff_f ~run:(ff_f_run ( ** ));
   let pi_red _ = E.value (E.Float pi) in
   op "pi" (T.arr [] (T.float ())) ~reduce:pi_red;
   op "sin" T.f_f ~run:(f_f_run sin)
+
+(** Comparisons. *)
+let () =
+  op "ieq" T.ii_b;
+  op "ilt" T.ii_b;
+  op "ile" T.ii_b;
+  op "feq" T.ff_b;
+  let ff_b_run f a = E.bool (f (Run.to_float a.(0)) (Run.to_float a.(1))) in
+  op "fle" T.ff_b ~run:(ff_b_run (<=))
 
 (** Commands. *)
 let () =
@@ -107,11 +123,8 @@ let () =
   op "array_set" (T.arrnl [T.array a; T.int (); a] (T.unit ())) ~run:array_set_run
 
 let get ?pos x =
-  let externals =
-    List.map (fun e -> e.E.ext_name, E.make (E.External e)) !externals
-  in
   try
-    let e = List.assoc x externals in
+    let e = List.assoc x !externals in
     match pos with
     | Some pos -> { e with E.pos = pos }
     | None -> e
