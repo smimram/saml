@@ -84,7 +84,7 @@ type t =
      ext_type : T.t; (** Type. *)
      (* The mutable is to be able to fill in when there is no reduction. It
        should not be mutated otherwise. *)
-     mutable ext_reduce : (string * t) list -> t; (** Reduction. *)
+     mutable ext_reduce : t array -> t; (** Reduction. *)
      ext_run : t array -> t; (** Execution. *)
    }
  (** Let declarations. *)
@@ -108,6 +108,9 @@ let ident ?pos s =
 
 let value ?pos v =
   make ?pos (Value v)
+
+let float ?pos x =
+  value ?pos (Float x)
 
 let fct ?pos args e =
   make ?pos (Fun (args, e))
@@ -155,7 +158,7 @@ let to_string e : string =
            ) a
        in
        let e = to_string ~tab:(tab+1) false e in
-       pa p (Printf.sprintf "fun (%s) ->%s%s" a (if String.contains e '\n' then ("\n"^(tabs ~tab:(tab+1) ())) else " ") e)
+       pa p (Printf.sprintf "fun(%s) ->%s%s" a (if String.contains e '\n' then ("\n"^(tabs ~tab:(tab+1) ())) else " ") e)
     | App (e, a) ->
        let a = String.concat_map ", " (fun (l,e) -> (if l = "" then "" else (l ^ "=")) ^ to_string ~tab:(tab+1) false e) a in
        pa p (Printf.sprintf "%s(%s)" (to_string ~tab true e) a)
@@ -322,7 +325,17 @@ let rec infer_type env e =
      let te = infer_type env e in
      ensure e te (T.unit ());
      T.unit ()
-  | Module l | Record (_,l) ->
+  | Module m ->
+     let _, m =
+       List.fold_map
+         (fun env (x,e) ->
+           let t = infer_type env e in
+           let env = T.Env.bind env x (T.generalize (T.Env.level env) t) in
+           env, (x,t)
+         ) env m
+     in
+     T.record m
+  | Record (_,l) ->
      let l = List.map (fun (x,e) -> x, infer_type env e) l in
      T.record l
   | Field (e, x) ->
@@ -380,7 +393,7 @@ let rec inlinable e =
      a RefFun. *)
      (* not (Ident.is_meta x) *)
      true
-  | Record (m,l) -> not (m && List.for_all (fun (x,e) -> inlinable e) l)
+  | Record (m,l) -> (not m) && List.for_all (fun (x,e) -> inlinable e) l
   | AddressOf { desc = Field (r,x) } -> inlinable r
   | _ -> false
 
@@ -530,8 +543,10 @@ let rec reduce ~subst ~state expr =
        in
        let s, a = List.split a in
        let subst = s@subst in
-       let s = substs subst in
-       state, fct a (s e)
+       let e = substs subst e in
+       (* We cannot reduce here because references might escape then *)
+       (* let state, e = reduce_block ~subst ~state ~allow_refs:true e in *)
+       state, fct a e
     | App (e, args) ->
        let state, e = reduce ~state e in
        let state, args = List.fold_map (fun state (l,e) -> let state, e = reduce ~state e in state, (l,e)) state args in
@@ -544,16 +559,22 @@ let rec reduce ~subst ~state expr =
                  let e = letin x v e in
                  aux a e args
               | [] ->
-                 (* Printf.printf "app: %s\n%!" (to_string expr); *)
+                 (* Printf.printf "app: %s\n\n%!" (to_string expr); *)
                  if List.for_all (fun (l,(x,o)) -> o <> None) a then
                    (* All remaining arguments are optional *)
                    List.fold_left (fun e (l,(x,o)) -> letin x (Option.get o) e) e a
                  else
                    (* Partial application *)
-                   fct a e
+                   (* fct a e *)
+                   assert false
             in
-            reduce ~state (aux a e args)
-         | External ext -> state, ext.ext_reduce args
+            let e = aux a e args in
+            (* Printf.printf "reduce app:\n%s\n\n%!" (to_string e); *)
+            reduce ~state e
+         | External ext ->
+            let args = List.map (fun (l,e) -> assert (l = ""); e) args in
+            let args = Array.of_list args in
+            state, ext.ext_reduce args
          | _ -> state, app e args
        end
     | Seq (e1, e2) ->
@@ -595,6 +616,7 @@ let rec reduce ~subst ~state expr =
        let ctx = List.fold_left (fun ctx (l,e) e' -> ctx (letin l e e')) id m in
        let m = List.map (fun (l,e) -> l, ident l) m in
        reduce ~subst ~state (ctx (record false m))
+    (*
     | Record (m,l) ->
        let state, l =
          List.fold_map
@@ -604,6 +626,35 @@ let rec reduce ~subst ~state expr =
            state l
        in
        state, make (Record (m,l))
+     *)
+    | Record (m,l) ->
+       (* We have to letin the members because otherwise, if some of the are not
+       inlinable, they prevent the whole record from being inlinable. *)
+       let declared = ref false in
+       let ctx = ref id in
+       let state, l =
+         List.fold_map
+           (fun state (x,e) ->
+             let state, e = reduce ~subst ~state e in
+             (* Printf.printf "inlinable: %s\n%!" (to_string e); *)
+             if inlinable e then
+               state, (x,e)
+             else
+               let state, y = RS.var state in
+               let ctx' =
+                 let ctx = !ctx in
+                 fun e' -> ctx (letin y e e')
+               in
+               ctx := ctx';
+               declared := true;
+               state, (x,ident y)
+           )
+           state l
+       in
+       let e = make (Record (m,l)) in
+       (* Ensure that the declarations get reduced. *)
+       if !declared then reduce ~subst ~state (!ctx e)
+       else state, e
     | Field (e, x) ->
        let state, e = reduce ~subst ~state e in
        begin
@@ -637,8 +688,10 @@ let rec reduce ~subst ~state expr =
        let state = { state with RS.context } in
        state, e
     | Monadic (Ref e) ->
+       let state, e = reduce ~subst ~state e in
        let state, x = RS.cell state in
        (* assert (free_vars e = []); *)
+       (* Printf.printf "declare ref to\n%s\n\n%!" (to_string (RS.context state e)); *)
        let state = RS.add_cell state x e in
        let e = field (ident (Ident.state)) x in
        let e = make (AddressOf e) in
@@ -674,7 +727,7 @@ let rec reduce ~subst ~state expr =
        let f = fct ["",(Ident.state,None)] e in
        let e = record false ["init", init; "run", f] in
        let state = { state with cells; context } in
-       state, e
+       reduce ~subst ~state e
   in
   (* Printf.printf "REDUCE\n%s\nTO\n%s\n\n" (to_string expr) (to_string (RS.context state e)); *)
   state, e
@@ -699,6 +752,16 @@ module Run = struct
 
   let set env x v = Hashtbl.replace env x v
   (* let set env x v = Printf.printf "set %s to %s\n%!" x (to_string v); set env x v *)
+
+  let is_unit e =
+  match e.desc with
+  | Value Unit -> true
+  | _ -> false
+
+  let is_float e =
+    match e.desc with
+    | Value Float _ -> true
+    | _ -> false
 
   exception Error of string
 
@@ -730,12 +793,12 @@ module Run = struct
     match e.desc with
     | Array a -> a
     | _ -> to_error "array" e
-end
 
-let is_unit e =
-  match e.desc with
-  | Value Unit -> true
-  | _ -> false
+  let to_record e =
+    match e.desc with
+    | Record (_,r) -> r
+    | _ -> to_error "record" e
+end
 
 let rec run env e =
   let run = run env in
@@ -743,7 +806,7 @@ let rec run env e =
   match e.desc with
   | Seq (e1, e2) ->
      let v = run e1 in
-     assert (is_unit v);
+     assert (Run.is_unit v);
      run e2
   | Let l ->
      Run.set env l.var (run l.def);
@@ -765,16 +828,36 @@ let rec run env e =
      for k = Run.to_int a to Run.to_int b do
        let e = letin i (value (Int k)) e in
        let ans = run e in
-       assert (is_unit ans) 
+       assert (Run.is_unit ans) 
      done;
      unit ()
   | Ident x -> Run.get env x
   | Value _ -> e
   | Record _ -> e
+  | Field (r, x) ->
+     let r = Run.to_record (run r) in
+     List.assoc x r
+  | ReplaceField (r, x, e) ->
+     let r = run r in
+     begin
+       match r.desc with
+       | Record (m,l) ->
+          let l = List.remove_assoc x l in
+          let l = (x,e)::l in
+          make (Record (m,l))
+       | _ -> assert false
+     end
+  | SetField ({ desc = Ident r }, x, e) ->
+     let e = run e in
+     let rd = Run.get env r in
+     let e = run (make (ReplaceField (rd, x, e))) in
+     Run.set env r e;
+     unit ()
+  | Fun _ -> failwith "Cannot run a function."
 
 let run e = ignore (run (Run.empty ()) e)
 
 (* This wil be filled later on. *)
 let parse_file_ctx_fun = ref ((fun _ -> failwith "Parse file function should have been filled") : string -> t -> t)
-
+ 
 let parse_file_ctx f = !parse_file_ctx_fun f

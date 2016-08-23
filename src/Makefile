@@ -1,6 +1,7 @@
-SOURCES = stdlib.ml common.ml config.ml type.ml lang.ml builtin.ml parser.mly lexer.mll saml.ml
+SOURCES = stdlib.ml common.ml config.ml type.ml lang.ml builtin.ml parser.mly lexer.mll pa.ml saml.ml
 RESULT = saml
 ANNOTATE = true
+PACKS = pulseaudio
 
 all: dnc
 	./saml test.saml

@@ -39,27 +39,40 @@ let op name ?reduce ?run t =
     begin
       match reduce with
       | Some f -> f
-      | None -> fun a -> E.app (E.make (E.External ext)) a
+      | None ->
+         fun a ->
+         let a = Array.to_list a in
+         let a = List.map (fun e -> "",e) a in
+         E.app (E.make (E.External ext)) a
     end;
   externals := ext :: !externals
 
 (** Integer operations. *)
 let () =
-  let isub_run a = E.value (E.Int (Run.to_int a.(0) - Run.to_int a.(1))) in 
-  op "isub" T.ii_i ~run:isub_run;
+  let ii_i_run f a = E.value (E.Int (f (Run.to_int a.(0)) (Run.to_int a.(1)))) in
+  op "iadd" T.ii_i ~run:(ii_i_run (+));
+  op "isub" T.ii_i ~run:(ii_i_run (-));
   let float_of_int_run a = E.value (E.Float (float_of_int (Run.to_int a.(0)))) in
   op "float_of_int" (T.arrnl [T.int ()] (T.float ())) ~run:float_of_int_run
 
 (** Floating point operations. *)
 let () =
-  let ff_f_run f a = E.value (E.Float (f (Run.to_float a.(0)) (Run.to_float a.(1)))) in
-  op "fadd" T.ff_f;
-  op "fsub" T.ff_f;
-  op "fmul" T.ff_f;
+  let f_f_run f a = E.float (f (Run.to_float a.(0))) in
+  let ff_f_run f a = E.float (f (Run.to_float a.(0)) (Run.to_float a.(1))) in
+  op "fadd" T.ff_f ~run:(ff_f_run (+.));
+  op "fsub" T.ff_f ~run:(ff_f_run (-.));
+  (* let fmul_red a = *)
+    (* let x = a.(0) in *)
+    (* let y = a.(1) in *)
+    (* if Run.is_float x && Run.is_float y *)
+    (* then E.float (Run.get_float x +. Run.get_float y) *)
+    (* else  *)
+  (* in *)
+  op "fmul" T.ff_f ~run:(ff_f_run ( *.));
   op "fdiv" T.ff_f ~run:(ff_f_run (/.));
   let pi_red _ = E.value (E.Float pi) in
   op "pi" (T.arr [] (T.float ())) ~reduce:pi_red;
-  op "sin" T.f_f
+  op "sin" T.f_f ~run:(f_f_run sin)
 
 (** Commands. *)
 let () =
@@ -69,7 +82,7 @@ let () =
       | E.Value (E.String s) -> s
       | _ -> E.to_string a.(0)
     in
-    print_string s; E.unit ()
+    print_string s; flush stdout; E.unit ()
   in
   op "print" (T.arrnl [T.var ()] (T.unit ())) ~run:print_run
 
@@ -93,10 +106,10 @@ let () =
   in
   op "array_set" (T.arrnl [T.array a; T.int (); a] (T.unit ())) ~run:array_set_run
 
-let externals =
-  List.map (fun e -> e.E.ext_name, E.make (E.External e)) !externals
-
 let get ?pos x =
+  let externals =
+    List.map (fun e -> e.E.ext_name, E.make (E.External e)) !externals
+  in
   try
     let e = List.assoc x externals in
     match pos with

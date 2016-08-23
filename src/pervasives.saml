@@ -15,6 +15,12 @@ def prev(init, x) =
 end
 
 module int =
+  add = builtin("iadd")
+
+  def incr(x) =
+    x := add(!x, 1)
+  end
+
   sub = builtin("isub")
 
   to_float = builtin("float_of_int")
@@ -26,6 +32,8 @@ module array =
   get = builtin("array_get")
 
   set = builtin("array_set")
+
+  play = builtin("array_play")
 end
 
 module integrator =
