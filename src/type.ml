@@ -1,7 +1,7 @@
 (** Types. *)
 
 open Common
-open Stdlib
+open Core
 
 (** A type. *)
 type t =

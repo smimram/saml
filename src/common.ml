@@ -1,6 +1,6 @@
 (** Common procedures. *)
 
-open Stdlib
+open Core
 
 (** Print a debugging message. *)
 let debug = Printf.printf

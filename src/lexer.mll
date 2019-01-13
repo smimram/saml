@@ -1,5 +1,5 @@
 {
-  open Stdlib
+  open Core
   open Lexing
   open Parser
 }

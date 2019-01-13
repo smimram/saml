@@ -1,6 +1,6 @@
 (** Builtin operations. *)
 
-open Stdlib
+open Core
 module E = Lang
 module Run = E.Run
 
