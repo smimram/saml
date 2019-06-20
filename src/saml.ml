@@ -80,7 +80,7 @@ let () =
   in
   pass "Parsing program" Lang.to_string;
   pass "Infering type" (fun e -> Type.to_string (Lang.infer_type e));
-  pass "Reducing program" (fun e -> prog := Lang.reduce e; Lang.to_string !prog);
-  pass "Infering type" (fun e -> Type.to_string (Lang.infer_type e));
-  pass "Running program" (fun e -> Lang.run e; "");
+  (* pass "Reducing program" (fun e -> prog := Lang.reduce e; Lang.to_string !prog); *)
+  (* pass "Infering type" (fun e -> Type.to_string (Lang.infer_type e)); *)
+  (* pass "Running program" (fun e -> Lang.run e; ""); *)
   ()

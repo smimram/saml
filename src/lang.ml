@@ -44,56 +44,58 @@ type t =
     desc : desc; (** The expression. *)
     pos : pos; (** Position in source file. *)
   }
- (** Contents of an expression. *)
- and desc =
-   | Value of value (** A value. *)
-   | Ident of Ident.t (** A variable. *)
-   | Fun of (string * (string * t option)) list * t
-   (** A function. Arguments are labelled (or not if the label is ""), have a
+(** Contents of an expression. *)
+and desc =
+  | Value of value (** A value. *)
+  | Ident of Ident.t (** A variable. *)
+  | Fun of (string * (string * t option)) list * t
+  (** A function. Arguments are labelled (or not if the label is ""), have a
       variable, and optionally a default value. *)
-   | Let of let_t (** A variable declaration. *)
-   | App of t * (string * t) list
-   | Seq of t * t
-   | External of extern
-   | Array of t array
-   | Record of bool * (string * t) list (** A record, optionally mutable. *)
-   | Module of (string * t) list
-   (** Modules are basically the same as records except that members can use
-      previously defined values, e.g. \{ a = 5; b = 2*a \}. *)
-   | Field of t * string (** Field of a record or a module. *)
-   | ReplaceField of t * string * t (** Replace a field of a record. *)
-   | SetField of t * string * t (** Modify a field in a pointed record. *)
-   | For of string * t * t * t
-   | While of t * t
-   | If of t * t * t
-   | AddressOf of t
-   | Alloc of T.t (** Dynamically allocate a value. *)
-   | Monadic of monadic (** A monadic operation. *)
- (** Monadic operations. *)
- and monadic =
-   | Dt (** dt *)
-   | DtFun of t (** Abstract dt. *)
-   | Ref of t (** A static reference. *)
-   | RefGet of t (** Retrieve the value of a reference. *)
-   | RefSet of t * t (** Set the value of a reference. *)
-   | RefFun of t (** Abstract references. *)
- (** External values. *)
- and extern =
-   {
-     ext_name : string; (** Name of the external as useable in scripts. *)
-     ext_type : T.t; (** Type. *)
-     (* The mutable is to be able to fill in when there is no reduction. It
+  | Let of let_t (** A variable declaration. *)
+  | App of t * (string * t) list
+  | Seq of t * t
+  | External of extern
+  | Array of t array
+  | Record of record_t (** Records and modules. *)
+  | Field of t * string (** Field of a record or a module. *)
+  | ReplaceField of t * string * t (** Replace a field of a record. *)
+  | SetField of t * string * t (** Modify a field in a pointed record. *)
+  | For of string * t * t * t
+  | While of t * t
+  | If of t * t * t
+  | AddressOf of t
+  | Alloc of T.t (** Dynamically allocate a value. *)
+  | Monadic of monadic (** A monadic operation. *)
+(** Monadic operations. *)
+and monadic =
+  | Dt (** dt *)
+  | DtFun of t (** Abstract dt. *)
+  | Ref of t (** A static reference. *)
+  | RefGet of t (** Retrieve the value of a reference. *)
+  | RefSet of t * t (** Set the value of a reference. *)
+  | RefFun of t (** Abstract references. *)
+(** External values. *)
+and extern =
+  {
+    ext_name : string; (** Name of the external as useable in scripts. *)
+    ext_type : T.t; (** Type. *)
+    (* The mutable is to be able to fill in when there is no reduction. It
        should not be mutated otherwise. *)
-     mutable ext_reduce : t array -> t; (** Reduction. *)
-     ext_run : t array -> t; (** Execution. *)
-   }
- (** Let declarations. *)
- and let_t =
-   {
-     var : string;
-     def : t;
-     body : t
-   }
+    mutable ext_reduce : t array -> t; (** Reduction. *)
+    ext_run : t array -> t; (** Execution. *)
+  }
+(** Let declarations. *)
+and let_t =
+  {
+    var : string;
+    def : t;
+    body : t
+  }
+and record_t =
+  {
+    dependent : bool; (** can values depend on previous ones? *)
+    fields : (string * t) list;
+  }
 type expr = t
 
 (** Create an expression. *)
@@ -131,8 +133,9 @@ let letin ?pos var def body =
   let l = { var; def; body } in
   make ?pos (Let l)
 
-let record ?pos is_mutable l =
-  make ?pos (Record (is_mutable,l))
+let record ?pos ?(dependent=false) fields =
+  let r = { dependent; fields } in
+  make ?pos (Record r)
 
 let field ?pos e x =
   make ?pos (Field (e, x))
@@ -201,16 +204,12 @@ let to_string e : string =
        let a = Array.to_list a in
        let a = String.concat_map " , " (to_string ~tab:(tab+1) false) a in
        Printf.sprintf "[%s]" a
-    | Record (m,r) ->
-       if r = [] then "{}" else
-         let r = List.map (fun (x,v) -> Printf.sprintf "%s%s = %s" (tabss()) x (to_string ~tab:(tab+1) false v)) r in
+    | Record r ->
+       let a, b = if r.dependent then "module", "end" else "{", "}" in
+       if r.fields = [] then a ^ " " ^ b else
+         let r = List.map (fun (x,v) -> Printf.sprintf "%s%s = %s" (tabss()) x (to_string ~tab:(tab+1) false v)) r.fields in
          let r = String.concat "\n" r in
-         Printf.sprintf "{%s\n%s\n%s}" (if m then "mutable" else "") r (tabs())
-    | Module r ->
-       if r = [] then "module end" else
-         let r = List.map (fun (x,v) -> Printf.sprintf "%s%s = %s" (tabss()) x (to_string ~tab:(tab+1) false v)) r in
-         let r = String.concat "\n" r in
-         Printf.sprintf "module\n%s\n%send" r (tabs())
+         Printf.sprintf "%s\n%s\n%s%s" a r (tabs()) b
     | Field (r,x) ->
        let r = to_string ~tab true r in
        Printf.sprintf "%s.%s" r x
@@ -339,19 +338,21 @@ let rec infer_type env e =
      ensure e1 (infer_type env e1) t;
      ensure e2 (infer_type env e2) t;
      t
-  | Module m ->
-     let _, m =
+  | Record r ->
+     let _, r =
        List.fold_map
          (fun env (x,e) ->
            let t = infer_type env e in
-           let env = T.Env.bind env x (T.generalize (T.Env.level env) t) in
+           let env =
+             if r.dependent then
+               T.Env.bind env x (T.generalize (T.Env.level env) t)
+             else
+               env
+           in
            env, (x,t)
-         ) env m
+         ) env r.fields
      in
-     T.record m
-  | Record (_,l) ->
-     let l = List.map (fun (x,e) -> x, infer_type env e) l in
-     T.record l
+     T.record r
   | Field (e, x) ->
      let te = infer_type env e in
      let t = var env in
@@ -407,7 +408,7 @@ let rec inlinable e =
      a RefFun. *)
      (* not (Ident.is_meta x) *)
      true
-  | Record (m,l) -> (not m) && List.for_all (fun (x,e) -> inlinable e) l
+  | Record r -> List.for_all (fun (x,e) -> inlinable e) r.fields
   | AddressOf { desc = Field (r,x) } -> inlinable r
   | _ -> false
 
@@ -504,9 +505,11 @@ let rec reduce ~subst ~state expr =
       | AddressOf e ->
          let e = substs ss e in
          AddressOf e
-      | Record (m,l) ->
-         let l = List.map (fun (x,e) -> x, substs ss e) l in
-         Record (m,l)
+      | Record r ->
+         assert false
+         (* TODO: handle dependent *)
+         (* let r = List.map (fun (x,e) -> x, substs ss e) r in *)
+         (* Record r *)
       | Field (r,x) ->
          let r = substs ss r in
          Field (r,x)
@@ -648,12 +651,12 @@ let rec reduce ~subst ~state expr =
     | AddressOf e ->
        let state, e = reduce ~subst ~state e in
        state, make (AddressOf e)
-    | Module m ->
-       (* TODO: this is a hack *)
-       (* TODO: handle duplicate labels... *)
-       let ctx = List.fold_left (fun ctx (l,e) e' -> ctx (letin l e e')) id m in
-       let m = List.map (fun (l,e) -> l, ident l) m in
-       reduce ~subst ~state (ctx (record false m))
+    (* | Module m -> *)
+       (* (\* TODO: this is a hack *\) *)
+       (* (\* TODO: handle duplicate labels... *\) *)
+       (* let ctx = List.fold_left (fun ctx (l,e) e' -> ctx (letin l e e')) id m in *)
+       (* let m = List.map (fun (l,e) -> l, ident l) m in *)
+       (* reduce ~subst ~state (ctx (record false m)) *)
     (*
     | Record (m,l) ->
        let state, l =
@@ -665,39 +668,39 @@ let rec reduce ~subst ~state expr =
        in
        state, make (Record (m,l))
      *)
-    | Record (m,l) ->
-       (* We have to letin the members because otherwise, if some of the are not
-       inlinable, they prevent the whole record from being inlinable. *)
-       let declared = ref false in
-       let ctx = ref id in
-       let state, l =
-         List.fold_map
-           (fun state (x,e) ->
-             let state, e = reduce ~subst ~state e in
-             (* Printf.printf "inlinable: %s\n%!" (to_string e); *)
-             if inlinable e then
-               state, (x,e)
-             else
-               let state, y = RS.var state in
-               let ctx' =
-                 let ctx = !ctx in
-                 fun e' -> ctx (letin y e e')
-               in
-               ctx := ctx';
-               declared := true;
-               state, (x,ident y)
-           )
-           state l
-       in
-       let e = make (Record (m,l)) in
-       (* Ensure that the declarations get reduced. *)
-       if !declared then reduce ~subst ~state (!ctx e)
-       else state, e
+    (* | Record (m,l) -> *)
+       (* (\* We have to letin the members because otherwise, if some of the are not *)
+       (* inlinable, they prevent the whole record from being inlinable. *\) *)
+       (* let declared = ref false in *)
+       (* let ctx = ref id in *)
+       (* let state, l = *)
+         (* List.fold_map *)
+           (* (fun state (x,e) -> *)
+             (* let state, e = reduce ~subst ~state e in *)
+             (* (\* Printf.printf "inlinable: %s\n%!" (to_string e); *\) *)
+             (* if inlinable e then *)
+               (* state, (x,e) *)
+             (* else *)
+               (* let state, y = RS.var state in *)
+               (* let ctx' = *)
+                 (* let ctx = !ctx in *)
+                 (* fun e' -> ctx (letin y e e') *)
+               (* in *)
+               (* ctx := ctx'; *)
+               (* declared := true; *)
+               (* state, (x,ident y) *)
+           (* ) *)
+           (* state l *)
+       (* in *)
+       (* let e = make (Record (m,l)) in *)
+       (* (\* Ensure that the declarations get reduced. *\) *)
+       (* if !declared then reduce ~subst ~state (!ctx e) *)
+       (* else state, e *)
     | Field (e, x) ->
        let state, e = reduce ~subst ~state e in
        begin
          match e.desc with
-         | Record (_,l) -> state, List.assoc x l
+         | Record r -> state, List.assoc x r.fields
          | _ -> state, field e x
        end
     | ReplaceField (r,x,e) ->
@@ -706,10 +709,10 @@ let rec reduce ~subst ~state expr =
        state,
        begin
          match r.desc with
-         | Record (m,l) ->
-            let l = List.remove_assoc x l in
-            let l = (x,e)::l in
-            record m l
+         | Record r ->
+            let fields = List.remove_assoc x r.fields in
+            let fields = (x,e)::fields in
+            record ~dependent:r.dependent fields
          | _ -> make (ReplaceField (r,x,e))
        end
     | SetField (r,x,e) ->
