@@ -6,390 +6,196 @@ open Extralib
 
 module T = Type
 
-(** Special identifiers. *)
-module Ident = struct
-  type t = string
-
-  (** Prefix for special variables, also called meta-variables (prefixed
-        variables are guaranteed not to occur in saml files). *)
-  let prefix = "#"
-
-  (** Is a variable a meta-variable? *)
-  let is_meta x = x.[0] = '#'
-
-  (** Dt meta-variable. *)
-  let dt = "#dt"
-
-  (** Boolean meta-variable indicating whether we are on first round. *)
-  (* let init = "#init" *)
-
-  (** Meta-variable for state record. *)
-  let state = "#state"
-end
-
-(** A value. *)
-type value =
-  | Unit
-  | Int of int
-  | Float of float
-  | Bool of bool
-  | String of string
-
 (** An expression. *)
 type t =
   {
     desc : desc; (** The expression. *)
     pos : pos; (** Position in source file. *)
+    mutable t : T.t; (** Type. *)
   }
- (** Contents of an expression. *)
- and desc =
-   | Value of value (** A value. *)
-   | Ident of Ident.t (** A variable. *)
-   | Fun of (string * (string * t option)) list * t
-   (** A function. Arguments are labelled (or not if the label is ""), have a
-      variable, and optionally a default value. *)
-   | Let of let_t (** A variable declaration. *)
-   | App of t * (string * t) list
-   | Seq of t * t
-   | External of extern
-   | Array of t array
-   | Record of bool * (string * t) list (** A record, optionally mutable. *)
-   | Module of (string * t) list
-   (** Modules are basically the same as records except that members can use
-      previously defined values, e.g. \{ a = 5; b = 2*a \}. *)
-   | Field of t * string (** Field of a record or a module. *)
-   | ReplaceField of t * string * t (** Replace a field of a record. *)
-   | SetField of t * string * t (** Modify a field in a pointed record. *)
-   | For of string * t * t * t
-   | While of t * t
-   | If of t * t * t
-   | AddressOf of t
-   | Alloc of T.t (** Dynamically allocate a value. *)
-   | Monadic of monadic (** A monadic operation. *)
- (** Monadic operations. *)
- and monadic =
-   | Dt (** dt *)
-   | DtFun of t (** Abstract dt. *)
-   | Ref of t (** A static reference. *)
-   | RefGet of t (** Retrieve the value of a reference. *)
-   | RefSet of t * t (** Set the value of a reference. *)
-   | RefFun of t (** Abstract references. *)
- (** External values. *)
- and extern =
-   {
-     ext_name : string; (** Name of the external as useable in scripts. *)
-     ext_type : T.t; (** Type. *)
-     (* The mutable is to be able to fill in when there is no reduction. It
-       should not be mutated otherwise. *)
-     mutable ext_reduce : t array -> t; (** Reduction. *)
-     ext_run : t array -> t; (** Execution. *)
-   }
- (** Let declarations. *)
- and let_t =
-   {
-     var : string;
-     def : t;
-     body : t
-   }
+(** Contents of an expression. *)
+and desc =
+  | Bool of bool
+  | Int of int
+  | Float of float
+  | String of string
+  | Var of string (** A variable. *)
+  | Fun of pattern * t (** A function. *)
+  | Let of pattern * t * t (** A variable declaration. *)
+  | App of t * t
+  | Seq of t * t
+  | Record of bool * (string * t) list (** A record, the boolean indicates whether it is recursive (= a module) or not. *)
+  | If of t * t * t
+and pattern =
+  | PVar of string
+  | PRecord of (string * t option) list
 type expr = t
 
 (** Create an expression. *)
-let make ?(pos=dummy_pos) e =
+let make ?(pos=dummy_pos) ?t e =
+  let t =
+    match t with
+    | Some t -> t
+    | None -> T.evar ()
+  in
   {
     desc = e;
-    pos = pos;
+    pos;
+    t
   }
 
-let ident ?pos s =
-  make ?pos (Ident s)
-
-let value ?pos v =
-  make ?pos (Value v)
+let var ?pos s =
+  make ?pos (Var s)
 
 let bool ?pos b =
-  value ?pos (Bool b)
+  make ?pos (Bool b)
 
 let float ?pos x =
-  value ?pos (Float x)
+  make ?pos (Float x)
 
 let fct ?pos args e =
   make ?pos (Fun (args, e))
 
-let app ?pos e l =
-  make ?pos (App (e, l))
+let app ?pos f x =
+  make ?pos (App (f, x))
 
 let seq ?pos e1 e2 =
   make ?pos (Seq (e1, e2))
 
-let unit ?pos () =
-  make ?pos (Value Unit)
+let letin ?pos pat def body =
+  make ?pos (Let (pat, def, body))
 
-let letin ?pos var def body =
-  let l = { var; def; body } in
-  make ?pos (Let l)
-
-let record ?pos is_mutable l =
-  make ?pos (Record (is_mutable,l))
-
-let field ?pos e x =
-  make ?pos (Field (e, x))
+let record ?pos r l =
+  make ?pos (Record (r, l))
 
 (** String representation of an expression. *)
-let to_string e : string =
+let rec to_string ~tab p e =
   let pa p s = if p then Printf.sprintf "(%s)" s else s in
-  let rec to_string ~tab p e =
-    let tabs ?(tab=tab) () = String.make (2*tab) ' ' in
-    let tabss () = tabs ~tab:(tab+1) () in
-    match e.desc with
-    | Ident x -> x
-    | Value Unit -> "()"
-    | Value (Int n) -> string_of_int n
-    | Value (Float f) -> string_of_float f
-    | Value (Bool b) -> string_of_bool b
-    | Value (String s) -> Printf.sprintf "%S" s
-    | Fun (a, e) ->
-       let a =
-         String.concat_map
-           ", "
-           (fun (l,(x,d)) ->
-             let l = if l = "" || l = x then "" else l ^ ":" in
-             let d = match d with None -> "" | Some d -> "=" ^ to_string ~tab:(tab+1) false d in
-             Printf.sprintf "%s%s%s" l x d
-           ) a
-       in
-       let e = to_string ~tab:(tab+1) false e in
-       pa p (Printf.sprintf "fun(%s) ->%s%s" a (if String.contains e '\n' then ("\n"^(tabs ~tab:(tab+1) ())) else " ") e)
-    | App (e, a) ->
-       let a = String.concat_map ", " (fun (l,e) -> (if l = "" then "" else (l ^ "=")) ^ to_string ~tab:(tab+1) false e) a in
-       pa p (Printf.sprintf "%s(%s)" (to_string ~tab true e) a)
-    | Seq (e1, e2) ->
-       let e1 = to_string ~tab false e1 in
-       let e2 = to_string ~tab false e2 in
-       pa p (Printf.sprintf "%s\n%s%s" e1 (tabs ()) e2)
-    | Let l ->
-       let def = to_string ~tab:(tab+1) false l.def in
-       let def =
-         if String.contains def '\n' then
-           Printf.sprintf "\n%s%s" (tabss ()) def
-         else
-           Printf.sprintf " %s " def
-       in
-       let body = to_string ~tab false l.body in
-       pa p (Printf.sprintf "%s =%s\n%s%s" l.var def (tabs ()) body)
-    | While (c, e) ->
-       let c = to_string ~tab false c in
-       let e = to_string ~tab:(tab+1) false e in
-       pa p (Printf.sprintf "while %s do\n%s%s\n%sdone" c (tabss()) e (tabs()))
-    | For (i, a, b, e) ->
-       let a = to_string ~tab false a in
-       let b = to_string ~tab false b in
-       let e = to_string ~tab:(tab+1) false e in
-       pa p (Printf.sprintf "for %s = %s to %s do\n%s%s\n%sdone" i a b (tabss()) e (tabs()))
-    | If (c, e1, e2) ->
-       let c = to_string ~tab false c in
-       let e1 = to_string ~tab:(tab+1) false e1 in
-       let e2 = to_string ~tab:(tab+1) false e2 in
-       pa p (Printf.sprintf "if %s then\n%s%s\n%selse\n%s%s\n%send" c (tabss()) e1 (tabs()) (tabss()) e2 (tabs()))
-    | AddressOf e ->
-       let e = to_string ~tab true e in
-       Printf.sprintf "&%s" e
-    | Alloc t -> Printf.sprintf "alloc[%s]" (T.to_string t)
-    | Array a ->
-       let a = Array.to_list a in
-       let a = String.concat_map " , " (to_string ~tab:(tab+1) false) a in
-       Printf.sprintf "[%s]" a
-    | Record (m,r) ->
-       if r = [] then "{}" else
-         let r = List.map (fun (x,v) -> Printf.sprintf "%s%s = %s" (tabss()) x (to_string ~tab:(tab+1) false v)) r in
-         let r = String.concat "\n" r in
-         Printf.sprintf "{%s\n%s\n%s}" (if m then "mutable" else "") r (tabs())
-    | Module r ->
-       if r = [] then "module end" else
-         let r = List.map (fun (x,v) -> Printf.sprintf "%s%s = %s" (tabss()) x (to_string ~tab:(tab+1) false v)) r in
-         let r = String.concat "\n" r in
-         Printf.sprintf "module\n%s\n%send" r (tabs())
-    | Field (r,x) ->
-       let r = to_string ~tab true r in
-       Printf.sprintf "%s.%s" r x
-    | ReplaceField (r,x,e) ->
-       let r = to_string ~tab true r in
-       let e = to_string ~tab false e in
-       Printf.sprintf "{ %s with %s = %s }" r x e
-    | SetField (r,x,e) ->
-       let r = to_string ~tab true r in
-       let e = to_string ~tab false e in
-       Printf.sprintf "%s.%s <- %s" r x e
-    | External e -> "`"^e.ext_name^"`"
-    | Monadic Dt -> "dt"
-    | Monadic (DtFun e) ->
-       let e = to_string ~tab false e in
-       pa p (Printf.sprintf "λdt(%s)" e)
-    | Monadic (Ref e) ->
-       let e = to_string ~tab false e in
-       pa p (Printf.sprintf "ref(%s)" e)
-    | Monadic (RefGet r) ->
-       let r = to_string ~tab true r in
-       pa p (Printf.sprintf "!%s" r)
-    | Monadic (RefSet (r, e)) ->
-       let r = to_string ~tab true r in
-       let e = to_string ~tab false e in
-       pa p (Printf.sprintf "%s := %s" r e)
-    | Monadic (RefFun e) ->
-       let e = to_string ~tab false e in
-       pa p (Printf.sprintf "λref(%s)" e)
-  in
-  to_string ~tab:0 false e
+  let tabs ?(tab=tab) () = String.make (2*tab) ' ' in
+  let tabss () = tabs ~tab:(tab+1) () in
+  match e.desc with
+  | Var x -> x
+  | Bool b -> string_of_bool b
+  | Int n -> string_of_int n
+  | Float f -> string_of_float f
+  | String s -> Printf.sprintf "%S" s
+  | Fun (pat, e) ->
+     let pat = string_of_pattern ~tab pat in 
+     let e = to_string ~tab:(tab+1) false e in
+     pa p (Printf.sprintf "fun %s ->%s%s" pat (if String.contains e '\n' then ("\n"^(tabs ~tab:(tab+1) ())) else " ") e)
+  | App (e, a) ->
+     let e = to_string ~tab true e in
+     let a = to_string ~tab:(tab+1) true a in
+     pa p (Printf.sprintf "%s %s" e a)
+  | Seq (e1, e2) ->
+     let e1 = to_string ~tab false e1 in
+     let e2 = to_string ~tab false e2 in
+     pa p (Printf.sprintf "%s\n%s%s" e1 (tabs ()) e2)
+  | Let (pat, def, body) ->
+     let pat = string_of_pattern ~tab pat in
+     let def = to_string ~tab:(tab+1) false def in
+     let def =
+       if String.contains def '\n' then Printf.sprintf "\n%s%s" (tabss ()) def
+       else Printf.sprintf " %s " def
+     in
+     let body = to_string ~tab false body in
+     pa p (Printf.sprintf "%s =%s\n%s%s" pat def (tabs ()) body)
+  | If (c, e1, e2) ->
+     let c = to_string ~tab false c in
+     let e1 = to_string ~tab:(tab+1) false e1 in
+     let e2 = to_string ~tab:(tab+1) false e2 in
+     pa p (Printf.sprintf "if %s then\n%s%s\n%selse\n%s%s\n%send" c (tabss()) e1 (tabs()) (tabss()) e2 (tabs()))
+  | Record (r,l) ->
+     let l = List.map (fun (x,v) -> Printf.sprintf "%s%s = %s" (tabss()) x (to_string ~tab:(tab+1) false v)) l in
+     let l = String.concat "\n" l in
+     if r then Printf.sprintf "module\n%s\n%send" l (tabs())
+     else Printf.sprintf "{\n%s\n%s}" l (tabs())
+and string_of_pattern ~tab = function
+  | PVar x -> x
+  | PRecord l ->
+     let l =
+       List.map
+         (fun (x,v) ->
+           let v =
+             match v with
+             | Some v -> "="^to_string ~tab:(tab+1) false v
+             | None -> ""
+           in
+           x^v) l
+     in
+     let l = String.concat ", " l in
+     Printf.sprintf "(%s)" l
+
+let to_string e = to_string ~tab:0 false e
 
 let rec free_vars e =
   (* Printf.printf "free_vars: %s\n%!" (to_string e); *)
   let u fv1 fv2 = fv1@fv2 in
   let fv = free_vars in
   match e.desc with
-  | Ident x -> [x]
-  | Value _ -> []
+  | Var x -> [x]
+  | _ -> assert false
 
 (** {2 Type inference} *)
 
 (** Typing error. *)
 exception Typing of pos * string
 
-(** Infer the type of an expression. *)
-let rec infer_type env e =
+let type_error e s =
+  Printf.ksprintf (fun s -> raise (Typing (e.pos, s))) s
+
+(** Check the type of an expression. *)
+let rec check env e =
   (* Printf.printf "infer_type:\n%s\n\n\n%!" (to_string e); *)
   (* Printf.printf "env: %s\n\n" (String.concat_map " , " (fun (x,(_,t)) -> x ^ ":" ^ T.to_string t) env.T.Env.t); *)
-  let (<:) = T.subtype env in
-  let type_error e s =
-    Printf.ksprintf (fun s -> raise (Typing (e.pos, s))) s
+  let (<:) e1 e2 = assert (T.( <: ) env e1 e2) in
+  let (>:) e2 e1 = assert (T.( <: ) env e2 e1) in
+  let check_pattern env pat t =
+    (* let env = T.Env.bind env l.var (T.generalize (T.Env.level env) td) in *)
+    failwith "TODO"
   in
-  let ensure e t t' =
-    if not (t <: t') then
-      type_error e "This expression has type %s but %s is expected. (%s)" (T.to_string t) (T.to_string t') (to_string e);
-  in
-  let var env = T.var (T.Env.level env) in
   match e.desc with
-  | Value Unit -> T.unit ()
-  | Value (Bool _) -> T.bool ()
-  | Value (Int _) -> T.int ()
-  | Value (Float _) -> T.float ()
-  | Value (String _) -> T.string ()
-  | Ident x ->
+  | Bool _ -> e.t >: T.bool ()
+  | Int _ -> e.t >: T.int ()
+  | Float _ -> e.t >: T.float ()
+  | String _ -> e.t >: T.string ()
+  | Var x ->
      let t = try T.Env.typ env x with Not_found -> type_error e "Unbound variable %s." x in
      T.instantiate t
   | Seq (e1, e2) ->
-     let t1 = infer_type env e1 in
-     ensure e1 t1 (T.unit ());
-     infer_type env e2
-  | Let l ->
-     let td =
-       let env = T.Env.enter env in
-       infer_type env l.def
-     in
-     let env = T.Env.bind env l.var (T.generalize (T.Env.level env) td) in
-     infer_type env l.body
-  | Fun (a,e) ->
-     let a =
-       List.map
-         (fun (l,(x,d)) ->
-           let d,t =
-             match d with
-             | Some d ->
-                let dt = infer_type env d in
-                Some d, dt
-             | None ->
-                None, var env
-           in
-           let o = d <> None in
-           (l,(x,d)), (l,x,t,o)
-         ) a
-     in
-     let a, ta = List.split a in
-     let env' = List.map (fun (l,x,t,o) -> x,([],t)) ta in
-     let env = T.Env.binds env env' in
-     let te = infer_type env e in
-     let ta = List.map (fun (l,x,t,o) -> l,(t,o)) ta in
-     T.arr ta te
-  | App (e, a) ->
-     let ta = List.map (fun (l,e) -> l,(infer_type env e,false)) a in
-     let te = infer_type env e in
-     let tr = var env in
-     let te' = T.arr ta tr in
-     ensure e te te';
-     tr
-  | While (c,e) ->
-     let tc = infer_type env c in
-     ensure c tc (T.bool ());
-     let te = infer_type env e in
-     ensure e te (T.unit ());
-     T.unit ()
-  | For (i,a,b,e) ->
-     let ta = infer_type env a in
-     ensure a ta (T.int ());
-     let tb = infer_type env b in
-     ensure b tb (T.int ());
-     let env = T.Env.bind env i (T.generalize (T.Env.level env) (T.int ())) in
-     let te = infer_type env e in
-     ensure e te (T.unit ());
-     T.unit ()
+     check env e1;
+     e1.t <: T.unit ();
+     check env e2;
+     e.t >: e2.t
+  | Let (pat,def,body) ->
+     check (T.Env.enter env) def;
+     let env = check_pattern env pat def.t in
+     check env body;
+     e.t >: body.t
+  | Fun (x,v) ->
+     let a = T.uvar level in
+     let env = T.Env.bind env x a in
+     check env v;
+     e.t >: T.arr a v.t
+  | App (f, v) ->
+     let b = T.uvar level in
+     check env f;
+     check env v;
+     f.t <: T.arr v.t b;
+     e.t >: b
   | If (c,e1,e2) ->
+     check env c;
+     c <: T.bool ();
+     check env e1;
+     check env e2;
      ensure c (infer_type env c) (T.bool ());
      let t = var env in
      ensure e1 (infer_type env e1) t;
      ensure e2 (infer_type env e2) t;
      t
-  | Module m ->
-     let _, m =
-       List.fold_map
-         (fun env (x,e) ->
-           let t = infer_type env e in
-           let env = T.Env.bind env x (T.generalize (T.Env.level env) t) in
-           env, (x,t)
-         ) env m
-     in
-     T.record m
   | Record (_,l) ->
      let l = List.map (fun (x,e) -> x, infer_type env e) l in
      T.record l
-  | Field (e, x) ->
-     let te = infer_type env e in
-     let t = var env in
-     let te' = T.record [x, t] in
-     ensure e te te';
-     t
-  | SetField (r,x,e) ->
-     let tr = infer_type env r in
-     let te = infer_type env e in
-     ensure r tr (T.record [x,te]);
-     T.unit ()
-  | External ext -> T.instantiate (T.generalize 0 ext.ext_type)
-  | Monadic Dt -> T.float ()
-  | Monadic (DtFun e) ->
-     let t = infer_type env e in
-     T.arrnl [T.float ()] t
-  | Monadic (Ref e) ->
-     let t = infer_type env e in
-     T.reference t
-  | Monadic (RefGet e) ->
-     let t = infer_type env e in
-     let t' = var env in
-     ensure e t (T.reference t');
-     t'
-  | Monadic (RefSet(r,e)) ->
-     let tr = infer_type env r in
-     let t' = var env in
-     ensure r tr (T.reference t');
-     let t = infer_type env e in
-     ensure e t t';
-     T.unit ()
-  | Monadic (RefFun e) ->
-     let t = infer_type env e in
-     let s = T.make (EVar (ref None)) in
-     T.record
-       [
-         "init", s;
-         "run", T.arrnl [s] t
-       ]
-
-let infer_type e = infer_type T.Env.empty e
 
 (** {2 Reduction} *)
 
