@@ -5,7 +5,7 @@
 (* TODO: propagate effects in types *)
 
 open Common
-open Stdlib
+open Extralib
 
 module T = Type
 

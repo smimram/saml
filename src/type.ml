@@ -1,7 +1,7 @@
 (** Types. *)
 
 open Common
-open Stdlib
+open Extralib
 
 (** A type. *)
 type t =

@@ -11,7 +11,7 @@ let parse_file parse f =
     let buf = Bytes.create flen in
     really_input fi buf 0 flen;
     close_in fi;
-    buf
+    Bytes.to_string buf
   in
   let lexbuf = Lexing.from_string sin in
   lexbuf.Lexing.lex_start_p <- { lexbuf.Lexing.lex_start_p with Lexing.pos_fname = f };
