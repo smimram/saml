@@ -45,7 +45,7 @@
     mk ?pos (Field (r, x))
 %}
 
-%token DEF BEGIN END FUN ARR DOT
+%token DEF LET BEGIN END FUN ARR DOT
 %token MODULE BUILTIN INCLUDE
 %token REF GET SET UNREF DT UNDT
 %token FOR WHILE TO DO DONE

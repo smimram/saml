@@ -1,5 +1,6 @@
 SOURCES = extralib.ml common.ml config.ml type.ml lang.ml builtin.ml parser.mly lexer.mll preproc.ml pa.ml saml.ml
 RESULT = saml
+OCAMLYACC = menhir
 ANNOTATE = true
 PACKS = pulseaudio
 

@@ -38,6 +38,7 @@ rule token = parse
 
   (***** Keywords *****)
   | "def" { DEF }
+  | "let" { LET }
   | "begin" { BEGIN }
   | "end" { END }
   | "true" { BOOL true }

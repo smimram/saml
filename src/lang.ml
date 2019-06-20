@@ -1,9 +1,6 @@
 (** Internal representation of the language and operations to manipulate it
     (typechecking, reduction, etc.). *)
 
-(* TODO: propagate mutability of records in types *)
-(* TODO: propagate effects in types *)
-
 open Common
 open Extralib
 
