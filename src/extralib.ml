@@ -65,20 +65,6 @@ module List = struct
     | None -> raise Not_found
 end
 
-module Option = struct
-  let map f = function
-    | Some x -> Some (f x)
-    | None -> None
-
-  let get = function
-    | Some x -> x
-    | None -> raise Not_found
-
-  let default x = function
-    | Some x -> x
-    | None -> x
-end
-
 module String = struct
   include String
 

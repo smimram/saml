@@ -28,8 +28,8 @@ let externals = ref []
 
 let op name ?reduce ?run t =
   let run =
-    Option.default
-      (fun _ -> failwith ("No implementation for " ^ name))
+    Option.value
+      ~default:(fun _ -> failwith ("No implementation for " ^ name))
       run
   in
   let ext =
