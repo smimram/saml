@@ -1,8 +1,7 @@
 (** Internal representation of the language and operations to manipulate it
-    (typechecking, reduction, etc.). *)
+   (typechecking, reduction, etc.). *)
 
 open Common
-open Extralib
 
 module T = Type
 
@@ -11,7 +10,7 @@ type t =
   {
     desc : desc; (** The expression. *)
     pos : pos; (** Position in source file. *)
-    mutable t : T.t; (** Type. *)
+    t : T.t; (** Type. *)
   }
 (** Contents of an expression. *)
 and desc =
@@ -25,18 +24,17 @@ and desc =
   | App of t * t
   | Seq of t * t
   | Record of bool * (string * t) list (** A record, the boolean indicates whether it is recursive (= a module) or not. *)
-  | If of t * t * t
 and pattern =
   | PVar of string
   | PRecord of (string * t option) list
-type expr = t
+type term = t
 
 (** Create an expression. *)
 let make ?(pos=dummy_pos) ?t e =
   let t =
     match t with
     | Some t -> t
-    | None -> T.evar ()
+    | None -> T.evar (-1)
   in
   {
     desc = e;
@@ -100,11 +98,6 @@ let rec to_string ~tab p e =
      in
      let body = to_string ~tab false body in
      pa p (Printf.sprintf "%s =%s\n%s%s" pat def (tabs ()) body)
-  | If (c, e1, e2) ->
-     let c = to_string ~tab false c in
-     let e1 = to_string ~tab:(tab+1) false e1 in
-     let e2 = to_string ~tab:(tab+1) false e2 in
-     pa p (Printf.sprintf "if %s then\n%s%s\n%selse\n%s%s\n%send" c (tabss()) e1 (tabs()) (tabss()) e2 (tabs()))
   | Record (r,l) ->
      let l = List.map (fun (x,v) -> Printf.sprintf "%s%s = %s" (tabss()) x (to_string ~tab:(tab+1) false v)) l in
      let l = String.concat "\n" l in
@@ -126,15 +119,12 @@ and string_of_pattern ~tab = function
      let l = String.concat ", " l in
      Printf.sprintf "(%s)" l
 
-let to_string e = to_string ~tab:0 false e
+(** Free variables of a pattern. *)
+let pattern_variables = function
+  | PVar x -> [x]
+  | PRecord l -> List.map fst l
 
-let rec free_vars e =
-  (* Printf.printf "free_vars: %s\n%!" (to_string e); *)
-  let u fv1 fv2 = fv1@fv2 in
-  let fv = free_vars in
-  match e.desc with
-  | Var x -> [x]
-  | _ -> assert false
+let to_string e = to_string ~tab:0 false e
 
 (** {2 Type inference} *)
 
@@ -148,11 +138,31 @@ let type_error e s =
 let rec check env e =
   (* Printf.printf "infer_type:\n%s\n\n\n%!" (to_string e); *)
   (* Printf.printf "env: %s\n\n" (String.concat_map " , " (fun (x,(_,t)) -> x ^ ":" ^ T.to_string t) env.T.Env.t); *)
-  let (<:) e1 e2 = assert (T.( <: ) env e1 e2) in
-  let (>:) e2 e1 = assert (T.( <: ) env e2 e1) in
-  let check_pattern env pat t =
-    (* let env = T.Env.bind env l.var (T.generalize (T.Env.level env) td) in *)
-    failwith "TODO"
+  let (<:) e1 e2 = assert (T.( <: ) e1 e2) in
+  let (>:) e2 e1 = assert (T.( <: ) e2 e1) in
+  let type_of_pattern env = function
+    | PVar x ->
+       let a = T.evar (T.Env.level env) in
+       let env = T.Env.bind env x a in
+       env, a
+    | PRecord l ->
+       let env, l =
+         List.fold_left
+           (fun (env, l) (x,d) ->
+             let a = T.evar (T.Env.level env) in
+             (
+               match d with
+               | Some d ->
+                  check env d;
+                  d.t <: a
+               | None -> ()
+             );
+             let env = T.Env.bind env x a in
+             env, (x,a)::l
+           ) (env,[]) l
+       in
+       let l = List.rev l in
+       env, { desc = Record l }
   in
   match e.desc with
   | Bool _ -> e.t >: T.bool ()
@@ -161,7 +171,7 @@ let rec check env e =
   | String _ -> e.t >: T.string ()
   | Var x ->
      let t = try T.Env.typ env x with Not_found -> type_error e "Unbound variable %s." x in
-     T.instantiate t
+     e.t >: T.instantiate (T.Env.level env) t
   | Seq (e1, e2) ->
      check env e1;
      e1.t <: T.unit ();
@@ -169,94 +179,122 @@ let rec check env e =
      e.t >: e2.t
   | Let (pat,def,body) ->
      check (T.Env.enter env) def;
-     let env = check_pattern env pat def.t in
+     let env, a = type_of_pattern env pat in
+     let env =
+       (* Generalize the bound variables. *)
+       T.Env.binds env
+         (List.map
+            (fun x -> x, T.generalize (T.Env.level env) (T.Env.typ env x))
+            (pattern_variables pat))
+     in
+     a <: def.t;
      check env body;
      e.t >: body.t
-  | Fun (x,v) ->
-     let a = T.uvar level in
-     let env = T.Env.bind env x a in
+  | Fun (pat,v) ->
+     let env, a = type_of_pattern env pat in
      check env v;
      e.t >: T.arr a v.t
   | App (f, v) ->
-     let b = T.uvar level in
+     let b = T.evar (T.Env.level env) in
      check env f;
      check env v;
      f.t <: T.arr v.t b;
      e.t >: b
-  | If (c,e1,e2) ->
-     check env c;
-     c <: T.bool ();
-     check env e1;
-     check env e2;
-     ensure c (infer_type env c) (T.bool ());
-     let t = var env in
-     ensure e1 (infer_type env e1) t;
-     ensure e2 (infer_type env e2) t;
-     t
   | Record (_,l) ->
-     let l = List.map (fun (x,e) -> x, infer_type env e) l in
-     T.record l
+     let l = List.map (fun (x,e) -> check env e; x, e.t) l in
+     e.t <: T.record l
 
-(** {2 Reduction} *)
-
-(** Expressions which should be inlined. *)
-let rec inlinable e =
-  match e.desc with
-  | Value _ | Fun _ | External _ -> true
-  | Ident x ->
-     (* TODO: we should not inline them to avoid capture with
-     abstraction. However, this causes problems because refs do not reduce
-     propely... We should probably remove them from the substitution when around
-     a RefFun. *)
-     (* not (Ident.is_meta x) *)
-     true
-  | Record (m,l) -> (not m) && List.for_all (fun (x,e) -> inlinable e) l
-  | AddressOf { desc = Field (r,x) } -> inlinable r
-  | _ -> false
-
-(** Monadic reduction state. *)
-module RS = struct
+(** {2 Values} *)
+module Value = struct
   type t =
-    {
-      var : int; (** Counter for fresh variables. *)
-      cell : int; (** Counter for cells. *)
-      cells : (string * expr) list; (** Allocated memory cells. *)
-      context : expr -> expr; (** Reduction context (declarations, sequences, etc.). *)
-    }
+    | Bool of bool
+    | Int of int
+    | Float of float
+    | String of string
+    | Record of (string * t) list
+    | Fun of environment * pattern * term
+  and pattern =
+  | PVar of string
+  | PRecord of (string * t option) list
+  and environment = (string * t) list
 
-  let empty =
-    {
-      var = 0;
-      cell = 0;
-      cells = [];
-      context = id
-    }
-
-  (** Generate a fresh variable name. *)
-  let var ?(name="x") state =
-    let n = state.var in
-    let state = { state with var = state.var + 1 } in
-    state, Printf.sprintf "_%s%d" name n
-
-  (** Generate a fresh variable name. *)
-  let cell ?(name="r") state =
-    let n = state.cell in
-    let state = { state with cell = state.cell + 1 } in
-    state, Printf.sprintf "_%s%d" name n
-
-  let add_cell state r e =
-    (* TODO: assert that e is closed *)
-    { state with cells = (r,e)::state.cells }
-      
-  let context state = state.context
-
-  let add_context state f =
-    { state with context = fun e -> state.context (f e) }
+  let to_string = function
+    | Bool b -> string_of_bool b
+    | Int n -> string_of_int n
+    | Float x -> string_of_float x
+    | String s -> Printf.sprintf "%S" s
+    | Record _ -> "<rec>"
+    | Fun _ -> "<fun>"
 end
+module V = Value
 
-(** Normalize an expression by performing
-      beta-reductions and builtins-reductions. *)
-let rec reduce ~subst ~state expr =
+(** Evaluate a term to a value *)
+let rec reduce env t =
+  match t.desc with
+  | Bool b -> V.Bool b
+  | Int n -> V.Int n
+  | Float x -> V.Float x
+  | String s -> V.String s
+  | Var x -> List.assoc x env
+  | Fun (pat, t) -> V.Fun (env, reduce_pattern env pat, t)
+  | Let (pat, def, body) ->
+     let def = reduce env def in
+     let env = match_pattern env pat def in
+     reduce env body
+  | App (t, u) ->
+     let u = reduce env u in
+     let t = reduce env t in
+     (
+       match t with
+       | Fun (env, pat, t) ->
+          let env = match_pattern env pat u in
+          reduce env t
+       | _ -> assert false
+     )
+  | Seq _ ->
+  | Record r ->
+     
+and reduce_pattern env = function
+  | PVar x -> V.PVar x
+  | PRecord l ->
+     let l = List.map (fun (x,t) -> x, Option.map (reduce env) t) l in
+     V.PRecord l
+
+and match_pattern env pat v =
+  match pat, v with
+  | PVar x, v -> (x,v)::env
+  | PRecord p, Record r ->
+     let env' =
+       List.map
+         (fun (x,d) ->
+           let v =
+             try List.assoc x r
+             with Not_found -> Option.get d
+           in
+           x, v
+         ) p
+     in
+     env'@env
+  | _ -> assert false
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
   let reduce ?(subst=subst) ~state expr = reduce ~subst ~state expr in
 
   (** Perform a substitution. *)
@@ -496,80 +534,6 @@ let rec reduce ~subst ~state expr =
        (* Ensure that the declarations get reduced. *)
        if !declared then reduce ~subst ~state (!ctx e)
        else state, e
-    | Field (e, x) ->
-       let state, e = reduce ~subst ~state e in
-       begin
-         match e.desc with
-         | Record (_,l) -> state, List.assoc x l
-         | _ -> state, field e x
-       end
-    | ReplaceField (r,x,e) ->
-       let state, r = reduce ~subst ~state r in
-       let state, e = reduce ~subst ~state e in
-       state,
-       begin
-         match r.desc with
-         | Record (m,l) ->
-            let l = List.remove_assoc x l in
-            let l = (x,e)::l in
-            record m l
-         | _ -> make (ReplaceField (r,x,e))
-       end
-    | SetField (r,x,e) ->
-       let state, r = reduce ~subst ~state r in
-       let state, e = reduce ~subst ~state e in
-       state, make (SetField (r,x,e))
-    | Monadic Dt -> state, make (Ident Ident.dt)
-    | Monadic (DtFun e) ->
-       let context = state.RS.context in
-       let state = { state with RS.context = id } in
-       let state, e = reduce ~subst ~state e in
-       let e = RS.context state e in
-       let e = fct ["",(Ident.dt,None)] e in
-       let state = { state with RS.context } in
-       state, e
-    | Monadic (Ref e) ->
-       let state, e = reduce ~subst ~state e in
-       let state, x = RS.cell state in
-       (* assert (free_vars e = []); *)
-       (* Printf.printf "declare ref to\n%s\n\n%!" (to_string (RS.context state e)); *)
-       let state = RS.add_cell state x e in
-       let e = field (ident (Ident.state)) x in
-       (* The AddressOf is used to ensure that the value will get inlined. *)
-       let e = make (AddressOf e) in
-       reduce ~subst ~state e
-    | Monadic (RefGet r) ->
-       let state, r = reduce ~subst ~state r in
-       begin
-         match r.desc with
-         | AddressOf e -> state, e
-         | _ ->
-            (* TODO: this should not happen... *)
-            (* state, make (Monadic (RefGet r)) *)
-            assert false
-       end
-    | Monadic (RefSet (r, e)) ->
-       let state, r = reduce ~subst ~state r in
-       begin
-         match r.desc with
-         | AddressOf { desc = Field (r, x) } ->
-            reduce ~subst ~state (make (SetField (r, x, e)))
-         | _ ->
-            (* TODO: this should not happen... *)
-            (* state, make (Monadic (RefSet (r, e))) *)
-            assert false
-       end
-    | Monadic (RefFun e) ->
-       let cells = state.RS.cells in
-       let context = state.RS.context in
-       let state = { state with RS.cells = []; context = id } in
-       let state, e = reduce ~subst ~state e in
-       let e = state.RS.context e in
-       let init = record true state.RS.cells in
-       let f = fct ["",(Ident.state,None)] e in
-       let e = record false ["init", init; "run", f] in
-       let state = { state with cells; context } in
-       reduce ~subst ~state e
   in
   (* Printf.printf "REDUCE\n%s\nTO\n%s\n\n" (to_string expr) (to_string (RS.context state e)); *)
   state, e

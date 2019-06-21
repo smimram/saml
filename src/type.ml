@@ -27,6 +27,8 @@ type t =
    | Level of int (** A free variable at given level. *)
    | Link of t (** A link to another type. *)
 
+type typ = t
+
 let make t = { desc = t }
 
 let bool () = make Bool
@@ -38,6 +40,8 @@ let float () = make Float
 let string () = make String
 
 let record l = make (Record l)
+
+let unit () = record []
 
 let uvar () =
   make (UVar (ref None))
@@ -101,7 +105,7 @@ module Env = struct
   type t =
     {
       (** Types for free variables. *)
-      t : (string * t) list;
+      t : (string * typ) list;
       (** Generalization level. *)
       level : int;
     }
