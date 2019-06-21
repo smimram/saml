@@ -105,7 +105,7 @@ exprs:
   | expr { $1 }
   | expr exprs { seq ~pos:$loc $1 $2 }
   | decl { letin ~pos:$loc $1 (unit ~pos:$loc ()) }
-  /* | decl exprs { letin ~pos:$loc $1 $2 } */
+  | decl exprs { letin ~pos:$loc $1 $2 }
 //| INCLUDE LPAR STRING RPAR exprs { (parse_file_ctx $3) $5 }
 
 // An expression context, this is used for includes

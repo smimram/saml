@@ -100,7 +100,7 @@ let to_string t =
     | Bool -> "bool"
     | Record l ->
        let l = String.concat_map ", " (fun (x,t) -> Printf.sprintf "%s : %s" x (to_string false t)) l in
-       Printf.sprintf "{ %s }" l
+       Printf.sprintf "(%s)" l
     | Arr (a,b) ->
        let a = to_string true a in
        let b = to_string false b in

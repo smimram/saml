@@ -129,10 +129,11 @@ let rec to_string ~tab p e =
      let body = to_string ~tab false body in
      pa p (Printf.sprintf "%s =%s\n%s%s" pat def (tabs ()) body)
   | Record (r,l) ->
-     let l = List.map (fun (x,v) -> Printf.sprintf "%s%s = %s" (tabss()) x (to_string ~tab:(tab+1) false v)) l in
-     let l = String.concat "\n" l in
-     if r then Printf.sprintf "module\n%s\n%send" l (tabs())
-     else Printf.sprintf "{\n%s\n%s}" l (tabs())
+     if l = [] then "()" else
+       let l = List.map (fun (x,v) -> Printf.sprintf "%s%s = %s" (tabss()) x (to_string ~tab:(tab+1) false v)) l in
+       let l = String.concat "\n" l in
+       if r then Printf.sprintf "module\n%s\n%send" l (tabs())
+       else Printf.sprintf "(\n%s\n%s)" l (tabs())
 and string_of_pattern ~tab = function
   | PVar x -> x
   | PRecord l ->
