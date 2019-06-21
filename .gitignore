@@ -5,9 +5,11 @@
 *.annot
 *.a
 *.cmxa
+*.conflicts
 ._d
 ._ncdi
 *~
+\#*\#
 src/doc
 src/lexer.ml
 src/parser.ml
