@@ -51,6 +51,12 @@ let evar level =
 
 let arr a b = make (Arr (a, b))
 
+(** An arrow with no labels. *)
+let arrnl aa b =
+  let aa = List.map (fun t -> "",t) aa in
+  let aa = record aa in
+  arr aa b
+
 (** Follow links in variables. *)
 let unvar t =
   let rec aux t =

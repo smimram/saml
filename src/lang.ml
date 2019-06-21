@@ -80,6 +80,17 @@ let letin ?pos pat def body =
 let record ?pos r l =
   make ?pos (Record (r, l))
 
+let ffi ?pos name a b =
+  let f =
+    FFI
+      {
+        ffi_name = name;
+        ffi_itype = a;
+        ffi_otype = b;
+      }
+  in
+  make ?pos f
+
 (** String representation of an expression. *)
 let rec to_string ~tab p e =
   let pa p s = if p then Printf.sprintf "(%s)" s else s in
@@ -219,8 +230,15 @@ let rec check level env e =
      f.t <: T.arr v.t b;
      e.t >: b
   | Record (r,l) ->
-     (* TODO: use r ..... *)
-     let l = List.map (fun (x,e) -> check level env e; x, e.t) l in
+     let env, l =
+       List.fold_left
+         (fun (env,l) (x,e) ->
+           check level env e;
+           let env = if r then (x,e.t)::env else env in
+           env, (x,e.t)::l
+         ) (env,[]) l
+     in
+     let l = List.rev l in
      e.t >: T.record l
 
 (** Evaluate a term to a value *)
