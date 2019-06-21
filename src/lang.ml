@@ -25,7 +25,9 @@ and desc =
   | Let of pattern * t * t (** A variable declaration. *)
   | App of t * t
   | Seq of t * t
-  | Record of bool * (string * t) list (** A record, the boolean indicates whether it is recursive (= a module) or not. *)
+  | Record of bool * (string * t) list
+  (** A record, the boolean indicates whether it is recursive (= a module) or
+     not (normal forms are never recursive). *)
   | Closure of environment * t (** A closure. *)
 and pattern =
   | PVar of string
@@ -256,14 +258,14 @@ let rec reduce env t =
      make ~pos:t.pos (Record (false, List.rev l))
 
 and reduce_pattern env pat v =
-  match pat, v with
-  | PVar x, v -> (x,v)::env
-  | PRecord p, Record l ->
+  match pat, v.desc with
+  | PVar x, _ -> (x,v)::env
+  | PRecord p, Record (false, l) ->
      let env' =
        List.map
-         (fun (x,d) ->
+         (fun (lab,x,d) ->
            let v =
-             try List.assoc x l
+             try List.assoc lab l
              with Not_found ->
                reduce env (Option.get d)
            in
