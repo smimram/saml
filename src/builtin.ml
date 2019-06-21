@@ -1,6 +1,5 @@
 (** Builtin operations. *)
 
-open Extralib
 module E = Lang
 module Run = E.Run
 
