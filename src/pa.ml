@@ -1,5 +1,6 @@
 (** Operations involving pulseaudio. *)
 
+(*
 module T = Builtin.T
 module Run = Lang.Run
 module P = Pulseaudio
@@ -32,3 +33,4 @@ let () =
     Lang.unit ()
   in
   Builtin.op "array_play" (T.arrnl [T.array (T.float ())] (T.unit ())) ~run:array_play_run
+ *)

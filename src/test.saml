@@ -1,5 +1,5 @@
 # include("builtin.saml")
-include("pervasives.saml")
+# include("pervasives.saml")
 
 # def fst(x) = x.fst end
 # def snd(x) = x.snd end
@@ -59,9 +59,11 @@ include("pervasives.saml")
   # array.play(buf)
 # done
 
-def freq() =
-  t = time.now ()
-  t * t
-end
-def s() = osc.saw(10. * freq()) end
-osc.play(s)
+# def freq() =
+  # t = time.now ()
+  # t * t
+# end
+# def s() = osc.saw(10. * freq()) end
+# osc.play(s)
+
+x = 5

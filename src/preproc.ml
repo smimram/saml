@@ -1,8 +1,8 @@
 (** Preprocessing on files. *)
 
 (* Remove the new lines and merge IDENT LPAR into IDENT_LPAR if they are not
-separated by a newline. This is necessary to distinguish f(3), a function
-application, and f\n(3), a sequence consisting of f and then 3. *)
+   separated by a newline. This is necessary to distinguish f(3), a function
+   application, and f\n(3), a sequence consisting of f and then 3. *)
 let strip_newlines tokenizer =
   let state = ref None in
   let rec token lexbuf =

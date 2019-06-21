@@ -81,13 +81,16 @@ let to_string t =
          | Some t ->
             if !Config.Debug.Typing.show_links
             then Printf.sprintf "[%s]" (to_string false t)
-            else to_string false t
+            else to_string p t
          | None -> un v
        )
     | EVar v ->
        (
          match !v with
-         | Link t -> Printf.sprintf "?[%s]" (to_string false t)
+         | Link t ->
+            if !Config.Debug.Typing.show_links
+            then Printf.sprintf "?[%s]" (to_string false t)
+            else to_string p t
          | Level l ->
             "?" ^ en v ^ (if !Config.Debug.Typing.show_levels then "@" ^ string_of_int l else "")
        )

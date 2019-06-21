@@ -1,6 +1,9 @@
 %{
     open Stdlib
     open Lang
+
+    let letin ~pos (pat,def) body =
+      letin ~pos pat def body
 %}
 
 %token DEF LET BEGIN END FUN ARR DOT
@@ -55,10 +58,10 @@ prog:
 
 expr:
   | IDENT { var ~pos:$loc $1 }
+  | BOOL { make ~pos:$loc (Bool $1) }
   | INT { make ~pos:$loc (Int $1) }
 /*
   | FLOAT { mk_val (Float $1) }
-  | BOOL { mk_val (Bool $1) }
   | STRING { mk_val (String $1) }
   | DT { mk (Monadic Dt) }
   | LPAR expr RPAR { $2 }
@@ -101,8 +104,8 @@ elif:
 exprs:
   | expr { $1 }
   | expr exprs { seq ~pos:$loc $1 $2 }
-  /* | decl { mk_let $1 (unit()) } */
-  /* | decl exprs { mk_let $1 $2 } */
+  | decl { letin ~pos:$loc $1 (unit ~pos:$loc ()) }
+  /* | decl exprs { letin ~pos:$loc $1 $2 } */
 //| INCLUDE LPAR STRING RPAR exprs { (parse_file_ctx $3) $5 }
 
 // An expression context, this is used for includes
@@ -115,7 +118,7 @@ exprs_ctx:
 */
 
 decl:
-  | IDENT EQ expr { $1, $3 }
+  | pattern EQ expr { $1, $3 }
 /*                                         
   | DEF IDENT EQ exprs END { $2, $4 }
   | DEF IDENT_LPAR args RPAR EQ exprs END { $2, mk_fun $3 $6 }
@@ -125,6 +128,9 @@ decl:
 decls:
   | decl decls { $1::$2 }
   | { [] }
+
+pattern:
+  | IDENT { PVar $1 }
 
 args:
   | { [] }

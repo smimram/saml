@@ -40,10 +40,7 @@ let parse_file parse f =
       in
       error err
 
-let parse_file_ctx = parse_file Parser.prog_ctx
 let parse_file = parse_file Parser.prog
-
-let () = Lang.parse_file_ctx_fun := parse_file_ctx
 
 let output_file = ref "out.ml"
 
@@ -79,8 +76,8 @@ let () =
       error err
   in
   pass "Parsing program" Lang.to_string;
-  pass "Infering type" (fun e -> Type.to_string (Lang.infer_type e));
+  pass "Checking type" (fun e -> Lang.check e; Type.to_string e.t);
   pass "Reducing program" (fun e -> prog := Lang.reduce e; Lang.to_string !prog);
-  pass "Infering type" (fun e -> Type.to_string (Lang.infer_type e));
-  pass "Running program" (fun e -> Lang.run e; "");
+  (* pass "Infering type" (fun e -> Type.to_string (Lang.infer_type e)); *)
+  (* pass "Running program" (fun e -> Lang.run e; ""); *)
   ()

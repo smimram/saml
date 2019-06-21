@@ -80,6 +80,9 @@ let letin ?pos pat def body =
 let record ?pos r l =
   make ?pos (Record (r, l))
 
+let unit ?pos () =
+  record ?pos false []
+
 let ffi ?pos name a b =
   let f =
     FFI
@@ -241,6 +244,8 @@ let rec check level env e =
      let l = List.rev l in
      e.t >: T.record l
 
+let check = check 0 []
+
 (** Evaluate a term to a value *)
 let rec reduce env t =
   match t.desc with
@@ -293,7 +298,4 @@ and reduce_pattern env pat v =
      env'@env
   | _ -> assert false
 
-(* This wil be filled later on. *)
-let parse_file_ctx_fun = ref ((fun _ -> failwith "Parse file function should have been filled") : string -> t -> t)
- 
-let parse_file_ctx f = !parse_file_ctx_fun f
+let reduce = reduce []
