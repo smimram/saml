@@ -1,26 +1,15 @@
 (** Builtin operations. *)
 
 module E = Lang
-module Run = E.Run
 
-type t = E.extern
+type t = E.ffi
 
 module T = struct
   include Type
 
-  let var () = var max_int
-
-  let bb_b = arrnl [bool (); bool ()] (bool ())
-
-  let ff_b = arrnl [float (); float ()] (bool ())
+  let var () = evar max_int
 
   let ii_i = arrnl [int (); int ()] (int ())
-
-  let ii_b = arrnl [int (); int ()] (bool ())
-
-  let f_f = arrnl [float ()] (float ())
-
-  let ff_f = arrnl [float (); float ()] (float ())
 end
 
 let externals = ref []

@@ -8,24 +8,24 @@ type t =
   {
     desc : desc
   }
- and desc =
-   | Bool
-   | Int
-   | Float
-   | String
-   | UVar of t option ref
-   | EVar of evar
-   (** An existential type variable: this is an opaque type whose contents will
+and desc =
+  | Bool
+  | Int
+  | Float
+  | String
+  | UVar of t option ref
+  | EVar of evar
+  (** An existential type variable: this is an opaque type whose contents will
       be revealed later (it is used only for states at the moment because they
       are not known at typing time). They cannot be substituted by types with
       universal variables. *)
-   | Arr of t * t
-   | Record of (string * t) list
- and evar = evar_contents ref
- (** Contents of a variable. *)
- and evar_contents =
-   | Level of int (** A free variable at given level. *)
-   | Link of t (** A link to another type. *)
+  | Arr of t * t
+  | Record of (string * t) list
+and evar = evar_contents ref
+(** Contents of a variable. *)
+and evar_contents =
+  | Level of int (** A free variable at given level. *)
+  | Link of t (** A link to another type. *)
 
 type typ = t
 
@@ -90,7 +90,7 @@ let to_string t =
     | String -> "string"
     | Bool -> "bool"
     | Record l ->
-       let l = String.concat_map " , " (fun (x,t) -> Printf.sprintf "%s : %s" x (to_string false t)) l in
+       let l = String.concat_map ", " (fun (x,t) -> Printf.sprintf "%s : %s" x (to_string false t)) l in
        Printf.sprintf "{ %s }" l
     | Arr (a,b) ->
        let a = to_string true a in
@@ -98,39 +98,6 @@ let to_string t =
        pa p (Printf.sprintf "%s -> %s" a b)
   in
   to_string false t
-
-(** Typing environments. *)
-module Env = struct
-  (** A typing environment. *)
-  type t =
-    {
-      (** Types for free variables. *)
-      t : (string * typ) list;
-      (** Generalization level. *)
-      level : int;
-    }
-
-  (** The empty environment. *)
-  let empty =
-    {
-      t = [];
-      level = 0;
-    }
-
-  let typ env x =
-    List.assoc x env.t
-
-  let level env = env.level
-
-  let enter env = { env with level = env.level + 1 }
-  (* let leave env = { env with level = env.level - 1 } *)
-
-  let bind env x l =
-    { env with t = (x,l)::env.t }
-
-  let binds env l =
-    { env with t = l@env.t }
-end
 
 let rec occurs x t =
   match (unvar t).desc with
@@ -195,8 +162,7 @@ let rec generalize level t =
     | UVar v -> UVar v
     | EVar { contents = Level l } as t -> if l <= level then t else (uvar ()).desc
     | EVar { contents = Link _ } -> assert false
-    | Arr (a, b) ->
-       Arr (generalize level a, generalize level b)
+    | Arr (a, b) -> Arr (generalize level a, generalize level b)
     | Record l -> Record (List.map (fun (x,t) -> x , generalize level t) l)
     | Bool | Int | Float | String as t -> t
   in
