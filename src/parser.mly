@@ -60,14 +60,13 @@ expr:
   | IDENT { var ~pos:$loc $1 }
   | BOOL { make ~pos:$loc (Bool $1) }
   | INT { make ~pos:$loc (Int $1) }
+  | FLOAT { make ~pos:$loc (Float $1) }
+  | STRING { make ~pos:$loc (String $1) }
   | FUN pattern ARR expr { fct ~pos:$loc $2 $4 }
-/*
-  | FLOAT { mk_val (Float $1) }
-  | STRING { mk_val (String $1) }
-  | DT { mk (Monadic Dt) }
   | LPAR expr RPAR { $2 }
+  /* | MODULE decls END { record true $2 } */
+/*
   | BEGIN exprs END { $2 }
-  | MODULE decls END { mk_module $2 }
   | BUILTIN LPAR STRING RPAR { Builtin.get ~pos:(defpos None) $3 }
   | expr DOT IDENT { mk_field $1 $3 }
   | expr LARR expr RARR { mk_bapp "array_get" [$1; $3] }
@@ -118,12 +117,10 @@ exprs_ctx:
 */
 
 decl:
-  | pattern EQ expr { $1, $3 }
+  | IDENT EQ expr { PVar $1, $3 }
+  | LET pattern EQ expr { $2, $4 }
   | DEF pattern EQ exprs END { $2, $4 }
   | DEF IDENT pattern EQ exprs END { PVar $2, fct ~pos:$loc $3 $5 }
-/*
-  | MODULE IDENT EQ decls END { $2, mk_module $4 }
-*/
 
 decls:
   | decl decls { $1::$2 }

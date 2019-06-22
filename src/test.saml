@@ -66,5 +66,8 @@
 # def s() = osc.saw(10. * freq()) end
 # osc.play(s)
 
-def f (x) = 4 end
+def f (x) =
+  y = 4
+  y
+end
 f
