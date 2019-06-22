@@ -1,5 +1,6 @@
 (** Preprocessing on files. *)
 
+(*
 (* Remove the new lines and merge IDENT LPAR into IDENT_LPAR if they are not
    separated by a newline. This is necessary to distinguish f(3), a function
    application, and f\n(3), a sequence consisting of f and then 3. *)
@@ -24,6 +25,7 @@ let strip_newlines tokenizer =
     | Some x -> state := None ; x
   in
   token
+ *)
 
 (* The usual trick for uminus in yacc does not work with our syntax. *)
 let uminus tokenizer =
@@ -40,5 +42,4 @@ let uminus tokenizer =
 let token =
   let (+) f g = g f in
   Lexer.token
-  + strip_newlines
   + uminus

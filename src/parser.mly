@@ -60,6 +60,7 @@ expr:
   | IDENT { var ~pos:$loc $1 }
   | BOOL { make ~pos:$loc (Bool $1) }
   | INT { make ~pos:$loc (Int $1) }
+  | FUN pattern ARR expr { fct ~pos:$loc $2 $4 }
 /*
   | FLOAT { mk_val (Float $1) }
   | STRING { mk_val (String $1) }
@@ -93,7 +94,6 @@ expr:
   | FOR IDENT EQ expr TO expr DO expr DONE { mk (For ($2, $4, $6, $8)) }
   | WHILE expr DO exprs DONE { mk (While ($2, $4)) }
   | IF expr THEN exprs elif END { mk (If ($2, $4, $5)) }
-  | FUN LPAR args RPAR ARR expr { mk_fun $3 $6 }
 
 elif:
   | { unit () }
@@ -119,9 +119,9 @@ exprs_ctx:
 
 decl:
   | pattern EQ expr { $1, $3 }
-/*                                         
-  | DEF IDENT EQ exprs END { $2, $4 }
-  | DEF IDENT_LPAR args RPAR EQ exprs END { $2, mk_fun $3 $6 }
+  | DEF pattern EQ exprs END { $2, $4 }
+  | DEF IDENT pattern EQ exprs END { PVar $2, fct ~pos:$loc $3 $5 }
+/*
   | MODULE IDENT EQ decls END { $2, mk_module $4 }
 */
 
@@ -131,23 +131,16 @@ decls:
 
 pattern:
   | IDENT { PVar $1 }
+  | LPAR in_pattern RPAR { $2 }
 
-args:
-  | { [] }
-  | arg { [$1] }
-  | arg COMMA args { $1::$3 }
+in_pattern:
+  | { PRecord [] }
+  | in_pattern_list { PRecord $1 }
 
-arg:
-  | IDENT { "",($1,None) }
-  | IDENT EQ { $1,($1,None) }
-  | IDENT EQ expr { $1,($1,Some $3) }
+in_pattern_list:
+  | in_pattern_list_elem { [$1] }
+  | in_pattern_list_elem COMMA in_pattern_list { $1::$3 }
 
-apps:
-  | app { [$1] }
-  | app COMMA apps { $1::$3 }
-  | { [] }
+in_pattern_list_elem:
+  | IDENT { $1,$1,None }
 
-app:
-  | expr { "",$1 }
-  | IDENT EQ expr { $1, $3 }
-  | IDENT EQ { $1, mk_ident $1 }

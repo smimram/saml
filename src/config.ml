@@ -5,7 +5,7 @@ module Debug = struct
     let show_links = ref false
 
     (** Show levels of variables. *)
-    let show_levels = ref false
+    let show_levels = ref true
 
     (** Show assignations of type variables. *)
     let show_assignations = ref false

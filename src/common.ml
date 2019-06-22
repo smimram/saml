@@ -7,8 +7,7 @@ let debug = Printf.printf
 
 (** Print an error. *)
 let error s =
-  Printf.eprintf "%s\n%!" s;
-  exit 1
+  Printf.kprintf (fun s -> print_endline s; exit 1) s
 
 (** Print a warning. *)
 let warning s =

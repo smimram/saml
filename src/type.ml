@@ -99,8 +99,9 @@ let to_string t =
     | String -> "string"
     | Bool -> "bool"
     | Record l ->
-       let l = String.concat_map ", " (fun (x,t) -> Printf.sprintf "%s : %s" x (to_string false t)) l in
-       Printf.sprintf "(%s)" l
+       if l = [] then "unit" else
+         let l = String.concat_map ", " (fun (x,t) -> Printf.sprintf "%s : %s" x (to_string false t)) l in
+         Printf.sprintf "(%s)" l
     | Arr (a,b) ->
        let a = to_string true a in
        let b = to_string false b in

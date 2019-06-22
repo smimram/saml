@@ -22,23 +22,19 @@ let parse_file parse f =
     (* TODO: use string_of_pos *)
     | Failure s when s = "lexing: empty token" ->
       let pos = Lexing.lexeme_end_p lexbuf in
-      let err =
-        Printf.sprintf "Lexing error in file %s at line %d, character %d."
-          pos.Lexing.pos_fname
-          pos.Lexing.pos_lnum
-          (pos.Lexing.pos_cnum - pos.Lexing.pos_bol)
-      in
-      error err
+      error
+        "Lexing error in file %s at line %d, character %d."
+        pos.Lexing.pos_fname
+        pos.Lexing.pos_lnum
+        (pos.Lexing.pos_cnum - pos.Lexing.pos_bol)
     | Parsing.Parse_error ->
       let pos = (Lexing.lexeme_end_p lexbuf) in
-      let err =
-        Printf.sprintf "Parsing error in file %s at word \"%s\", line %d, character %d."
-          pos.Lexing.pos_fname
-          (Lexing.lexeme lexbuf)
-          pos.Lexing.pos_lnum
-          (pos.Lexing.pos_cnum - pos.Lexing.pos_bol - 1)
-      in
-      error err
+      error
+        "Parsing error in file %s at word \"%s\", line %d, character %d."
+        pos.Lexing.pos_fname
+        (Lexing.lexeme lexbuf)
+        pos.Lexing.pos_lnum
+        (pos.Lexing.pos_cnum - pos.Lexing.pos_bol - 1)
 
 let parse_file = parse_file Parser.prog
 
@@ -72,8 +68,7 @@ let () =
       Printf.printf "%s\n\n%!" s
     with
     | Lang.Typing (pos, msg) ->
-      let err = Printf.sprintf "Typing error at %s: %s" (Common.string_of_pos pos) msg in
-      error err
+      error "Typing error at %s: %s" (Common.string_of_pos pos) msg
   in
   pass "Parsing program" Lang.to_string;
   pass "Checking type" (fun e -> Lang.check e; Type.to_string e.t);

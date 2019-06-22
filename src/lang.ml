@@ -145,7 +145,8 @@ and string_of_pattern ~tab = function
              | Some v -> "="^to_string ~tab:(tab+1) false v
              | None -> ""
            in
-           Printf.sprintf "%s(%s)%s" l x v) l
+           (* TODO: optionally display x *)
+           Printf.sprintf "%s%s" l v) l
      in
      let l = String.concat ", " l in
      Printf.sprintf "(%s)" l
@@ -169,8 +170,8 @@ let type_error e s =
 let rec check level env e =
   (* Printf.printf "infer_type:\n%s\n\n\n%!" (to_string e); *)
   (* Printf.printf "env: %s\n\n" (String.concat_map " , " (fun (x,(_,t)) -> x ^ ":" ^ T.to_string t) env.T.Env.t); *)
-  let (<:) e1 e2 = assert (T.( <: ) e1 e2) in
-  let (>:) e2 e1 = assert (T.( <: ) e2 e1) in
+  let (<:) a b = if not (T.( <: ) a b) then error "%s has type %s but %s expected." (to_string e) (T.to_string a) (T.to_string b) in
+  let (>:) a b = if not (T.( <: ) a b) then error "%s has type %s but %s expected." (to_string e) (T.to_string a) (T.to_string b) in
   let type_of_pattern env = function
     | PVar x ->
        let a = T.evar level in
@@ -212,6 +213,7 @@ let rec check level env e =
   | Let (pat,def,body) ->
      check (level+1) env def;
      let env, a = type_of_pattern env pat in
+     a <: def.t;
      let env =
        (* Generalize the bound variables. *)
        (List.map
@@ -219,7 +221,6 @@ let rec check level env e =
           (pattern_variables pat)
        )@env
      in
-     a <: def.t;
      check level env body;
      e.t >: body.t
   | Fun (pat,v) ->
