@@ -11,12 +11,15 @@ let register name ?eval a b =
   let f = E.ffi name ?eval a b in
   builtins := (name, f) :: !builtins
 
-let ff_f f t =
-  E.float (f (E.get_float (E.Run.fst t)) (E.get_float (E.Run.snd t)))
+let ff_f name f =
+  register name ~eval:(fun t -> E.float (f (E.get_float (E.Run.fst t)) (E.get_float (E.Run.snd t)))) (T.pair (T.float ()) (T.float ())) (T.float ())
 
 (* Floats *)
 let () =
-  register "fmul" ~eval:(ff_f ( *. )) (T.pair (T.float ()) (T.float ())) (T.float ())
+  ff_f "fadd" ( +. );
+  ff_f "fsub" ( -. );
+  ff_f "fmul" ( *. );
+  ff_f "fdiv" ( /. )
 
 (* String *)
 let () =
