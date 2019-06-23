@@ -26,6 +26,7 @@ and evar = evar_contents ref
 and evar_contents =
   | Level of int (** A free variable at given level. *)
   | Link of t (** A link to another type. *)
+and environment = (string * t) list
 
 type typ = t
 

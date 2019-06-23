@@ -37,11 +37,14 @@ and ffi =
     ffi_name : string;
     ffi_itype : T.t; (** type of the input *)
     ffi_otype : T.t; (** type of the output *)
+    ffi_eval : t -> t; (** evaluation *)
   }
 (** An environment. *)
 and environment = (string * t) list
 type term = t
 
+let tenv = ref ([] : T.environment)
+let env = ref ([] : environment)
 
 (** Create an expression. *)
 let make ?(pos=dummy_pos) ?t e =
@@ -83,13 +86,14 @@ let record ?pos r l =
 let unit ?pos () =
   record ?pos false []
 
-let ffi ?pos name a b =
+let ffi ?pos ?(eval=Fun.id) name a b =
   let f =
     FFI
       {
         ffi_name = name;
         ffi_itype = a;
         ffi_otype = b;
+        ffi_eval = eval;
       }
   in
   make ?pos f
@@ -129,7 +133,7 @@ let rec to_string ~tab p e =
      let body = to_string ~tab false body in
      pa p (Printf.sprintf "%s =%s\n%s%s" pat def (tabs ()) body)
   | Record (r,l) ->
-     if l = [] then "()" else
+     if l = [] then (if r then "module end" else "()") else
        let l = List.map (fun (x,v) -> Printf.sprintf "%s%s = %s" (tabss()) x (to_string ~tab:(tab+1) false v)) l in
        let l = String.concat "\n" l in
        if r then Printf.sprintf "module\n%s\n%send" l (tabs())
@@ -246,7 +250,7 @@ let rec check level env e =
      let l = List.rev l in
      e.t >: T.record l
 
-let check = check 0 []
+let check = check 0 !tenv
 
 (** Evaluate a term to a value *)
 let rec reduce env t =
@@ -300,4 +304,4 @@ and reduce_pattern env pat v =
      env'@env
   | _ -> assert false
 
-let reduce = reduce []
+let reduce = reduce !env

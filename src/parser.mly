@@ -62,11 +62,12 @@ expr:
   | INT { make ~pos:$loc (Int $1) }
   | FLOAT { make ~pos:$loc (Float $1) }
   | STRING { make ~pos:$loc (String $1) }
+  /* | expr expr { app ~pos:$loc $1 $2 } */
   | FUN pattern ARR expr { fct ~pos:$loc $2 $4 }
   | LPAR expr RPAR { $2 }
-  /* | MODULE decls END { record true $2 } */
-/*
   | BEGIN exprs END { $2 }
+  | MODULE simple_decl_list END { record ~pos:$loc true $2 }
+/*
   | BUILTIN LPAR STRING RPAR { Builtin.get ~pos:(defpos None) $3 }
   | expr DOT IDENT { mk_field $1 $3 }
   | expr LARR expr RARR { mk_bapp "array_get" [$1; $3] }
@@ -116,8 +117,19 @@ exprs_ctx:
   | INCLUDE LPAR STRING RPAR exprs_ctx { fun e -> (parse_file_ctx $3) ($5 e) }
 */
 
+simple_decl:
+  | IDENT EQ expr { $1, $3 }
+
+simple_decl_list:
+  | { [] }
+  | simple_decls { $1 }
+
+simple_decls:
+  | simple_decl { [$1] }
+  | simple_decl COMMA simple_decls { $1::$3 }
+
 decl:
-  | IDENT EQ expr { PVar $1, $3 }
+  | simple_decl { let x, v = $1 in PVar x, v }
   | LET pattern EQ expr { $2, $4 }
   | DEF pattern EQ exprs END { $2, $4 }
   | DEF IDENT pattern EQ exprs END { PVar $2, fct ~pos:$loc $3 $5 }
@@ -128,16 +140,16 @@ decls:
 
 pattern:
   | IDENT { PVar $1 }
-  | LPAR in_pattern RPAR { $2 }
-
-in_pattern:
-  | { PRecord [] }
-  | in_pattern_list { PRecord $1 }
+  | LPAR in_pattern_list RPAR { $2 }
 
 in_pattern_list:
-  | in_pattern_list_elem { [$1] }
-  | in_pattern_list_elem COMMA in_pattern_list { $1::$3 }
+  | { PRecord [] }
+  | in_patterns { PRecord $1 }
 
-in_pattern_list_elem:
+in_patterns:
+  | in_pattern { [$1] }
+  | in_pattern COMMA in_patterns { $1::$3 }
+
+in_pattern:
   | IDENT { $1,$1,None }
 
