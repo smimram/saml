@@ -112,7 +112,7 @@ let rec to_string ~tab p e =
   | Int n -> string_of_int n
   | Float f -> string_of_float f
   | String s -> Printf.sprintf "%S" s
-  | FFI ffi -> ffi.ffi_name
+  | FFI ffi -> Printf.sprintf "<%s>" ffi.ffi_name
   | Fun (pat, e) ->
      let pat = string_of_pattern ~tab pat in 
      let e = to_string ~tab:(tab+1) false e in
@@ -134,7 +134,10 @@ let rec to_string ~tab p e =
        else Printf.sprintf " %s " def
      in
      let body = to_string ~tab false body in
-     pa p (Printf.sprintf "%s =%s\n%s%s" pat def (tabs ()) body)
+     if !Config.Debug.Lang.show_let then
+       pa p (Printf.sprintf "let %s =%s in\n%s%s" pat def (tabs ()) body)
+     else
+       pa p (Printf.sprintf "%s =%s\n%s%s" pat def (tabs ()) body)
   | Record (r,l) ->
      if l = [] then (if r then "module end" else "()") else
        let l = List.map (fun (x,v) -> Printf.sprintf "%s%s = %s" (tabss()) x (to_string ~tab:(tab+1) false v)) l in
@@ -188,8 +191,8 @@ let type_error e s =
 let rec check level (env:T.environment) e =
   (* Printf.printf "infer_type:\n%s\n\n\n%!" (to_string e); *)
   (* Printf.printf "env: %s\n\n" (String.concat_map " , " (fun (x,(_,t)) -> x ^ ":" ^ T.to_string t) env.T.Env.t); *)
-  let (<:) e a = if not (T.( <: ) e.t a) then error "%s has type %s but %s expected." (to_string e) (T.to_string e.t) (T.to_string a) in
-  let (>:) e a = if not (T.( <: ) a e.t) then error "%s has type %s but %s expected." (to_string e) (T.to_string e.t) (T.to_string a) in
+  let (<:) e a = if not (T.( <: ) e.t a) then error "%s: %s has type %s but %s expected." (Common.string_of_pos e.pos) (to_string e) (T.to_string e.t) (T.to_string a) in
+  let (>:) e a = if not (T.( <: ) a e.t) then error "%s: %s has type %s but %s expected." (Common.string_of_pos e.pos) (to_string e) (T.to_string e.t) (T.to_string a) in
   let type_of_pattern env = function
     | PVar x ->
        let a = T.evar level in

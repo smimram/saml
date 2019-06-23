@@ -113,7 +113,7 @@ elif:
 exprs:
   | expr n { $1 }
   | expr NEWLINE exprs { seq ~pos:$loc $1 $3 }
-  | decl { letin ~pos:$loc $1 (unit ~pos:$loc ()) }
+  | decl n { letin ~pos:$loc $1 (unit ~pos:$loc ()) }
   | decl NEWLINE exprs { letin ~pos:$loc $1 $3 }
 //| INCLUDE LPAR STRING RPAR exprs { (parse_file_ctx $3) $5 }
 

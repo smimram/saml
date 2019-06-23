@@ -12,6 +12,8 @@ module Debug = struct
   end
 
   module Lang = struct
+    let show_let = ref true
+
     let show_seq = ref true
   end
 end

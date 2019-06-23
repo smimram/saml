@@ -16,11 +16,11 @@ let ff_f f t =
 
 (* Floats *)
 let () =
-  register "fmul" ~eval:(ff_f ( *. )) (T.pair (T.float ()) (T.float ())) (T.unit ())
+  register "fmul" ~eval:(ff_f ( *. )) (T.pair (T.float ()) (T.float ())) (T.float ())
 
 (* String *)
 let () =
-  register "string" ~eval:(fun t -> E.string (E.to_string t)) (T.uvar ()) (T.unit ())
+  register "string" ~eval:(fun t -> E.string (E.to_string t)) (T.uvar ()) (T.string ())
 
 (* IO *)
 let () =
