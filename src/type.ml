@@ -42,6 +42,8 @@ let string () = make String
 
 let record l = make (Record l)
 
+let pair x y = record ["x",x; "y",y]
+
 let unit () = record []
 
 let uvar () =

@@ -27,6 +27,20 @@ let strip_newlines tokenizer =
   token
  *)
 
+let merge_newlines tokenizer =
+  let state = ref false in
+  let rec token lexbuf =
+    match tokenizer lexbuf with
+    | Parser.NEWLINE ->
+       if !state then token lexbuf
+       else (state := true; Parser.NEWLINE)
+    | x ->
+       state := false;
+       x
+  in
+  token
+  
+
 (* The usual trick for uminus in yacc does not work with our syntax. *)
 let uminus tokenizer =
   let state = ref false in
@@ -42,4 +56,5 @@ let uminus tokenizer =
 let token =
   let (+) f g = g f in
   Lexer.token
+  + merge_newlines
   + uminus

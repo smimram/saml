@@ -52,6 +52,10 @@
 /* %type <Lang.t -> Lang.t> prog_ctx */
 %%
 
+n:
+  | NEWLINE { () }
+  | { () }
+
 prog:
   | exprs EOF { $1 }
 
@@ -72,14 +76,14 @@ simple_expr:
   | LPAR expr RPAR { $2 }
   | BEGIN exprs END { $2 }
   | MODULE simple_decl_list END { record ~pos:$loc true $2 }
-  /* | expr TIMES expr { "fmul" (record ~pos:$loc ["",$1; "",$3]) } */
+  | BUILTIN STRING { Builtin.get ~pos:$loc $2 }
+  | simple_expr TIMES simple_expr { app ~pos:$loc (Builtin.get ~pos:$loc "fmul") (pair ~pos:$loc $1 $3) }
 /*
   | expr DOT IDENT { mk_field $1 $3 }
   | expr LARR expr RARR { mk_bapp "array_get" [$1; $3] }
   | expr PLUS expr { mk_bapp "fadd" [$1; $3] }
   | expr MINUS expr { mk_bapp "fsub" [$1; $3] }
   | UMINUS expr { mk_bapp "fsub" [mk_val (Float 0.); $2] }
-
   | expr DIV expr { mk_bapp "fdiv" [$1; $3] }
   | expr LE expr { mk_bapp "fle" [$1; $3] }
   | expr GE expr { mk_bapp "fle" [$3; $1] }
@@ -107,7 +111,7 @@ elif:
 */
 
 exprs:
-  | expr { $1 }
+  | expr n { $1 }
   | expr NEWLINE exprs { seq ~pos:$loc $1 $3 }
   | decl { letin ~pos:$loc $1 (unit ~pos:$loc ()) }
   | decl NEWLINE exprs { letin ~pos:$loc $1 $3 }

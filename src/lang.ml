@@ -59,35 +59,35 @@ let make ?(pos=dummy_pos) ?t e =
     t
   }
 
-let var ?pos s =
-  make ?pos (Var s)
+let var ?pos s = make ?pos (Var s)
 
-let bool ?pos b =
-  make ?pos (Bool b)
+let bool ?pos b = make ?pos (Bool b)
 
-let float ?pos x =
-  make ?pos (Float x)
+let float ?pos x = make ?pos (Float x)
 
-let fct ?pos args e =
-  make ?pos (Fun (args, e))
+let string ?pos x = make ?pos (String x)
 
-let app ?pos f x =
-  make ?pos (App (f, x))
+let fct ?pos args e = make ?pos (Fun (args, e))
 
-let seq ?pos e1 e2 =
-  make ?pos (Seq (e1, e2))
+let app ?pos f x = make ?pos (App (f, x))
 
-let letin ?pos pat def body =
-  make ?pos (Let (pat, def, body))
+let seq ?pos e1 e2 = make ?pos (Seq (e1, e2))
 
-let record ?pos r l =
-  make ?pos (Record (r, l))
+let letin ?pos pat def body = make ?pos (Let (pat, def, body))
 
-let unit ?pos () =
-  record ?pos false []
+let record ?pos r l = make ?pos (Record (r, l))
 
-let pair ?pos a b =
-  record ?pos false ["a",a; "b",b]
+let field ?pos l r =
+  let f = fct ?pos(PRecord [l,l,None]) (var ?pos l) in
+  app ?pos f r
+
+let unit ?pos () = record ?pos false []
+
+let pair ?pos x y = record ?pos false ["x",x; "y",y]
+
+let fst ?pos r = field ?pos "x" r
+
+let snd ?pos r = field ?pos "y" r
 
 let ffi ?pos name ?(eval=fun _ -> error "Not implemented: %s" name) a b =
   let f =
@@ -100,11 +100,6 @@ let ffi ?pos name ?(eval=fun _ -> error "Not implemented: %s" name) a b =
       }
   in
   make ?pos f
-
-let get_string t =
-  match t.desc with
-  | String s -> s
-  | _ -> assert false
 
 (** String representation of an expression. *)
 let rec to_string ~tab p e =
@@ -130,7 +125,7 @@ let rec to_string ~tab p e =
   | Seq (e1, e2) ->
      let e1 = to_string ~tab false e1 in
      let e2 = to_string ~tab false e2 in
-     pa p (Printf.sprintf "%s\n%s%s" e1 (tabs ()) e2)
+     pa p (Printf.sprintf "%s%s\n%s%s" e1 (if !Config.Debug.Lang.show_seq then ";" else "") (tabs ()) e2)
   | Let (pat, def, body) ->
      let pat = string_of_pattern ~tab pat in
      let def = to_string ~tab:(tab+1) false def in
@@ -163,12 +158,23 @@ and string_of_pattern ~tab = function
      let l = String.concat ", " l in
      Printf.sprintf "(%s)" l
 
+let to_string e = to_string ~tab:0 false e
+
+let get_float t =
+  match t.desc with
+  | Float x -> x
+  | _ ->
+     error "Expected float but got %s" (to_string t)
+
+let get_string t =
+  match t.desc with
+  | String s -> s
+  | _ -> assert false
+
 (** Free variables of a pattern. *)
 let pattern_variables = function
   | PVar x -> [x]
   | PRecord l -> List.map (fun (_,x,_) -> x) l
-
-let to_string e = to_string ~tab:0 false e
 
 (** {2 Type inference} *)
 
@@ -182,8 +188,8 @@ let type_error e s =
 let rec check level (env:T.environment) e =
   (* Printf.printf "infer_type:\n%s\n\n\n%!" (to_string e); *)
   (* Printf.printf "env: %s\n\n" (String.concat_map " , " (fun (x,(_,t)) -> x ^ ":" ^ T.to_string t) env.T.Env.t); *)
-  let (<:) a b = if not (T.( <: ) a b) then error "%s has type %s but %s expected." (to_string e) (T.to_string a) (T.to_string b) in
-  let (>:) a b = if not (T.( <: ) a b) then error "%s has type %s but %s expected." (to_string e) (T.to_string a) (T.to_string b) in
+  let (<:) e a = if not (T.( <: ) e.t a) then error "%s has type %s but %s expected." (to_string e) (T.to_string e.t) (T.to_string a) in
+  let (>:) e a = if not (T.( <: ) a e.t) then error "%s has type %s but %s expected." (to_string e) (T.to_string e.t) (T.to_string a) in
   let type_of_pattern env = function
     | PVar x ->
        let a = T.evar level in
@@ -198,7 +204,7 @@ let rec check level (env:T.environment) e =
                match d with
                | Some d ->
                   check level env d;
-                  d.t <: a
+                  d <: a
                | None -> ()
              );
              let env = (x,a)::env in
@@ -209,23 +215,23 @@ let rec check level (env:T.environment) e =
        env, { desc = Record l }
   in
   match e.desc with
-  | Bool _ -> e.t >: T.bool ()
-  | Int _ -> e.t >: T.int ()
-  | Float _ -> e.t >: T.float ()
-  | String _ -> e.t >: T.string ()
-  | FFI f -> e.t >: T.arr f.ffi_itype f.ffi_otype
+  | Bool _ -> e >: T.bool ()
+  | Int _ -> e >: T.int ()
+  | Float _ -> e >: T.float ()
+  | String _ -> e >: T.string ()
+  | FFI f -> e >: T.arr f.ffi_itype f.ffi_otype
   | Var x ->
      let t = try List.assoc x env with Not_found -> type_error e "Unbound variable %s." x in
-     e.t >: T.instantiate level t
+     e >: T.instantiate level t
   | Seq (e1, e2) ->
      check level env e1;
-     e1.t <: T.unit ();
+     e1 <: T.unit ();
      check level env e2;
-     e.t >: e2.t
+     e >: e2.t
   | Let (pat,def,body) ->
      check (level+1) env def;
      let env, a = type_of_pattern env pat in
-     a <: def.t;
+     def >: a;
      let env =
        (* Generalize the bound variables. *)
        (List.map
@@ -234,18 +240,18 @@ let rec check level (env:T.environment) e =
        )@env
      in
      check level env body;
-     e.t >: body.t
+     e >: body.t
   | Fun (pat,v) ->
      let env, a = type_of_pattern env pat in
      check level env v;
-     e.t >: T.arr a v.t
+     e >: T.arr a v.t
   | Closure _ -> assert false
   | App (f, v) ->
      let b = T.evar level in
      check level env f;
      check level env v;
-     f.t <: T.arr v.t b;
-     e.t >: b
+     f <: T.arr v.t b;
+     e >: b
   | Record (r,l) ->
      let env, l =
        List.fold_left
@@ -256,7 +262,7 @@ let rec check level (env:T.environment) e =
          ) (env,[]) l
      in
      let l = List.rev l in
-     e.t >: T.record l
+     e >: T.record l
 
 let check t = check 0 !tenv t
 
@@ -314,3 +320,9 @@ and reduce_pattern env pat v =
   | _ -> assert false
 
 let reduce t = reduce !env t
+
+module Run = struct
+  let fst t = reduce (fst t)
+
+  let snd t = reduce (snd t)
+end

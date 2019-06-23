@@ -1,3 +1,6 @@
-def double n = 2 * n end
+def double n = 2. * n end
 
-print (double 5)
+# print (string (double 5.))
+
+double 5.
+builtin "fmul"
