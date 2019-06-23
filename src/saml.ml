@@ -27,7 +27,7 @@ let parse_file parse f =
         pos.Lexing.pos_fname
         pos.Lexing.pos_lnum
         (pos.Lexing.pos_cnum - pos.Lexing.pos_bol)
-    | Parsing.Parse_error ->
+    | Parser.Error | Parsing.Parse_error ->
       let pos = (Lexing.lexeme_end_p lexbuf) in
       error
         "Parsing error in file %s at word \"%s\", line %d, character %d."

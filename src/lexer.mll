@@ -72,6 +72,6 @@ rule token = parse
 
   (***** Non-meaningful characters *****)
   | space+ { token lexbuf }
-  | "#"[^'\n']* { token lexbuf }
-  | "\n" { Lexing.new_line lexbuf; (* PP_NEWLINE *) token lexbuf }
+  | "#"[^'\n']*"\n" { token lexbuf }
+  | "\n"+ { Lexing.new_line lexbuf; NEWLINE }
   | eof { EOF }

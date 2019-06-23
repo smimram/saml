@@ -41,7 +41,7 @@ and ffi =
   }
 (** An environment. *)
 and environment = (string * t) list
-type term = t
+type expr = t
 
 let tenv = ref ([] : T.environment)
 let env = ref ([] : environment)
@@ -86,7 +86,10 @@ let record ?pos r l =
 let unit ?pos () =
   record ?pos false []
 
-let ffi ?pos ?(eval=Fun.id) name a b =
+let pair ?pos a b =
+  record ?pos false ["a",a; "b",b]
+
+let ffi ?pos name ?(eval=fun _ -> error "Not implemented: %s" name) a b =
   let f =
     FFI
       {
@@ -97,6 +100,11 @@ let ffi ?pos ?(eval=Fun.id) name a b =
       }
   in
   make ?pos f
+
+let get_string t =
+  match t.desc with
+  | String s -> s
+  | _ -> assert false
 
 (** String representation of an expression. *)
 let rec to_string ~tab p e =
@@ -171,7 +179,7 @@ let type_error e s =
   Printf.ksprintf (fun s -> raise (Typing (e.pos, s))) s
 
 (** Check the type of an expression. *)
-let rec check level env e =
+let rec check level (env:T.environment) e =
   (* Printf.printf "infer_type:\n%s\n\n\n%!" (to_string e); *)
   (* Printf.printf "env: %s\n\n" (String.concat_map " , " (fun (x,(_,t)) -> x ^ ":" ^ T.to_string t) env.T.Env.t); *)
   let (<:) a b = if not (T.( <: ) a b) then error "%s has type %s but %s expected." (to_string e) (T.to_string a) (T.to_string b) in
@@ -250,13 +258,13 @@ let rec check level env e =
      let l = List.rev l in
      e.t >: T.record l
 
-let check = check 0 !tenv
+let check t = check 0 !tenv t
 
 (** Evaluate a term to a value *)
 let rec reduce env t =
   match t.desc with
   | Bool _ | Int _ | Float _ | String _ | FFI _ -> t
-  | Var x -> List.assoc x env
+  | Var x -> (try List.assoc x env with Not_found -> error "Unbound variable during reduction: %s" x)
   | Fun _ -> make ~pos:t.pos (Closure (env, t))
   | Closure (env, t) -> reduce env t
   | Let (pat, def, body) ->
@@ -271,7 +279,8 @@ let rec reduce env t =
        | Closure (env, {desc = Fun (pat, t)}) ->
           let env = reduce_pattern env pat u in
           reduce env t
-       | _ -> assert false
+       | FFI f -> f.ffi_eval u
+       | _ -> error "Unexpected term during application: %s" (to_string t)
      )
   | Seq (t, u) ->
      let _ = reduce env t in
@@ -304,4 +313,4 @@ and reduce_pattern env pat v =
      env'@env
   | _ -> assert false
 
-let reduce = reduce !env
+let reduce t = reduce !env t

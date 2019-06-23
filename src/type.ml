@@ -147,6 +147,15 @@ let rec ( <: ) (t1:t) (t2:t) =
     | UVar v1, UVar v2 when v1 == v2 -> true
     | UVar _, _ -> t2 <: t1
     | EVar v1, EVar v2 when v1 == v2 -> true
+    | _, EVar ({ contents = Level l } as x) ->
+       if occurs x t1 then false
+       else
+         (
+           update_level l t1;
+           if !Config.Debug.Typing.show_assignations then Printf.printf "%s <- %s\n%!" (to_string t2) (to_string t1);
+           x := Link t1;
+           true
+         )
     | EVar ({ contents = Level l } as x), _ ->
        if occurs x t2 then false
        else

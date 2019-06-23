@@ -18,7 +18,7 @@
 %token EQ PLUS MINUS UMINUS TIMES DIV POW
 %token EXPAND
 %token EOF
-%token PP_NEWLINE
+%token NEWLINE
 %token NOP
 %token <int> INT
 %token <float> FLOAT
@@ -27,6 +27,7 @@
 %token <string> STRING
 %token <string> VARIANT
 
+%nonassoc EQ
 %nonassoc ARR
 %right SEMICOLON
 %nonassoc THEN
@@ -43,6 +44,7 @@
 %nonassoc GET
 %nonassoc SET
 %left DOT
+%nonassoc IDENT BOOL INT FLOAT STRING
 
 %start prog
 %type <Lang.t> prog
@@ -54,27 +56,30 @@ prog:
   | exprs EOF { $1 }
 
 /* prog_ctx: */
-  /* | exprs_ctx EOF { $1 } */
+/* | exprs_ctx EOF { $1 } */
 
 expr:
+  | simple_expr { $1 }
+  | simple_expr expr { app ~pos:$loc $1 $2 }
+  | FUN pattern ARR expr { fct ~pos:$loc $2 $4 }
+
+simple_expr:
   | IDENT { var ~pos:$loc $1 }
   | BOOL { make ~pos:$loc (Bool $1) }
   | INT { make ~pos:$loc (Int $1) }
   | FLOAT { make ~pos:$loc (Float $1) }
   | STRING { make ~pos:$loc (String $1) }
-  /* | expr expr { app ~pos:$loc $1 $2 } */
-  | FUN pattern ARR expr { fct ~pos:$loc $2 $4 }
   | LPAR expr RPAR { $2 }
   | BEGIN exprs END { $2 }
   | MODULE simple_decl_list END { record ~pos:$loc true $2 }
+  /* | expr TIMES expr { "fmul" (record ~pos:$loc ["",$1; "",$3]) } */
 /*
-  | BUILTIN LPAR STRING RPAR { Builtin.get ~pos:(defpos None) $3 }
   | expr DOT IDENT { mk_field $1 $3 }
   | expr LARR expr RARR { mk_bapp "array_get" [$1; $3] }
   | expr PLUS expr { mk_bapp "fadd" [$1; $3] }
   | expr MINUS expr { mk_bapp "fsub" [$1; $3] }
   | UMINUS expr { mk_bapp "fsub" [mk_val (Float 0.); $2] }
-  | expr TIMES expr { mk_bapp "fmul" [$1; $3] }
+
   | expr DIV expr { mk_bapp "fdiv" [$1; $3] }
   | expr LE expr { mk_bapp "fle" [$1; $3] }
   | expr GE expr { mk_bapp "fle" [$3; $1] }
@@ -103,9 +108,9 @@ elif:
 
 exprs:
   | expr { $1 }
-  | expr exprs { seq ~pos:$loc $1 $2 }
+  | expr NEWLINE exprs { seq ~pos:$loc $1 $3 }
   | decl { letin ~pos:$loc $1 (unit ~pos:$loc ()) }
-  | decl exprs { letin ~pos:$loc $1 $2 }
+  | decl NEWLINE exprs { letin ~pos:$loc $1 $3 }
 //| INCLUDE LPAR STRING RPAR exprs { (parse_file_ctx $3) $5 }
 
 // An expression context, this is used for includes
