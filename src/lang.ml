@@ -225,7 +225,8 @@ let rec check level (env:T.environment) e =
   | FFI f -> e >: T.arr f.ffi_itype f.ffi_otype
   | Var x ->
      let t = try List.assoc x env with Not_found -> type_error e "Unbound variable %s." x in
-     e >: T.instantiate level t
+     (* e >: T.instantiate level t; *)
+     e >: t
   | Seq (e1, e2) ->
      check level env e1;
      e1 <: T.unit ();
