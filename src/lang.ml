@@ -61,6 +61,12 @@ let make ?(pos=dummy_pos) ?t e =
 
 let var ?pos s = make ?pos (Var s)
 
+let args_name = "args"
+
+let args_pattern = PVar args_name
+
+let args ?pos () = var ?pos args_name
+
 let bool ?pos b = make ?pos (Bool b)
 
 let float ?pos x = make ?pos (Float x)
@@ -102,6 +108,9 @@ let ffi ?pos name ?(eval=fun _ -> error "Not implemented: %s" name) a b =
       }
   in
   make ?pos f
+
+let closure ?pos env t =
+  make ?pos (Closure (env, t))
 
 (** String representation of an expression. *)
 let rec to_string ~tab p e =
@@ -278,6 +287,7 @@ let check t = check 0 !tenv t
 
 (** Evaluate a term to a value *)
 let rec reduce env t =
+  (* Printf.printf "reduce: %s\n\n%!" (to_string t); *)
   match t.desc with
   | Bool _ | Int _ | Float _ | String _ | FFI _ -> t
   | Var x -> (try List.assoc x env with Not_found -> error "Unbound variable during reduction: %s" x)
@@ -292,8 +302,10 @@ let rec reduce env t =
      let t = reduce env t in
      (
        match t.desc with
-       | Closure (env, {desc = Fun (pat, t)}) ->
-          let env = reduce_pattern env pat u in
+       | Closure (env', {desc = Fun (pat, t)}) ->
+          let env' = reduce_pattern [] pat u in
+          let t = closure env' t in
+          let t = letin args_pattern u t in
           reduce env t
        | FFI f -> f.ffi_eval u
        | _ -> error "Unexpected term during application: %s" (to_string t)

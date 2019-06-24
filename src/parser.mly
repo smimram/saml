@@ -45,7 +45,7 @@ n:
   | { () }
 
 prog:
-  | exprs EOF { $1 }
+  | n exprs EOF { $2 }
 
 /* prog_ctx: */
 /* | exprs_ctx EOF { $1 } */

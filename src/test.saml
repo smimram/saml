@@ -1,15 +1,19 @@
-include "builtin.saml"
-include "pervasives.saml"
+# include "builtin.saml"
+# include "pervasives.saml"
 
-def id x = x end
+# def id x = x end
 # print (id "x")
 # print (string (id 3))
 
-r = (a=1, b=2.)
+# r = (a=1, b=2.)
 # def f x = if x then "a" else "b" end end
 
 # print = builtin "print"
 
-m = module
-  def f x = x end
-end
+# m = module
+  # def f x = x end
+# end
+
+def double x = 2. * x end
+
+double 5.
