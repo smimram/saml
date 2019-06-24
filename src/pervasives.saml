@@ -1,6 +1,13 @@
-#sdf
-def println x =
-  print x
-  print "\n"
+def id x = x end
+
+string = module
+  print = builtin "print"
+
+  def println x =
+    print x
+    print "\n"
+  end
+
+  repr = builtin "repr"
 end
-x=6
+

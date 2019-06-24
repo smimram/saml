@@ -76,7 +76,7 @@ simple_expr:
   | LPAR expr RPAR { $2 }
   | BEGIN exprs END { $2 }
   | LPAR simple_decl_list RPAR { record ~pos:$loc $2 }
-  | MODULE simple_decl_list END { record ~pos:$loc ~recursive:true $2 }
+  | MODULE n simple_decl_list END { record ~pos:$loc ~recursive:true $3 }
   | simple_expr DOT IDENT { field ~pos:$loc $3 $1 }
   | BUILTIN STRING { Builtin.get ~pos:$loc $2 }
   | simple_expr PLUS simple_expr { app ~pos:$loc (Builtin.get ~pos:$loc "fadd") (pair ~pos:$loc $1 $3) }
@@ -126,23 +126,24 @@ exprs_ctx:
 
 simple_decl:
   | IDENT EQ expr { $1, $3 }
+  | DEF IDENT pattern EQ n exprs END { $2, fct ~pos:$loc $3 $6 }
 
 simple_decl_list:
   | { [] }
   | simple_decls { $1 }
 
 simple_decls:
-  | simple_decl { [$1] }
+  | simple_decl n { [$1] }
   | simple_decl COMMA simple_decls { $1::$3 }
+  | simple_decl NEWLINE simple_decls { $1::$3 }
 
 decl:
   | simple_decl { let x, v = $1 in PVar x, v }
   | LET pattern EQ expr { $2, $4 }
   | DEF pattern EQ n exprs END { $2, $5 }
-  | DEF IDENT pattern EQ n exprs END { PVar $2, fct ~pos:$loc $3 $6 }
 
-decls:
-  | decl decls { $1::$2 }
+decl_list:
+  | decl n decl_list { $1::$3 }
   | { [] }
 
 pattern:

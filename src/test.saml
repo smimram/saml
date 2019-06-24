@@ -6,4 +6,10 @@ def id x = x end
 # print (string (id 3))
 
 r = (a=1, b=2.)
-def f x = if x then "a" else "b" end end
+# def f x = if x then "a" else "b" end end
+
+# print = builtin "print"
+
+m = module
+  def f x = x end
+end

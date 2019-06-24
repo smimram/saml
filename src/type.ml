@@ -21,6 +21,7 @@ and desc =
       universal variables. *)
   | Arr of t * t
   | Record of (string * t) list
+  | Ptr of t (** Pointer to a memory cell of given type. *)
 and evar = evar_contents ref
 (** Contents of a variable. *)
 and evar_contents =
