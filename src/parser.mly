@@ -6,7 +6,7 @@
       letin ~pos pat def body
 %}
 
-%token DEF LET BEGIN END FUN ARR DOT
+%token DEF LET BEGIN END FUN ARR DOT PIPE
 %token MODULE BUILTIN INCLUDE
 %token REF GET SET UNREF DT UNDT
 %token FOR WHILE TO DO DONE
@@ -43,7 +43,7 @@
 %nonassoc UMINUS
 %nonassoc GET
 %nonassoc SET
-%left DOT
+%left DOT PIPE
 %nonassoc IDENT BOOL INT FLOAT STRING
 
 %start prog
@@ -77,7 +77,7 @@ simple_expr:
   | BEGIN exprs END { $2 }
   | LPAR simple_decl_list RPAR { record ~pos:$loc $2 }
   | MODULE n simple_decl_list END { record ~pos:$loc ~recursive:true $3 }
-  | simple_expr DOT IDENT { field ~pos:$loc $3 $1 }
+  | simple_expr PIPE IDENT { field ~pos:$loc $3 $1 }
   | BUILTIN STRING { Builtin.get ~pos:$loc $2 }
   | simple_expr PLUS simple_expr { app ~pos:$loc (Builtin.get ~pos:$loc "fadd") (pair ~pos:$loc $1 $3) }
   | simple_expr MINUS simple_expr { app ~pos:$loc (Builtin.get ~pos:$loc "fsub") (pair ~pos:$loc $1 $3) }

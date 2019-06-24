@@ -8,6 +8,7 @@ string = module
     print "\n"
   end
 
+  # String representation of any value
   repr = builtin "repr"
 end
 
