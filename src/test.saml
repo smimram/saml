@@ -2,5 +2,6 @@ string = builtin "string"
 print = builtin "print"
 
 def id x = x end
-print (id "x")
-print (string (id 3))
+# print (id "x")
+# print (string (id 3))
+id

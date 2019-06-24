@@ -179,16 +179,13 @@ let rec ( <: ) (t1:t) (t2:t) =
 
 (** Generalize existential variable to universal ones. *)
 let rec generalize level t =
-  let desc =
-    match (unvar t).desc with
-    | UVar v -> UVar v
-    | EVar { contents = Level l } as t -> if l <= level then t else (uvar ()).desc
-    | EVar { contents = Link _ } -> assert false
-    | Arr (a, b) -> Arr (generalize level a, generalize level b)
-    | Record l -> Record (List.map (fun (x,t) -> x , generalize level t) l)
-    | Bool | Int | Float | String as t -> t
-  in
-  { desc }
+  match (unvar t).desc with
+  | UVar v -> ()
+  | EVar ({ contents = Level l } as x) -> if l > level then x := Link (uvar ())
+  | EVar { contents = Link _ } -> assert false
+  | Arr (a, b) -> generalize level a; generalize level b
+  | Record l -> List.iter (fun (_,t) -> generalize level t) l
+  | Bool | Int | Float | String -> ()
 
 (** Instantiate a type scheme: replace universally quantified variables with
     fresh variables. *)

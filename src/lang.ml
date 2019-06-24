@@ -193,7 +193,7 @@ let rec check level (env:T.environment) e =
   (* Printf.printf "env: %s\n\n" (String.concat_map " , " (fun (x,(_,t)) -> x ^ ":" ^ T.to_string t) env.T.Env.t); *)
   let (<:) e a = if not (T.( <: ) e.t a) then error "%s: %s has type %s but %s expected." (Common.string_of_pos e.pos) (to_string e) (T.to_string e.t) (T.to_string a) in
   let (>:) e a = if not (T.( <: ) a e.t) then error "%s: %s has type %s but %s expected." (Common.string_of_pos e.pos) (to_string e) (T.to_string e.t) (T.to_string a) in
-  let type_of_pattern env = function
+  let type_of_pattern level env = function
     | PVar x ->
        let a = T.evar level in
        let env = (x,a)::env in
@@ -225,7 +225,7 @@ let rec check level (env:T.environment) e =
   | FFI f -> e >: T.arr f.ffi_itype f.ffi_otype
   | Var x ->
      let t = try List.assoc x env with Not_found -> type_error e "Unbound variable %s." x in
-     (* e >: T.instantiate level t; *)
+     e >: T.instantiate level t;
      e >: t
   | Seq (e1, e2) ->
      check level env e1;
@@ -234,19 +234,24 @@ let rec check level (env:T.environment) e =
      e >: e2.t
   | Let (pat,def,body) ->
      check (level+1) env def;
-     let env, a = type_of_pattern env pat in
+     let env, a = type_of_pattern (level+1) env pat in
      def >: a;
      let env =
        (* Generalize the bound variables. *)
        (List.map
-          (fun x -> x, T.generalize level (List.assoc x env))
+          (fun x ->
+            let t = List.assoc x env in
+            Printf.printf "generalize %s: %s\n%!" x (T.to_string t);
+            T.generalize level t;
+            Printf.printf "generalized  : %s\n%!" (T.to_string t);
+            x, t)
           (pattern_variables pat)
        )@env
      in
      check level env body;
      e >: body.t
   | Fun (pat,v) ->
-     let env, a = type_of_pattern env pat in
+     let env, a = type_of_pattern level env pat in
      check level env v;
      e >: T.arr a v.t
   | Closure _ -> assert false
