@@ -25,10 +25,15 @@ let () =
 let () =
   register "string" ~eval:(fun t -> E.string (E.to_string t)) (T.uvar ()) (T.string ())
 
+(* Control *)
+let () =
+  let a = T.uvar () in
+  register "ite" (T.record ["if", T.bool (); "then", T.arr (T.unit ()) a; "else", T.arr (T.unit ()) a]) a
+
 (* IO *)
 let () =
   register "print" ~eval:(fun t -> print_string (E.get_string t); E.unit ()) (T.string ()) (T.unit ())
 
 let get ?pos name =
-  let t = List.assoc name !builtins in
+  let t = try List.assoc name !builtins with Not_found -> failwith ("Builtin not implemented: "^name^".") in
   E.make ?pos t.desc

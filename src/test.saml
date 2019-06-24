@@ -4,4 +4,6 @@ print = builtin "print"
 def id x = x end
 # print (id "x")
 # print (string (id 3))
-id
+
+r = (a=1, b=2.)
+def f x = if x then "a" else "b" end end

@@ -69,21 +69,23 @@ let string ?pos x = make ?pos (String x)
 
 let fct ?pos args e = make ?pos (Fun (args, e))
 
+let ufun ?pos e = fct ?pos (PRecord []) e
+
 let app ?pos f x = make ?pos (App (f, x))
 
 let seq ?pos e1 e2 = make ?pos (Seq (e1, e2))
 
 let letin ?pos pat def body = make ?pos (Let (pat, def, body))
 
-let record ?pos r l = make ?pos (Record (r, l))
+let record ?pos ?(recursive=false) l = make ?pos (Record (recursive, l))
 
 let field ?pos l r =
   let f = fct ?pos(PRecord [l,l,None]) (var ?pos l) in
   app ?pos f r
 
-let unit ?pos () = record ?pos false []
+let unit ?pos () = record ?pos []
 
-let pair ?pos x y = record ?pos false ["x",x; "y",y]
+let pair ?pos x y = record ?pos ["x",x; "y",y]
 
 let fst ?pos r = field ?pos "x" r
 
@@ -155,8 +157,7 @@ and string_of_pattern ~tab = function
              | Some v -> "="^to_string ~tab:(tab+1) false v
              | None -> ""
            in
-           (* TODO: optionally display x *)
-           Printf.sprintf "%s%s" l v) l
+           Printf.sprintf "%s[%s]%s" l x v) l
      in
      let l = String.concat ", " l in
      Printf.sprintf "(%s)" l
@@ -222,7 +223,8 @@ let rec check level (env:T.environment) e =
   | Int _ -> e >: T.int ()
   | Float _ -> e >: T.float ()
   | String _ -> e >: T.string ()
-  | FFI f -> e >: T.arr f.ffi_itype f.ffi_otype
+  | FFI f ->
+     e >: T.instantiate level (T.arr f.ffi_itype f.ffi_otype)
   | Var x ->
      let t = try List.assoc x env with Not_found -> type_error e "Unbound variable %s." x in
      e >: T.instantiate level t

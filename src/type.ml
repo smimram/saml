@@ -170,7 +170,7 @@ let rec ( <: ) (t1:t) (t2:t) =
     | Arr (a, b), Arr (a', b') ->
        a' <: a && b <: b'
     | Record l1, Record l2 ->
-       List.for_all (fun (x,t) -> t <: List.assoc x l2) l1
+       (try List.for_all (fun (x,t) -> t <: List.assoc x l1) l2 with Not_found -> false)
     | Bool, Bool
     | Int, Int
     | Float, Float

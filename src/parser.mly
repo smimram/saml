@@ -75,16 +75,18 @@ simple_expr:
   | STRING { make ~pos:$loc (String $1) }
   | LPAR expr RPAR { $2 }
   | BEGIN exprs END { $2 }
-  | MODULE simple_decl_list END { record ~pos:$loc true $2 }
+  | LPAR simple_decl_list RPAR { record ~pos:$loc $2 }
+  | MODULE simple_decl_list END { record ~pos:$loc ~recursive:true $2 }
+  | simple_expr DOT IDENT { field ~pos:$loc $3 $1 }
   | BUILTIN STRING { Builtin.get ~pos:$loc $2 }
+  | simple_expr PLUS simple_expr { app ~pos:$loc (Builtin.get ~pos:$loc "fadd") (pair ~pos:$loc $1 $3) }
+  | simple_expr MINUS simple_expr { app ~pos:$loc (Builtin.get ~pos:$loc "fsub") (pair ~pos:$loc $1 $3) }
   | simple_expr TIMES simple_expr { app ~pos:$loc (Builtin.get ~pos:$loc "fmul") (pair ~pos:$loc $1 $3) }
+  | simple_expr DIV simple_expr { app ~pos:$loc (Builtin.get ~pos:$loc "fdiv") (pair ~pos:$loc $1 $3) }
+  | UMINUS simple_expr { app ~pos:$loc (Builtin.get ~pos:$loc "fsub") (pair ~pos:$loc (float 0.) $2) }
+  | IF expr THEN exprs elif END { app ~pos:$loc (Builtin.get ~pos:$loc "ite") (record ~pos:$loc ["if",$2; "then", ufun ~pos:$loc $4; "else", ufun ~pos:$loc $5]) }
+
 /*
-  | expr DOT IDENT { mk_field $1 $3 }
-  | expr LARR expr RARR { mk_bapp "array_get" [$1; $3] }
-  | expr PLUS expr { mk_bapp "fadd" [$1; $3] }
-  | expr MINUS expr { mk_bapp "fsub" [$1; $3] }
-  | UMINUS expr { mk_bapp "fsub" [mk_val (Float 0.); $2] }
-  | expr DIV expr { mk_bapp "fdiv" [$1; $3] }
   | expr LE expr { mk_bapp "fle" [$1; $3] }
   | expr GE expr { mk_bapp "fle" [$3; $1] }
   | expr LT expr { mk_bapp "flt" [$1; $3] }
@@ -94,21 +96,17 @@ simple_expr:
   | expr BOR expr { mk_bapp "or" [$1; $3] }
   | BNOT expr { mk_bapp "not" [$2] }
   | REF LPAR expr RPAR { mk (Monadic (Ref $3)) }
-  | IDENT_LPAR apps RPAR { mk_app (ident $1) $2 }
-  | expr DOT IDENT_LPAR apps RPAR { mk_app (mk_field $1 $3) $4 }
-  | UNREF LPAR expr RPAR { mk (Monadic (RefFun $3)) }
-  | UNDT LPAR expr RPAR { mk (Monadic (DtFun $3)) }
   | LACC decls RACC { mk (Record (false, $2)) }
   | expr LARR expr RARR SET expr { mk_bapp "array_set" [$1; $3; $6] }
   | FOR IDENT EQ expr TO expr DO expr DONE { mk (For ($2, $4, $6, $8)) }
   | WHILE expr DO exprs DONE { mk (While ($2, $4)) }
-  | IF expr THEN exprs elif END { mk (If ($2, $4, $5)) }
+*/
 
 elif:
   | { unit () }
   | ELSE exprs { $2 }
-  | ELIF exprs THEN exprs elif { mk (If ($2, $4, $5)) }
-*/
+  /* | ELIF exprs THEN exprs elif { mk (If ($2, $4, $5)) } */
+
 
 exprs:
   | expr n { $1 }
