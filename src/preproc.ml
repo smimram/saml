@@ -1,5 +1,31 @@
 (** Preprocessing on files. *)
 
+let rec includer tokenizer =
+  let queue = ref [] in
+  let state = ref false in
+  let rec token lexbuf =
+    match !queue with
+    | (lbuf,ic)::q ->
+       begin
+         match (includer Lexer.token) lbuf with
+         | Parser.EOF -> close_in ic; queue := q; token lexbuf
+         | x -> x
+       end
+    | [] ->
+       begin
+         match tokenizer lexbuf with
+         | Parser.INCLUDE -> state := true; token lexbuf
+         | Parser.STRING s when !state ->
+            state := false;
+            let ic = open_in s in
+            let lbuf = Lexing.from_channel ic in
+            queue := (lbuf, ic) :: !queue;
+            token lexbuf
+         | x -> state := false; x
+       end
+  in
+  token
+
 (*
 (* Remove the new lines and merge IDENT LPAR into IDENT_LPAR if they are not
    separated by a newline. This is necessary to distinguish f(3), a function
@@ -39,7 +65,6 @@ let merge_newlines tokenizer =
        x
   in
   token
-  
 
 (* The usual trick for uminus in yacc does not work with our syntax. *)
 let uminus tokenizer =
@@ -56,5 +81,6 @@ let uminus tokenizer =
 let token =
   let (+) f g = g f in
   Lexer.token
+  + includer
   + merge_newlines
   + uminus

@@ -113,7 +113,7 @@ exprs:
   | expr NEWLINE exprs { seq ~pos:$loc $1 $3 }
   | decl n { letin ~pos:$loc $1 (unit ~pos:$loc ()) }
   | decl NEWLINE exprs { letin ~pos:$loc $1 $3 }
-//| INCLUDE LPAR STRING RPAR exprs { (parse_file_ctx $3) $5 }
+  /* | INCLUDE STRING NEWLINE exprs { (parse_file_ctx $3) $5 } */
 
 // An expression context, this is used for includes
 /*                                                 
