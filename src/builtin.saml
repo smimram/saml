@@ -1,5 +1,3 @@
-print = builtin("print")
-pi = builtin("pi")
-pi = pi()
-sin = builtin("sin")
-pow = builtin("pow")
+string = builtin "string"
+
+print = builtin "print"

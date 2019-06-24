@@ -1,0 +1,5 @@
+print = builtin("print")
+pi = builtin("pi")
+pi = pi()
+sin = builtin("sin")
+pow = builtin("pow")
