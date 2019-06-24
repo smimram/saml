@@ -240,9 +240,9 @@ let rec check level (env:T.environment) e =
        (List.map
           (fun x ->
             let t = List.assoc x env in
-            Printf.printf "generalize %s: %s\n%!" x (T.to_string t);
+            (* Printf.printf "generalize %s: %s\n%!" x (T.to_string t); *)
             T.generalize level t;
-            Printf.printf "generalized  : %s\n%!" (T.to_string t);
+            (* Printf.printf "generalized  : %s\n%!" (T.to_string t); *)
             x, t)
           (pattern_variables pat)
        )@env
