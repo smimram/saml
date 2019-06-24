@@ -1,4 +1,1 @@
-def printnl(x) =
-  print(x)
-  print("\n")
-end
+x = 56

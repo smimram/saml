@@ -1,5 +1,4 @@
 {
-  open Stdlib
   open Lexing
   open Parser
 }

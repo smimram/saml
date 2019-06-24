@@ -1,4 +1,4 @@
-include "builtin.saml"
+include "pervasives.saml"
 
 def id x = x end
 # print (id "x")
