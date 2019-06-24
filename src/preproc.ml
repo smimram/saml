@@ -18,7 +18,8 @@ let rec includer tokenizer =
          | Parser.STRING s when !state ->
             state := false;
             let ic = open_in s in
-            let lbuf = Lexing.from_channel ic in
+            let lbuf = Lexing.from_channel ~with_positions:true ic in
+            lbuf.lex_curr_p <- { lbuf.lex_curr_p with pos_fname = s };
             queue := (lbuf, ic) :: !queue;
             token lexbuf
          | x -> state := false; x

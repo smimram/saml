@@ -138,8 +138,8 @@ simple_decls:
 decl:
   | simple_decl { let x, v = $1 in PVar x, v }
   | LET pattern EQ expr { $2, $4 }
-  | DEF pattern EQ exprs END { $2, $4 }
-  | DEF IDENT pattern EQ exprs END { PVar $2, fct ~pos:$loc $3 $5 }
+  | DEF pattern EQ n exprs END { $2, $5 }
+  | DEF IDENT pattern EQ n exprs END { PVar $2, fct ~pos:$loc $3 $6 }
 
 decls:
   | decl decls { $1::$2 }

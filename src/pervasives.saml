@@ -1,1 +1,6 @@
-x = 56
+#sdf
+def println x =
+  print x
+  print "\n"
+end
+x=6

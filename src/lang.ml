@@ -137,7 +137,7 @@ let rec to_string ~tab p e =
      in
      let body = to_string ~tab false body in
      if !Config.Debug.Lang.show_let then
-       pa p (Printf.sprintf "let %s =%s in\n%s%s" pat def (tabs ()) body)
+       pa p (Printf.sprintf "let %s =%s%s\n%s%s" pat def (if String.contains def '\n' then "\n"^tabs()^"in" else "in") (tabs ()) body)
      else
        pa p (Printf.sprintf "%s =%s\n%s%s" pat def (tabs ()) body)
   | Record (r,l) ->
