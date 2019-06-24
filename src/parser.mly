@@ -84,23 +84,15 @@ simple_expr:
   | simple_expr TIMES simple_expr { app ~pos:$loc (Builtin.get ~pos:$loc "fmul") (pair ~pos:$loc $1 $3) }
   | simple_expr DIV simple_expr { app ~pos:$loc (Builtin.get ~pos:$loc "fdiv") (pair ~pos:$loc $1 $3) }
   | UMINUS simple_expr { app ~pos:$loc (Builtin.get ~pos:$loc "fsub") (pair ~pos:$loc (float 0.) $2) }
+  | simple_expr LE simple_expr { app ~pos:$loc (Builtin.get ~pos:$loc "fle") (pair ~pos:$loc $1 $3) }
+  | simple_expr GE simple_expr { app ~pos:$loc (Builtin.get ~pos:$loc "fge") (pair ~pos:$loc $1 $3) }
+  | simple_expr LT simple_expr { app ~pos:$loc (Builtin.get ~pos:$loc "flt") (pair ~pos:$loc $1 $3) }
+  | simple_expr GT simple_expr { app ~pos:$loc (Builtin.get ~pos:$loc "fgt") (pair ~pos:$loc $1 $3) }
+  | simple_expr CMP simple_expr { app ~pos:$loc (Builtin.get ~pos:$loc "feq") (pair ~pos:$loc $1 $3) }
+  | simple_expr BAND simple_expr { app ~pos:$loc (Builtin.get ~pos:$loc "and") (pair ~pos:$loc $1 $3) }
+  | simple_expr BOR simple_expr { app ~pos:$loc (Builtin.get ~pos:$loc "or") (pair ~pos:$loc $1 $3) }
+  | BNOT simple_expr { app ~pos:$loc (Builtin.get ~pos:$loc "not") $2 }
   | IF expr THEN exprs elif END { app ~pos:$loc (Builtin.get ~pos:$loc "ite") (record ~pos:$loc ["if",$2; "then", ufun ~pos:$loc $4; "else", ufun ~pos:$loc $5]) }
-
-/*
-  | expr LE expr { mk_bapp "fle" [$1; $3] }
-  | expr GE expr { mk_bapp "fle" [$3; $1] }
-  | expr LT expr { mk_bapp "flt" [$1; $3] }
-  | expr GT expr { mk_bapp "flt" [$3; $1] }
-  | expr CMP expr { mk_bapp "feq" [$1; $3] }
-  | expr BAND expr { mk_bapp "and" [$1; $3] }
-  | expr BOR expr { mk_bapp "or" [$1; $3] }
-  | BNOT expr { mk_bapp "not" [$2] }
-  | REF LPAR expr RPAR { mk (Monadic (Ref $3)) }
-  | LACC decls RACC { mk (Record (false, $2)) }
-  | expr LARR expr RARR SET expr { mk_bapp "array_set" [$1; $3; $6] }
-  | FOR IDENT EQ expr TO expr DO expr DONE { mk (For ($2, $4, $6, $8)) }
-  | WHILE expr DO exprs DONE { mk (While ($2, $4)) }
-*/
 
 elif:
   | { unit () }
