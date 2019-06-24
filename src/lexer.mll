@@ -7,7 +7,6 @@ let space = ' ' | '\t' | '\r'
 
 rule token = parse
   (***** Symbols *****)
-  | "?" { MAYBE }
   | "=" { EQ }
   | "<=" { LE }
   | ">=" { GE }
@@ -16,8 +15,6 @@ rule token = parse
   | "==" { CMP }
   | "&&" { BAND }
   | "||" { BOR }
-  | ":=" { SET }
-  | "!" { GET }
   | "," { COMMA }
   | ";" { SEMICOLON }
   | ":" { COLON }
@@ -47,7 +44,6 @@ rule token = parse
   | "then" { THEN }
   | "else" { ELSE }
   | "elseif" { ELIF }
-  | "ref" { REF }
   | "for" { FOR }
   | "to" { TO }
   | "while" { WHILE }
@@ -57,12 +53,7 @@ rule token = parse
   | "builtin" { BUILTIN }
   | "not" { BNOT }
   | "include" { INCLUDE }
-  | "expand" { EXPAND }
-  | "dt" { DT }
-  | "unref" { UNREF }
-  | "undt" { UNDT }
   | "fun" { FUN }
-  | "nop" { NOP }
 
   (***** Identifiers *****)
   | (['_''a'-'z''A'-'Z']['a'-'z''A'-'Z''0'-'9''_']*['\'']* as str) { IDENT str }

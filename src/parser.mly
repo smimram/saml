@@ -8,30 +8,21 @@
 
 %token DEF LET BEGIN END FUN ARR DOT PIPE
 %token MODULE BUILTIN INCLUDE
-%token REF GET SET UNREF DT UNDT
 %token FOR WHILE TO DO DONE
 %token CMP LE GE LT GT
 %token BAND BOR BNOT
 %token IF THEN ELSE ELIF
 %token LPAR RPAR LARR RARR LACC RACC
-%token SEMICOLON COLON COMMA MAYBE
+%token SEMICOLON COLON COMMA
 %token EQ PLUS MINUS UMINUS TIMES DIV POW
-%token EXPAND
 %token EOF
 %token NEWLINE
-%token NOP
 %token <int> INT
 %token <float> FLOAT
 %token <bool> BOOL
 %token <string> IDENT IDENT_LPAR
 %token <string> STRING
-%token <string> VARIANT
 
-%nonassoc EQ
-%nonassoc ARR
-%right SEMICOLON
-%nonassoc THEN
-%nonassoc ELSE
 %right BOR
 %right BAND
 %nonassoc BNOT
@@ -41,10 +32,7 @@
 %left PLUS MINUS
 %left TIMES DIV
 %nonassoc UMINUS
-%nonassoc GET
-%nonassoc SET
-%left DOT PIPE
-%nonassoc IDENT BOOL INT FLOAT STRING
+%left PIPE
 
 %start prog
 %type <Lang.t> prog
@@ -93,11 +81,12 @@ simple_expr:
   | simple_expr BOR simple_expr { app ~pos:$loc (Builtin.get ~pos:$loc "or") (pair ~pos:$loc $1 $3) }
   | BNOT simple_expr { app ~pos:$loc (Builtin.get ~pos:$loc "not") $2 }
   | IF expr THEN exprs elif END { app ~pos:$loc (Builtin.get ~pos:$loc "ite") (record ~pos:$loc ["if",$2; "then", ufun ~pos:$loc $4; "else", ufun ~pos:$loc $5]) }
+  | WHILE expr DO exprs DONE { app ~pos:$loc (Builtin.get ~pos:$loc "while") (record ~pos:$loc ["cond",$2; "body", ufun ~pos:$loc $4]) }
 
 elif:
   | { unit () }
   | ELSE exprs { $2 }
-  /* | ELIF exprs THEN exprs elif { mk (If ($2, $4, $5)) } */
+  | ELIF exprs THEN exprs elif { app ~pos:$loc (Builtin.get ~pos:$loc "ite") (record ~pos:$loc ["if",$2; "then", ufun ~pos:$loc $4; "else", ufun ~pos:$loc $5]) }
 
 
 exprs:
@@ -108,13 +97,11 @@ exprs:
   /* | INCLUDE STRING NEWLINE exprs { (parse_file_ctx $3) $5 } */
 
 // An expression context, this is used for includes
-/*                                                 
 exprs_ctx:
   | { fun e -> e }
   | expr exprs_ctx { fun e -> mk_seq $1 ($2 e) }
   | decl exprs_ctx { fun e -> mk_let $1 ($2 e) }
-  | INCLUDE LPAR STRING RPAR exprs_ctx { fun e -> (parse_file_ctx $3) ($5 e) }
-*/
+  /* | INCLUDE LPAR STRING RPAR exprs_ctx { fun e -> (parse_file_ctx $3) ($5 e) } */
 
 simple_decl:
   | IDENT EQ expr { $1, $3 }
