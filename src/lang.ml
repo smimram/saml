@@ -25,13 +25,14 @@ and desc =
   | Let of pattern * t * t (** A variable declaration. *)
   | App of t * t
   | Seq of t * t
-  | Record of bool * (string * t) list
+  | Record of record
   (** A record, the boolean indicates whether it is recursive (= a module) or
      not (normal forms are never recursive). *)
   | Closure of environment * t (** A closure. *)
 and pattern =
   | PVar of string
   | PRecord of (string * string * t option) list (** A record pattern: label, variable, default value. *)
+and record = bool * (string * t) list
 and ffi =
   {
     ffi_name : string;
