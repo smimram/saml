@@ -20,7 +20,7 @@ and descr =
   | Fun of string list * t (** A function with given arguments. *)
   | FFI of ffi
   | Let of string * t * t (** A variable declaration. *)
-  | App of t * t
+  | App of t * t list
   | Seq of t * t
 and ffi =
   {
@@ -83,8 +83,8 @@ let rec to_string ~tab p e =
     pa p (Printf.sprintf "fun (%s) ->%s%s" args (if String.contains e '\n' then ("\n"^(tabs ~tab:(tab+1) ())) else " ") e)
   | App (e, a) ->
     let e = to_string ~tab true e in
-    let a = to_string ~tab:(tab+1) true a in
-    pa p (Printf.sprintf "%s %s" e a)
+    let a = List.map (to_string ~tab:(tab+1) false) a |> String.concat ", " in
+    pa p (Printf.sprintf "%s(%s)" e a)
   | Seq (e1, e2) ->
     let e1 = to_string ~tab false e1 in
     let e2 = to_string ~tab false e2 in
@@ -146,17 +146,17 @@ let rec check level (env:T.env) e =
     e >: body.t
   | Fun (args,v) ->
     let targs = List.map (fun x -> x, T.var level) args in 
-    let env = ()@env in
+    let env = (List.map (fun (x,t) -> x,([],t)) targs)@env in
     check level env v;
-    e >: T.arr targs v.t
+    e >: T.arr (List.map snd targs) v.t
   | App (f, v) ->
-    let b = T.evar level in
+    let b = T.var level in
     check level env f;
-    check level env v;
-    f <: T.arr v.t b;
+    List.iter (check level env) v;
+    f <: T.arr (List.map (fun v -> v.t) v) b;
     e >: b
 
-let check t = check 0 !tenv t
+let check env t = check 0 env t
 
 (** Evaluate a term to a value *)
 let rec reduce env t =
