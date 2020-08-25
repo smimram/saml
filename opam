@@ -1,0 +1,20 @@
+opam-version: "2.0"
+name: "saml"
+version: "~dev"
+synopsis: "A compiler for sound generators and processors"
+maintainer: "Samuel Mimram <smimram@gmail.com>"
+authors: "Samuel Mimram <smimram@gmail.com>"
+license: "GPL-2.0"
+homepage: "https://github.com/smimram/saml"
+bug-reports: "https://github.com/smimram/saml/issues"
+depends: [
+  "ocamlfind"
+  "alsa" {>= "0.3.0"}
+  "lo"
+  "graphics"
+]
+build: [
+  [make]
+]
+install: [make "install"]
+dev-repo: "git+https://github.com/smimram/saml.git"
