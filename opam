@@ -9,9 +9,7 @@ homepage: "https://github.com/smimram/saml"
 bug-reports: "https://github.com/smimram/saml/issues"
 depends: [
   "ocamlfind"
-  "alsa" {>= "0.3.0"}
-  "lo"
-  "graphics"
+  "pulseaudio"
 ]
 build: [
   [make]
