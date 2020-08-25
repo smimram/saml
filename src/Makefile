@@ -6,6 +6,9 @@ PACKS = pulseaudio
 all: dnc
 	./saml test.saml
 
+install:
+	cp saml $(PREFIX)/bin
+
 ci:
 	git ci . -m "Progress on SAML."
 	git push

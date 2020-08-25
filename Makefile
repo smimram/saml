@@ -1,2 +1,2 @@
-all clean:
+all install clean:
 	make -C src $@
