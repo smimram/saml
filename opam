@@ -16,5 +16,5 @@ depends: [
 build: [
   [make]
 ]
-install: [make "install"]
+install: [make "install" "PREFIX=%{prefix}%"]
 dev-repo: "git+https://github.com/smimram/saml.git"
