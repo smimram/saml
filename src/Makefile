@@ -2,6 +2,7 @@ SOURCES = extralib.ml common.ml config.ml type.ml lang.ml builtin.ml parser.mly 
 RESULT = saml
 OCAMLYACC = menhir
 PACKS = pulseaudio
+ANNOTATE = true
 
 all: dnc
 	./saml test.saml
