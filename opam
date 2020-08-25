@@ -9,6 +9,7 @@ homepage: "https://github.com/smimram/saml"
 bug-reports: "https://github.com/smimram/saml/issues"
 depends: [
   "ocamlfind"
+  "menhir"
   "pulseaudio"
 ]
 build: [
