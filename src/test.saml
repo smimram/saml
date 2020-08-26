@@ -1,24 +1,24 @@
-# include "builtin.saml"
-# include "pervasives.saml"
+ref_new = builtin("ref_new")
+ref_get = builtin("ref_get")
+ref_set = builtin("ref_set")
 
-# def id x = x end
-# print (id "x")
-# print (string (id 3))
+def id(x) = x end
+a = id(3.)
+b = id(())
 
-# r = (a=1, b=2.)
-# def f x = if x then "a" else "b" end end
-
-# print = builtin "print"
-
-# m = module
-  # def f x = x end
-# end
-
-# def double x = 2. * x end
-
-# double 5.
+def succ(x) = x + 1. end
 
 x = 2.
+xx = x
 def x = 3. end
-def f(x) = x end
-f
+def f(x) =
+  # y = x
+  x
+end
+
+def integrator(init) =
+  x = ref_new(init)
+  # fun(x, dt) ->
+  x
+end
+integrator

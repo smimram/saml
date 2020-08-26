@@ -13,6 +13,7 @@ and descr =
   | Var of var ref
   | Arr of t list * t
   | Tuple of t list
+  | Ref of t
 (** Contents of a variable. *)
 and var =
   | Free of int (** A free variable with given level. *)
@@ -61,7 +62,7 @@ let to_string t =
           then Printf.sprintf "?[%s]" (to_string false t)
           else to_string p t
         | Free l ->
-          "?" ^ namer v ^ (if !Config.Debug.Typing.show_levels then "@" ^ string_of_int l else "")
+          namer v ^ (if !Config.Debug.Typing.show_levels then "@" ^ string_of_int l else "")
       )
     | Float -> "float"
     | Tuple l ->
@@ -72,6 +73,9 @@ let to_string t =
       let a = List.map (to_string false) a |> String.concat ", " in 
       let b = to_string false b in
       pa p (Printf.sprintf "(%s) -> %s" a b)
+    | Ref t ->
+      let t = to_string true t in
+      pa p (Printf.sprintf "ref %s" t)
   in
   to_string false t
 
@@ -81,6 +85,7 @@ let rec occurs x t =
   | Var v -> x == v
   | Tuple l -> List.exists (occurs x) l
   | Float -> false
+  | Ref t -> occurs x t
 
 let rec update_level l t =
   match t.descr with
@@ -92,6 +97,7 @@ let rec update_level l t =
       | Free l' -> v := Free (min l l')
     )
   | Tuple t -> List.iter (update_level l) t
+  | Ref t -> update_level l t
   | Float -> ()
 
 exception Error
@@ -130,6 +136,7 @@ let generalize level t : scheme =
       let a = List.fold_left (fun v t -> (vars t)@v) [] a in
       a@(vars b)
     | Tuple l -> List.fold_left (fun v t -> (vars t)@v) [] l
+    | Ref t -> vars t
     | Float -> []
   in
   (* TODO: remove duplicates *)
@@ -148,8 +155,11 @@ let instantiate level (g,t) =
       | Var x -> Var x
       | Arr (a, b) -> Arr (List.map aux a, aux b)
       | Tuple l -> Tuple (List.map aux l)
+      | Ref t -> Ref (aux t)
       | Float as t -> t
     in
     { descr }
   in
   aux t
+
+let ref t = make (Ref t)

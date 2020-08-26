@@ -51,7 +51,7 @@ let unit ?pos () = make ?pos (Tuple [])
 
 let fct ?pos args e = make ?pos (Fun (args, e))
 
-let app ?pos f x = make ?pos (App (f, x))
+let app ?pos f l = make ?pos (App (f, l))
 
 let seq ?pos e1 e2 = make ?pos (Seq (e1, e2))
 

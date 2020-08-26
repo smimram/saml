@@ -23,16 +23,10 @@
 %token <string> IDENT IDENT_LPAR
 %token <string> STRING
 
-%right BOR
-%right BAND
-%nonassoc BNOT
-%nonassoc CMP
-%nonassoc LE GE LT GT
-%nonassoc LARR
+%nonassoc ARR
 %left PLUS MINUS
 %left TIMES DIV
-%nonassoc UMINUS
-%left PIPE
+%nonassoc LPAR
 
 %start prog
 %type <Lang.t> prog
@@ -48,6 +42,11 @@ prog:
 expr:
   | IDENT { var ~pos:$loc $1 }
   | FLOAT { make ~pos:$loc (Float $1) }
+  | LPAR RPAR { unit ~pos:$loc () }
+  | BUILTIN LPAR STRING RPAR { Builtin.get ~pos:$loc $3 }
+  | FUN def_args ARR expr { fct ~pos:$loc $2 $4 }
+  | expr LPAR args RPAR { app ~pos:$loc $1 $3 }
+  | expr PLUS expr { app ~pos:$loc (Builtin.get ~pos:$loc($2) "fadd") [$1; $3] }
 
 exprs:
   | expr n { $1 }
@@ -58,10 +57,15 @@ exprs:
 decl:
   | IDENT EQ expr { $1, $3 }
   | DEF IDENT EQ n exprs END { $2, $5 }
-  | DEF IDENT LPAR args RPAR EQ exprs END { $2, fct ~pos:$loc $4 $7 }
+  | DEF IDENT LPAR def_args RPAR EQ n exprs END { $2, fct ~pos:$loc $4 $8 }
 
 args:
-  | IDENT COMMA args { $1::$3 }
+  | expr COMMA args { $1::$3 }
+  | expr { [$1] }
+  | { [] }
+
+def_args:
+  | IDENT COMMA def_args { $1::$3 }
   | IDENT { [$1] }
   | { [] }
 
