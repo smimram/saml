@@ -46,17 +46,24 @@ prog:
   | n exprs EOF { $2 }
 
 expr:
+  | IDENT { var ~pos:$loc $1 }
   | FLOAT { make ~pos:$loc (Float $1) }
 
 exprs:
   | expr n { $1 }
   | expr NEWLINE exprs { seq ~pos:$loc $1 $3 }
-  /* | decl n { letin ~pos:$loc $1 (unit ~pos:$loc ()) } */
+  | decl n { letin ~pos:$loc $1 (unit ~pos:$loc ()) }
   | decl NEWLINE exprs { letin ~pos:$loc $1 $3 }
 
 decl:
   | IDENT EQ expr { $1, $3 }
   | DEF IDENT EQ n exprs END { $2, $5 }
+  | DEF IDENT LPAR args RPAR EQ exprs END { $2, fct ~pos:$loc $4 $7 }
+
+args:
+  | IDENT COMMA args { $1::$3 }
+  | IDENT { [$1] }
+  | { [] }
 
 
 

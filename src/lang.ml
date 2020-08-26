@@ -11,7 +11,7 @@ type t =
   {
     descr : descr; (** The expression. *)
     pos : pos; (** Position in source file. *)
-    t : T.t; (** Type. *)
+    mutable t : T.t option; (** Type. *)
   }
 (** Contents of an expression. *)
 and descr =
@@ -22,6 +22,7 @@ and descr =
   | Let of string * t * t (** A variable declaration. *)
   | App of t * t list
   | Seq of t * t
+  | Tuple of t list
 and ffi =
   {
     ffi_name : string;
@@ -34,20 +35,19 @@ type expr = t
 
 (** Create an expression. *)
 let make ?(pos=dummy_pos) ?t e =
-  let t =
-    match t with
-    | Some t -> t
-    | None -> T.var (-1)
-  in
   {
     descr = e;
     pos;
     t
   }
 
+let typ e = Option.get e.t
+
 let var ?pos s = make ?pos (Var s)
 
 let float ?pos x = make ?pos (Float x)
+
+let unit ?pos () = make ?pos (Tuple [])
 
 let fct ?pos args e = make ?pos (Fun (args, e))
 
@@ -100,12 +100,9 @@ let rec to_string ~tab p e =
       pa p (Printf.sprintf "let %s =%s%s\n%s%s" var def (if String.contains def '\n' then "\n"^tabs()^"in" else "in") (tabs ()) body)
     else
       pa p (Printf.sprintf "%s =%s\n%s%s" var def (tabs ()) body)
-  (* | Record (r,l) -> *)
-     (* if l = [] then (if r then "module end" else "()") else *)
-       (* let l = List.map (fun (x,v) -> Printf.sprintf "%s%s = %s" (tabss()) x (to_string ~tab:(tab+1) false v)) l in *)
-       (* let l = String.concat "\n" l in *)
-       (* if r then Printf.sprintf "module\n%s\n%send" l (tabs()) *)
-       (* else Printf.sprintf "(\n%s\n%s)" l (tabs()) *)
+  | Tuple l ->
+    let l = List.map (to_string ~tab:(tab+1) false) l |> String.concat ", " in
+    Printf.sprintf "(%s)" l
 
 let to_string e = to_string ~tab:0 false e
 
@@ -126,8 +123,10 @@ let type_error e s =
 let rec check level (env:T.env) e =
   (* Printf.printf "infer_type:\n%s\n\n\n%!" (to_string e); *)
   (* Printf.printf "env: %s\n\n" (String.concat_map " , " (fun (x,(_,t)) -> x ^ ":" ^ T.to_string t) env.T.Env.t); *)
-  let (<:) e a = try (T.( <: ) e.t a) with T.Error -> error "%s: %s has type %s but %s expected." (Common.string_of_pos e.pos) (to_string e) (T.to_string e.t) (T.to_string a) in
-  let (>:) e a = try (T.( <: ) a e.t) with T.Error -> error "%s: %s has type %s but %s expected." (Common.string_of_pos e.pos) (to_string e) (T.to_string e.t) (T.to_string a) in
+  let (<:) e a = try (T.( <: ) (typ e) a) with T.Error -> error "%s: %s has type %s but %s expected." (Common.string_of_pos e.pos) (to_string e) (T.to_string (typ e)) (T.to_string a) in
+  let (>:) e a = try (T.( <: ) a (typ e)) with T.Error -> error "%s: %s has type %s but %s expected." (Common.string_of_pos e.pos) (to_string e) (T.to_string (typ e)) (T.to_string a) in
+  assert (e.t = None);
+  e.t <- Some (T.var level);
   match e.descr with
   | Float _ -> e >: T.float ()
   | FFI f -> e >: T.instantiate level f.ffi_type
@@ -138,23 +137,26 @@ let rec check level (env:T.env) e =
     check level env e1;
     e1 <: T.unit ();
     check level env e2;
-    e >: e2.t
+    e >: typ e
   | Let (var,def,body) ->
     check (level+1) env def;
-    let env = (var, T.generalize level def.t)::env in
+    let env = (var, T.generalize level (typ def))::env in
     check level env body;
-    e >: body.t
+    e >: typ body
   | Fun (args,v) ->
     let targs = List.map (fun x -> x, T.var level) args in 
     let env = (List.map (fun (x,t) -> x,([],t)) targs)@env in
     check level env v;
-    e >: T.arr (List.map snd targs) v.t
+    e >: T.arr (List.map snd targs) (typ v)
   | App (f, v) ->
     let b = T.var level in
     check level env f;
     List.iter (check level env) v;
-    f <: T.arr (List.map (fun v -> v.t) v) b;
+    f <: T.arr (List.map typ v) b;
     e >: b
+  | Tuple l ->
+    List.iter (check level env) l;
+    e >: T.tuple (List.map typ l)
 
 let check env t = check 0 env t
 

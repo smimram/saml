@@ -20,4 +20,5 @@
 
 x = 2.
 def x = 3. end
-3.
+def f(x) = x end
+f

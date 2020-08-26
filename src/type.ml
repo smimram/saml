@@ -12,7 +12,7 @@ and descr =
   | Float
   | Var of var ref
   | Arr of t list * t
-  | Record of (string * t) list
+  | Tuple of t list
 (** Contents of a variable. *)
 and var =
   | Free of int (** A free variable with given level. *)
@@ -28,7 +28,9 @@ let make t = { descr = t }
 
 let float () = make Float
 
-let unit () = make (Record [])
+let tuple l = make (Tuple l)
+
+let unit () = tuple []
 
 let var =
   let n = ref (-1) in
@@ -62,13 +64,13 @@ let to_string t =
           "?" ^ namer v ^ (if !Config.Debug.Typing.show_levels then "@" ^ string_of_int l else "")
       )
     | Float -> "float"
-    | Record l ->
+    | Tuple l ->
       if l = [] then "unit" else
-        let l = String.concat_map ", " (fun (x,t) -> Printf.sprintf "%s : %s" x (to_string false t)) l in
+        let l = List.map (to_string false) l |> String.concat ", " in
         Printf.sprintf "(%s)" l
     | Arr (a, b) ->
       let a = List.map (to_string false) a |> String.concat ", " in 
-      let b = to_string false t in
+      let b = to_string false b in
       pa p (Printf.sprintf "(%s) -> %s" a b)
   in
   to_string false t
@@ -77,7 +79,7 @@ let rec occurs x t =
   match (unlink t).descr with
   | Arr (a, b) -> List.exists (occurs x) a || occurs x b
   | Var v -> x == v
-  | Record r -> List.exists (fun (_,t) -> occurs x t) r
+  | Tuple l -> List.exists (occurs x) l
   | Float -> false
 
 let rec update_level l t =
@@ -89,7 +91,7 @@ let rec update_level l t =
       | Link t -> update_level l t
       | Free l' -> v := Free (min l l')
     )
-  | Record r -> List.iter (fun (_,t) -> update_level l t) r
+  | Tuple t -> List.iter (update_level l) t
   | Float -> ()
 
 exception Error
@@ -127,7 +129,7 @@ let generalize level t : scheme =
     | Arr (a, b) ->
       let a = List.fold_left (fun v t -> (vars t)@v) [] a in
       a@(vars b)
-    | Record r -> List.fold_left (fun v (_,t) -> (vars t)@v) [] r
+    | Tuple l -> List.fold_left (fun v t -> (vars t)@v) [] l
     | Float -> []
   in
   (* TODO: remove duplicates *)
@@ -145,7 +147,7 @@ let instantiate level (g,t) =
         List.assq x !tenv
       | Var x -> Var x
       | Arr (a, b) -> Arr (List.map aux a, aux b)
-      | Record r -> Record (List.map (fun (l,t) -> l, aux t) r)
+      | Tuple l -> Tuple (List.map aux l)
       | Float as t -> t
     in
     { descr }
