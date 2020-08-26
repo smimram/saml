@@ -158,66 +158,48 @@ let rec check level (env:T.env) e =
 
 let check env t = check 0 env t
 
-(** Evaluate a term to a value *)
-let rec reduce env t =
-  (* Printf.printf "reduce: %s\n\n%!" (to_string t); *)
-  match t.desc with
-  | Bool _ | Int _ | Float _ | String _ | FFI _ -> t
-  | Var x -> (try List.assoc x env with Not_found -> error "Unbound variable during reduction: %s" x)
-  | Fun _ -> make ~pos:t.pos (Closure (env, t))
-  | Closure (env, t) -> reduce env t
-  | Let (pat, def, body) ->
-     let def = reduce env def in
-     let env = reduce_pattern env pat def in
-     reduce env body
-  | App (t, u) ->
-     let u = reduce env u in
-     let t = reduce env t in
-     (
-       match t.desc with
-       | Closure (env', {desc = Fun (pat, t)}) ->
-          let env' = reduce_pattern [] pat u in
-          let t = closure env' t in
-          let t = letin args_pattern u t in
-          reduce env t
-       | FFI f -> f.ffi_eval u
-       | _ -> error "Unexpected term during application: %s" (to_string t)
-     )
-  | Seq (t, u) ->
-     let _ = reduce env t in
-     reduce env u
-  | Record (r, l) ->
-     let l =
-       List.fold_left
-         (fun l (x,t) ->
-           let env = if r then l@env else env in
-           (x, reduce env t)::l
-         ) [] l
-     in
-     make ~pos:t.pos (Record (false, List.rev l))
+(* (\** Evaluate a term to a value *\) *)
+(* let rec reduce env t = *)
+  (* (\* Printf.printf "reduce: %s\n\n%!" (to_string t); *\) *)
+  (* match t.desc with *)
+  (* | Bool _ | Int _ | Float _ | String _ | FFI _ -> t *)
+  (* | Var x -> (try List.assoc x env with Not_found -> error "Unbound variable during reduction: %s" x) *)
+  (* | Fun _ -> make ~pos:t.pos (Closure (env, t)) *)
+  (* | Closure (env, t) -> reduce env t *)
+  (* | Let (pat, def, body) -> *)
+     (* let def = reduce env def in *)
+     (* let env = reduce_pattern env pat def in *)
+     (* reduce env body *)
+  (* | App (t, u) -> *)
+     (* let u = reduce env u in *)
+     (* let t = reduce env t in *)
+     (* ( *)
+       (* match t.desc with *)
+       (* | Closure (env', {desc = Fun (pat, t)}) -> *)
+          (* let env' = reduce_pattern [] pat u in *)
+          (* let t = closure env' t in *)
+          (* let t = letin args_pattern u t in *)
+          (* reduce env t *)
+       (* | FFI f -> f.ffi_eval u *)
+       (* | _ -> error "Unexpected term during application: %s" (to_string t) *)
+     (* ) *)
+  (* | Seq (t, u) -> *)
+     (* let _ = reduce env t in *)
+     (* reduce env u *)
+  (* | Record (r, l) -> *)
+     (* let l = *)
+       (* List.fold_left *)
+         (* (fun l (x,t) -> *)
+           (* let env = if r then l@env else env in *)
+           (* (x, reduce env t)::l *)
+         (* ) [] l *)
+     (* in *)
+     (* make ~pos:t.pos (Record (false, List.rev l)) *)
 
-and reduce_pattern env pat v =
-  match pat, v.desc with
-  | PVar x, _ -> (x,v)::env
-  | PRecord p, Record (false, l) ->
-     let env' =
-       List.map
-         (fun (lab,x,d) ->
-           let v =
-             try List.assoc lab l
-             with Not_found ->
-               reduce env (Option.get d)
-           in
-           x, v
-         ) p
-     in
-     env'@env
-  | _ -> assert false
+(* let reduce t = reduce [] t *)
 
-let reduce t = reduce !env t
+(* module Run = struct *)
+  (* let fst t = reduce (fst t) *)
 
-module Run = struct
-  let fst t = reduce (fst t)
-
-  let snd t = reduce (snd t)
-end
+  (* let snd t = reduce (snd t) *)
+(* end *)
