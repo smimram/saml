@@ -1,5 +1,6 @@
 (** Preprocessing on files. *)
 
+(* Expand includes. *)
 let rec includer tokenizer =
   let queue = ref [] in
   let state = ref false in
@@ -27,33 +28,7 @@ let rec includer tokenizer =
   in
   token
 
-(*
-(* Remove the new lines and merge IDENT LPAR into IDENT_LPAR if they are not
-   separated by a newline. This is necessary to distinguish f(3), a function
-   application, and f\n(3), a sequence consisting of f and then 3. *)
-let strip_newlines tokenizer =
-  let state = ref None in
-  let rec token lexbuf =
-    match !state with
-    | None ->
-       begin
-         match tokenizer lexbuf with
-         | Parser.PP_NEWLINE -> token lexbuf
-         | Parser.IDENT _ as v -> state := Some v; token lexbuf
-         | x -> x
-       end
-    | Some (Parser.IDENT var as v) ->
-       begin
-         match tokenizer lexbuf with
-         | Parser.LPAR -> state := None; Parser.IDENT_LPAR var
-         | Parser.PP_NEWLINE -> state := None; v
-         | x -> state := Some x; v
-       end
-    | Some x -> state := None ; x
-  in
-  token
- *)
-
+(* Merge consecutive newlines *)
 let merge_newlines tokenizer =
   let state = ref false in
   let rec token lexbuf =
@@ -67,21 +42,55 @@ let merge_newlines tokenizer =
   in
   token
 
+(* Allow a tokenizer to return a list of tokens. *)
+let flatten tokenl =
+  let queue = ref [] in
+  let rec token lexbuf =
+    match !queue with
+    | t::q -> queue := q; t
+    | [] -> queue := tokenl lexbuf; token lexbuf
+  in
+  token
+
+(* Remove newlines at the end of blocks. *)
+let remove_newlines tokenizer =
+  let state = ref false in
+  let rec token lexbuf =
+    match tokenizer lexbuf with
+    | Parser.NEWLINE -> state := true; []
+    | Parser.END | Parser.EOF as t -> [t]
+    | t ->
+      let ans = if !state then [Parser.NEWLINE; t] else [t] in
+      state := false;
+      ans
+  in
+  flatten token
+
 (* The usual trick for uminus in yacc does not work with our syntax. *)
 let uminus tokenizer =
   let state = ref false in
   let rec token lexbuf =
-    let x = tokenizer lexbuf in
-    match x with
-    | Parser.LPAR -> state := true; x
+    match tokenizer lexbuf with
+    | Parser.LPAR as x -> state := true; x
     | Parser.MINUS when !state -> state := false; Parser.UMINUS
-    | _ -> state := false; x
+    | x -> state := false; x
   in
   token
+
+(* Add a unit value at then end of files so that we have a valid expression. *)
+let end_with_unit tokenizer =
+  let token lexbuf =
+    match tokenizer lexbuf with
+    | Parser.EOF -> [Parser.NEWLINE; Parser.LPAR; Parser.RPAR; Parser.EOF]
+    | x -> [x]
+  in
+  flatten token
 
 let token =
   let (+) f g = g f in
   Lexer.token
   + includer
   + merge_newlines
+  + remove_newlines
   + uminus
+  + end_with_unit

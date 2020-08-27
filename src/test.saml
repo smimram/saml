@@ -1,24 +1,34 @@
-ref_new = builtin("ref_new")
-ref_get = builtin("ref_get")
-ref_set = builtin("ref_set")
-
-def id(x) = x end
-a = id(3.)
-b = id(())
-
-def succ(x) = x + 1. end
+# ref_new = builtin("ref_new")
+# ref_get = builtin("ref_get")
+# ref_set = builtin("ref_set")
 
 x = 2.
 xx = x
 def x = 3. end
 def f(x) =
-  # y = x
+  y = x
   x
 end
 
-def integrator(init) =
-  x = ref_new(init)
-  # fun(x, dt) ->
-  x
+def id(x) = x end
+a = id(3.)
+b = id(())
+
+a = begin
+  x = 2.
+  5.
 end
-integrator
+
+def a =
+  ()
+  4.
+end
+
+# def succ(x) = x + 1. end
+
+# def integrator(init) =
+  # x = ref_new(init)
+  # # fun(x, dt) ->
+  # x
+# end
+# integrator

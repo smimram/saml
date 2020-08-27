@@ -123,6 +123,9 @@ let rec ( <: ) (t1:t) (t2:t) =
       if List.length a <> List.length a' then raise Error;
       List.iter2 ( <: ) a a';
       b <: b'
+    | Tuple l, Tuple l' ->
+      if List.length l <> List.length l' then raise Error;
+      List.iter2 ( <: ) l l'
     | Float, Float -> ()
     | _, _ -> raise Error
 

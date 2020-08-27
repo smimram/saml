@@ -24,6 +24,8 @@
 %token <string> STRING
 
 %nonassoc ARR
+%right NEWLINE SEMICOLON
+%nonassoc EQ
 %left PLUS MINUS
 %left TIMES DIV
 %nonassoc LPAR
@@ -32,12 +34,8 @@
 %type <Lang.t> prog
 %%
 
-n:
-  | NEWLINE { () }
-  | { () }
-
 prog:
-  | n exprs EOF { $2 }
+  | nexpr EOF { $1 }
 
 expr:
   | IDENT { var ~pos:$loc $1 }
@@ -47,17 +45,21 @@ expr:
   | FUN def_args ARR expr { fct ~pos:$loc $2 $4 }
   | expr LPAR args RPAR { app ~pos:$loc $1 $3 }
   | expr PLUS expr { app ~pos:$loc (Builtin.get ~pos:$loc($2) "fadd") [$1; $3] }
+  | expr NEWLINE expr { seq ~pos:$loc $1 $3 }
+  | decl NEWLINE expr { letin ~pos:$loc($1) $1 $3 }
+  | BEGIN nexpr END { $2 }
 
-exprs:
-  | expr n { $1 }
-  | expr NEWLINE exprs { seq ~pos:$loc $1 $3 }
-  | decl n { letin ~pos:$loc $1 (unit ~pos:$loc ()) }
-  | decl NEWLINE exprs { letin ~pos:$loc $1 $3 }
+n:
+  | NEWLINE { () }
+  | { () }
+
+nexpr:
+  | n expr { $2 }
 
 decl:
   | IDENT EQ expr { $1, $3 }
-  | DEF IDENT EQ n exprs END { $2, $5 }
-  | DEF IDENT LPAR def_args RPAR EQ n exprs END { $2, fct ~pos:$loc $4 $8 }
+  | DEF IDENT EQ nexpr END { $2, $4 }
+  | DEF IDENT LPAR def_args RPAR EQ nexpr END { $2, fct ~pos:$loc $4 $7 }
 
 args:
   | expr COMMA args { $1::$3 }
