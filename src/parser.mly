@@ -79,6 +79,8 @@ args:
 
 def_arg:
   | IDENT { "",($1,None) }
+  | IDENT EQ { $1,($1,None) }
+  | IDENT EQ expr { $1,($1,Some $3) }
 
 def_args:
   | def_arg COMMA def_args { $1::$3 }
