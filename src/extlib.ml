@@ -63,6 +63,13 @@ module List = struct
     match !ans with
     | Some v -> v,l
     | None -> raise Not_found
+
+  let find_nth n p l =
+    let n = ref n in
+    List.find (fun x -> if p x then (decr n; !n < 0) else false) l
+
+  let assoc_nth n x l =
+    snd (find_nth n (fun (y,_) -> y = x) l)
 end
 
 module String = struct
@@ -71,4 +78,8 @@ module String = struct
   let concat_map c f l =
     let l = List.map f l in
     String.concat c l
+end
+
+module Pair = struct
+  let map f g (x,y) = (f x, f y)
 end

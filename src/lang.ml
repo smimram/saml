@@ -1,10 +1,32 @@
 (** Internal representation of the language and operations to manipulate it
    (typechecking, reduction, etc.). *)
 
-open Extralib
+open Extlib
 open Common
 
 module T = Type
+
+(** An expression. *)
+type t =
+  {
+    descr : descr; (** The expression. *)
+    pos : pos; (** Position in source file. *)
+    mutable t : T.t option; (** Type. *)
+  }
+(** Contents of an expression. *)
+and descr =
+  | Float of float
+  | Bool of bool
+  | Var of string (** A variable. *)
+  | Fun of (string * (string * t option)) list * t (** A function with given arguments (label, variable, default value). *)
+  | Let of string * t * t (** A variable declaration. *)
+  | App of t * (string * t) list
+  | Seq of t * t
+  | Tuple of t list
+  | Null
+(** An environment. *)
+and env = (string * t) list
+type expr = t
 
 (** Values. *)
 module Value = struct
@@ -16,6 +38,7 @@ module Value = struct
     | Fun of (env -> value)
     | Tuple of value list
     | Neutral of neutral
+    | Ref of value ref
   and neutral =
     | App of neutral * (string * value) list
     | Seq of neutral * (unit -> value)
@@ -30,6 +53,7 @@ module Value = struct
     | Var x -> x
     | Fun _ -> "<fun>"
     | Tuple l -> Printf.sprintf "(%s)" (l |> List.map to_string |> String.concat ", ")
+    | Ref x -> Printf.sprintf "ref(%s)" (to_string !x)
     | Neutral _ -> "<code>"
 
   let float x = Float x
@@ -47,37 +71,25 @@ module Value = struct
   let to_fun = function
     | Fun f -> f
     | _ -> assert false
+
+  let to_ref = function
+    | Ref r -> r
+    | _ -> assert false
+
+  let tuple l = Tuple l
+
+  let to_tuple = function
+    | Tuple l -> l
+    | _ -> assert false
+
+  let to_pair x =
+    match to_tuple x with
+    | [x;y] -> x, y
+    | _ -> assert false
+
+  let unit = tuple []
 end
 module V = Value
-
-(** An expression. *)
-type t =
-  {
-    descr : descr; (** The expression. *)
-    pos : pos; (** Position in source file. *)
-    mutable t : T.t option; (** Type. *)
-  }
-(** Contents of an expression. *)
-and descr =
-  | Float of float
-  | Bool of bool
-  | Var of string (** A variable. *)
-  | Fun of (string * (string * t option)) list * t (** A function with given arguments (label, variable, default value). *)
-  | FFI of ffi
-  | Let of string * t * t (** A variable declaration. *)
-  | App of t * (string * t) list
-  | Seq of t * t
-  | Tuple of t list
-  | Null
-and ffi =
-  {
-    ffi_name : string;
-    ffi_type : T.scheme;
-    ffi_eval : V.env -> V.t; (** evaluation *)
-  }
-(** An environment. *)
-and env = (string * t) list
-type expr = t
 
 (** Create an expression. *)
 let make ?(pos=dummy_pos) ?t e =
@@ -112,17 +124,6 @@ let letin ?pos var def body = make ?pos (Let (var, def, body))
 
 let tuple ?pos l = make ?pos (Tuple l)
 
-let ffi ?pos name ?(eval=fun _ -> error "Not implemented: %s" name) t =
-  let f =
-    FFI
-      {
-        ffi_name = name;
-        ffi_type = t;
-        ffi_eval = eval;
-      }
-  in
-  make ?pos f
-
 (** String representation of an expression. *)
 let rec to_string ~tab p e =
   let pa p s = if p then Printf.sprintf "(%s)" s else s in
@@ -132,7 +133,6 @@ let rec to_string ~tab p e =
   | Var x -> x
   | Float f -> string_of_float f
   | Bool b -> string_of_bool b
-  | FFI ffi -> Printf.sprintf "<%s>" ffi.ffi_name
   | Fun (args, e) ->
     let args = args |> List.map (fun (l,(x,d)) -> (if l<>"" then "~"^l^":" else "")^x^(match d with None -> "" | Some d -> "="^to_string ~tab:(tab+1) true d)) |> String.concat ", " in
     let e = to_string ~tab:(tab+1) false e in
@@ -186,7 +186,6 @@ let rec check level (env:T.env) e =
   match e.descr with
   | Float _ -> e >: T.float ()
   | Bool _ -> e >: T.bool ()
-  | FFI f -> e >: T.instantiate level f.ffi_type
   | Var x when x = dtv -> e >: T.float ()
   | Var x ->
     let t = try List.assoc x env with Not_found -> type_error e "Unbound variable %s." x in
@@ -244,13 +243,13 @@ let check env t = check 0 env t
 
 (** Evaluate a term to a value *)
 let rec eval (env : V.env) t : V.t =
-  Printf.printf "eval: %s\n\n%!" (to_string t);
+  (* Printf.printf "eval: %s\n\n%!" (to_string t); *)
   match t.descr with
   | Float x -> Float x
   | Bool b -> Bool b
   | Null -> Null
   | Tuple l -> Tuple (List.map (eval env) l)
-  | Var x -> List.assoc x env
+  | Var x -> (try List.assoc x env with Not_found -> failwith ("Unbound variable " ^ x))
   | Seq (t,u) ->
     (
       match eval env t with
@@ -290,4 +289,3 @@ let rec eval (env : V.env) t : V.t =
       eval env b
     in
     Fun f
-  | FFI f -> Fun f.ffi_eval

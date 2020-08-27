@@ -72,7 +72,7 @@ let () =
   in
   pass "Parsing program" Lang.to_string;
   pass "Checking type" (fun e -> Lang.check (Builtin.tenv ()) e; Type.to_string (Lang.typ e));
-  pass "Evaluating program" (fun e -> Lang.V.to_string (Lang.eval [] e));
+  pass "Evaluating program" (fun e -> Lang.V.to_string (Lang.eval (Builtin.env ()) e));
   (* pass "Infering type" (fun e -> Type.to_string (Lang.infer_type e)); *)
   (* pass "Running program" (fun e -> Lang.run e; ""); *)
   ()

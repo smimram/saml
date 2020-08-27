@@ -31,6 +31,7 @@ rule token = parse
   | "/" { DIV }
   | "." { DOT }
   | "|" { PIPE }
+  | "!" { BANG }
   (* | "`"([^' ']+ as s) { VARIANT s } *)
 
   (***** Keywords *****)

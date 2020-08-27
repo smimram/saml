@@ -1,7 +1,7 @@
 (** Types. *)
 
 open Common
-open Extralib
+open Extlib
 
 (** A type. *)
 type t =

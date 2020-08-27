@@ -1,6 +1,6 @@
 (** Common procedures. *)
 
-open Extralib
+open Extlib
 
 (** Print a debugging message. *)
 let debug = Printf.printf

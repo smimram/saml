@@ -6,8 +6,6 @@
 
 # Streams
 
-def get(s) = s(dt) end
-
 def stream_bind(x, f) =
   fun (d) ->
     f(x(d))(d)
@@ -61,14 +59,14 @@ end
 def saw() =
   p = periodic(init=0.5)
   stream (freq) ->
-    t = get(p(freq))
+    t = !p(freq)
     4. * t - 2.
 end    
 
 def sine() =
   p = periodic()
   stream (freq) ->
-    t = get(p(freq))
+    t = !p(freq)
     sin(t)
 end
 

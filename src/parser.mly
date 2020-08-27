@@ -6,7 +6,7 @@
       letin ~pos pat def body
 %}
 
-%token DEF LET BEGIN END FUN ARR DOT PIPE
+%token DEF LET BEGIN END FUN ARR DOT PIPE BANG
 %token STREAM DT
 %token MODULE BUILTIN INCLUDE
 %token FOR WHILE TO DO DONE
@@ -33,6 +33,7 @@
 %left PLUS MINUS
 %left TIMES DIV
 %left PIPE
+%nonassoc BANG
 %nonassoc LPAR
 
 %start prog
@@ -67,8 +68,9 @@ expr:
   | NULL { null ~pos:$loc () }
   | STREAM LPAR def_args RPAR ARR n expr { fct ~pos:$loc ($3) (fct ~pos:$loc ["",(dtv,None)] $7) }
   | DT { var ~pos:$loc dtv }
-  | LPAR tuple RPAR { tuple ~pos:$loc $2 }
+  | LPAR l = tuple RPAR { if List.length l = 1 then List.hd l else tuple ~pos:$loc l }
   | expr PIPE expr { appnl ~pos:$loc (var ~pos:$loc($2) "stream_bind") [$1; $3] }
+  | BANG expr { appnl ~pos:$loc $2 [var ~pos:$loc($1) dtv] }
 
 elif:
   | { unit () }
