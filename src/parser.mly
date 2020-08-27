@@ -7,7 +7,7 @@
 %}
 
 %token DEF LET BEGIN END FUN ARR DOT PIPE
-%token STREAM
+%token STREAM DT
 %token MODULE BUILTIN INCLUDE
 %token FOR WHILE TO DO DONE
 %token CMP LE GE LT GT
@@ -51,7 +51,8 @@ expr:
   | expr NEWLINE expr { seq ~pos:$loc $1 $3 }
   | decl NEWLINE expr { letin ~pos:$loc($1) $1 $3 }
   | BEGIN nexpr END { $2 }
-  | STREAM LPAR def_args RPAR ARR n expr { fct ~pos:$loc ($3@["#dt"]) $7 }
+  | STREAM LPAR def_args RPAR ARR n expr { fct ~pos:$loc ($3@[dtv]) $7 }
+  | DT { var ~pos:$loc dtv }
 
 n:
   | NEWLINE { () }

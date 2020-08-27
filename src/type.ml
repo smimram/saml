@@ -47,9 +47,16 @@ let rec unlink t =
   | Var { contents = Link t } -> unlink t
   | _ -> t
 
+let var_level x =
+  match !x with
+  | Free l -> l
+  | Link _ -> assert false
+
+let global_namer = univ_namer ()
+
 (** String representation of a type. *)
-let to_string t =
-  let namer = univ_namer () in
+let to_string ?(generalized=[]) t =
+  let namer = if !Config.Debug.Typing.global_names then global_namer else univ_namer () in
   let pa p s = if p then Printf.sprintf "(%s)" s else s in
   (* When p is false we don't need parenthesis. *)
   let rec to_string p t =
@@ -62,7 +69,9 @@ let to_string t =
           then Printf.sprintf "?[%s]" (to_string false t)
           else to_string p t
         | Free l ->
-          namer v ^ (if !Config.Debug.Typing.show_levels then "@" ^ string_of_int l else "")
+          (if List.memq v generalized then "'" else "?")
+          ^ namer v
+          ^ (if !Config.Debug.Typing.show_levels then "@" ^ string_of_int l else "")
       )
     | Float -> "float"
     | Tuple l ->
@@ -78,6 +87,9 @@ let to_string t =
       pa p (Printf.sprintf "ref %s" t)
   in
   to_string false t
+
+let string_of_scheme ((generalized,t):scheme) =
+ to_string ~generalized t
 
 let rec occurs x t =
   match (unlink t).descr with
@@ -103,29 +115,30 @@ let rec update_level l t =
 exception Error
 
 let rec ( <: ) (t1:t) (t2:t) =
-    (* Printf.printf "subtype: %s with %s\n%!" (to_string t1) (to_string t2); *)
+    (* Printf.printf "st: %s with %s\n%!" (to_string t1) (to_string t2); *)
     let t1 = unlink t1 in
     let t2 = unlink t2 in
     match t1.descr, t2.descr with
     | Var v1, Var v2 when v1 == v2 -> ()
-    | _, Var ({ contents = Free l } as x) ->
+    | _, Var x ->
       if occurs x t1 then raise Error;
-      (* TODO: qs usual, we could do occurs and update_level at the same time *)
-       update_level l t1;
+      (* TODO: as usual, we could do occurs and update_level at the same time *)
+      update_level (var_level x) t1;
       if !Config.Debug.Typing.show_assignations then Printf.printf "%s <- %s\n%!" (to_string t2) (to_string t1);
       x := Link t1
-    | Var ({ contents = Free l } as x), _ ->
+    | Var x, _ ->
        if occurs x t2 then raise Error;
-       update_level l t2;
+       update_level (var_level x) t2;
        if !Config.Debug.Typing.show_assignations then Printf.printf "%s <- %s\n%!" (to_string t1) (to_string t2);
        x := Link t2
     | Arr (a, b), Arr (a', b') ->
       if List.length a <> List.length a' then raise Error;
-      List.iter2 ( <: ) a a';
+      List.iter2 ( <: ) a' a;
       b <: b'
     | Tuple l, Tuple l' ->
       if List.length l <> List.length l' then raise Error;
       List.iter2 ( <: ) l l'
+    | Ref a, Ref b -> a <: b
     | Float, Float -> ()
     | _, _ -> raise Error
 

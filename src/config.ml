@@ -5,10 +5,13 @@ module Debug = struct
     let show_links = ref false
 
     (** Show levels of variables. *)
-    let show_levels = ref true
+    let show_levels = ref false
 
     (** Show assignations of type variables. *)
     let show_assignations = ref false
+
+    (** Variable names are global. *)
+    let global_names = ref false
   end
 
   module Lang = struct

@@ -74,11 +74,13 @@ let string_of_univ =
   n ""
 
 (** Namer for universal variables. *)
-let univ_namer () =
+let univ_namer ?(numeric=false) () =
   let vars = ref [] in
   fun v ->
     if not (List.memq v !vars) then vars := !vars @ [v];
-    "'" ^ string_of_univ (List.indexq v !vars + 1)
+    let n = List.indexq v !vars + 1 in
+    if numeric then "a" ^ string_of_int n
+    else string_of_univ n
 
 let mapperq f =
   let l = ref [] in

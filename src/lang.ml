@@ -41,6 +41,9 @@ let make ?(pos=dummy_pos) ?t e =
     t
   }
 
+(** The dt special variable. *)
+let dtv = "#dt"
+
 let typ e = Option.get e.t
 
 let var ?pos s = make ?pos (Var s)
@@ -122,6 +125,10 @@ let type_error e s =
 (** Check the type of an expression. *)
 let rec check level (env:T.env) e =
   (* Printf.printf "infer_type:\n%s\n\n\n%!" (to_string e); *)
+  (* let check level env e = *)
+    (* check level env e; *)
+    (* Printf.printf "ck: %s : %s\n\n%!" (to_string e) (T.to_string (typ e)) *)
+  (* in *)
   (* Printf.printf "env: %s\n\n" (String.concat_map " , " (fun (x,(_,t)) -> x ^ ":" ^ T.to_string t) env.T.Env.t); *)
   let (<:) e a = try (T.( <: ) (typ e) a) with T.Error -> error "%s: %s has type %s but %s expected." (Common.string_of_pos e.pos) (to_string e) (T.to_string (typ e)) (T.to_string a) in
   let (>:) e a = try (T.( <: ) a (typ e)) with T.Error -> error "%s: %s has type %s but %s expected." (Common.string_of_pos e.pos) (to_string e) (T.to_string (typ e)) (T.to_string a) in
@@ -130,6 +137,7 @@ let rec check level (env:T.env) e =
   match e.descr with
   | Float _ -> e >: T.float ()
   | FFI f -> e >: T.instantiate level f.ffi_type
+  | Var x when x = dtv -> e >: T.float ()
   | Var x ->
     let t = try List.assoc x env with Not_found -> type_error e "Unbound variable %s." x in
     e >: T.instantiate level t
@@ -137,15 +145,16 @@ let rec check level (env:T.env) e =
     check level env e1;
     e1 <: T.unit ();
     check level env e2;
-    e >: typ e
+    e >: typ e2
   | Let (var,def,body) ->
     check (level+1) env def;
-    if level = 0 then Printf.printf "%s : %s\n%!" var (T.to_string (typ def));
-    let env = (var, T.generalize level (typ def))::env in
+    let t = T.generalize level (typ def) in
+    if level = 0 then Printf.printf "%s : %s\n%!" var (T.string_of_scheme t);
+    let env = (var, t)::env in
     check level env body;
     e >: typ body
   | Fun (args,v) ->
-    let targs = List.map (fun x -> x, T.var level) args in 
+    let targs = List.map (fun x -> x, if x = dtv then T.float () else T.var level) args in 
     let env = (List.map (fun (x,t) -> x,([],t)) targs)@env in
     check level env v;
     e >: T.arr (List.map snd targs) (typ v)
