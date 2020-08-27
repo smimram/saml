@@ -23,10 +23,29 @@ module Value = struct
 
   type t = value
 
+  let rec to_string = function
+    | Float x -> string_of_float x
+    | Bool b -> string_of_bool b
+    | Null -> "null"
+    | Var x -> x
+    | Fun _ -> "<fun>"
+    | Tuple l -> Printf.sprintf "(%s)" (l |> List.map to_string |> String.concat ", ")
+    | Neutral _ -> "<code>"
+
   let float x = Float x
     
-  let get_float = function
+  let to_float = function
     | Float x -> x
+    | _ -> assert false
+
+  let bool b = Bool b
+
+  let to_bool = function
+    | Bool b -> b
+    | _ -> assert false
+
+  let to_fun = function
+    | Fun f -> f
     | _ -> assert false
 end
 module V = Value
@@ -225,7 +244,7 @@ let check env t = check 0 env t
 
 (** Evaluate a term to a value *)
 let rec eval (env : V.env) t : V.t =
-  (* Printf.printf "eval: %s\n\n%!" (to_string t); *)
+  Printf.printf "eval: %s\n\n%!" (to_string t);
   match t.descr with
   | Float x -> Float x
   | Bool b -> Bool b
@@ -272,11 +291,3 @@ let rec eval (env : V.env) t : V.t =
     in
     Fun f
   | FFI f -> Fun f.ffi_eval
-
-(* let eval t = eval [] t *)
-
-(* module Run = struct *)
-  (* let fst t = eval (fst t) *)
-
-  (* let snd t = eval (snd t) *)
-(* end *)

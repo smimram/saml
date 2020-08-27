@@ -16,7 +16,7 @@ let register name ?eval t =
 let f_f name f =
   let t = T.arrnl [T.float ()] (T.float ()) in
   let eval = function
-    | [_,x] -> V.float (f (V.get_float x))
+    | [_,x] -> V.float (f (V.to_float x))
     | _ -> assert false
   in
   register name ~eval t
@@ -24,7 +24,7 @@ let f_f name f =
 let ff_f name f =
   let t = T.arrnl [T.float (); T.float ()] (T.float ()) in
   let eval = function
-    | [_,x;_,y] -> V.float (f (V.get_float x) (V.get_float y))
+    | [_,x;_,y] -> V.float (f (V.to_float x) (V.to_float y))
     | _ -> assert false
   in
   register name ~eval t
@@ -79,7 +79,13 @@ let () =
 let () =
   let a = T.var 0 in
   let t = T.arrno ["if", T.bool (); "then", T.arrnl [] a; "else", T.arrnl [] a] a in
-  register "ite" t
+  let ite args =
+    let b = List.assoc "if" args |> V.to_bool in
+    let t = List.assoc "then" args |> V.to_fun in
+    let e = List.assoc "else" args |> V.to_fun in
+    if b then t [] else e []
+  in
+  register "ite" ~eval:ite t
 
 (* IO *)
 (* let () = *)
@@ -90,6 +96,7 @@ let () =
   let t = T.arrnl [T.arrnl [T.float ()] (T.pair (T.float ()) (T.float ()))] (T.unit ()) in
   register "play" t
 
+(** Typing environment. *)
 let tenv () =
   let typ e =
     match e.E.descr with
@@ -97,6 +104,9 @@ let tenv () =
     | _ -> assert false
   in
   List.map (fun (f,e) -> f, typ e) !builtins
+
+(** Environment. *)
+let env () = !builtins
 
 let get ?pos name =
   let t = try List.assoc name !builtins with Not_found -> failwith ("Builtin not implemented: "^name^".") in
