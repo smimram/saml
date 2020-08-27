@@ -7,6 +7,7 @@
 %}
 
 %token DEF LET BEGIN END FUN ARR DOT PIPE
+%token STREAM
 %token MODULE BUILTIN INCLUDE
 %token FOR WHILE TO DO DONE
 %token CMP LE GE LT GT
@@ -45,9 +46,12 @@ expr:
   | FUN LPAR def_args RPAR ARR n expr { fct ~pos:$loc $3 $7 }
   | expr LPAR args RPAR { app ~pos:$loc $1 $3 }
   | expr PLUS expr { app ~pos:$loc (Builtin.get ~pos:$loc($2) "fadd") [$1; $3] }
+  | expr MINUS expr { app ~pos:$loc (Builtin.get ~pos:$loc($2) "fsub") [$1; $3] }
+  | expr TIMES expr { app ~pos:$loc (Builtin.get ~pos:$loc($2) "fmul") [$1; $3] }
   | expr NEWLINE expr { seq ~pos:$loc $1 $3 }
   | decl NEWLINE expr { letin ~pos:$loc($1) $1 $3 }
   | BEGIN nexpr END { $2 }
+  | STREAM LPAR def_args RPAR ARR n expr { fct ~pos:$loc ($3@["#dt"]) $7 }
 
 n:
   | NEWLINE { () }

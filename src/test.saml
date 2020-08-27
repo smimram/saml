@@ -28,7 +28,7 @@ end
 
 def integrator(init) =
   x = ref_new(init)
-  fun (x, dt) ->
+  stream (x) ->
     x
 end
 
