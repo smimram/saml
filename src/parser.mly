@@ -68,8 +68,8 @@ expr:
   | IF expr THEN expr elif END { app ~pos:$loc (Builtin.get ~pos:$loc "ite") ["if",$2; "then", fct ~pos:$loc [] $4; "else", fct ~pos:$loc [] $5] }
   | BEGIN nexpr END { $2 }
   | NULL { null ~pos:$loc () }
-  | STREAM LPAR def_args RPAR ARR n expr { fct ~pos:$loc ($3) (make ~pos:$loc (Stream_return $7)) }
-  | STREAM ARR n expr { make ~pos:$loc (Stream_return $4) }
+  | STREAM LPAR def_args RPAR ARR n expr { fct ~pos:$loc ($3) (fct ~pos:$loc [dtv,(dtv,None)] $7) }
+  | STREAM ARR n expr { fct ~pos:$loc [dtv,(dtv,None)] $4 }
   | DT { var ~pos:$loc dtv }
   | LPAR l = tuple RPAR { if List.length l = 1 then List.hd l else tuple ~pos:$loc l }
   | expr PIPE expr { make ~pos:$loc (Stream_bind ($1, $3)) }

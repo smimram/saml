@@ -85,7 +85,7 @@ end
     # (x, x)
 # end
 
-s = alt() | stereo
+s = sine()(440.) | stereo
 
 # s = sine()(440.) | stereo
 

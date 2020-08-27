@@ -263,7 +263,7 @@ let check env t = check 0 env t
 
 (** Evaluate a term to a value *)
 let rec eval (env : V.env) t : V.t =
-  Printf.printf "eval: %s\n\n%!" (to_string t);
+  (* Printf.printf "eval: %s\n\n%!" (to_string t); *)
   match t.descr with
   | Float x -> Float x
   | Bool b -> Bool b
@@ -310,10 +310,13 @@ let rec eval (env : V.env) t : V.t =
     in
     Fun f
   | Stream_return t ->
-    eval env (fct ~pos:t.pos [dtv,(dtv,None)] t)
+    let pos = t.pos in
+    let return = fct ~pos ["",("x",None)] (fct ~pos [dtv,(dtv,None)] (var ~pos "x")) in
+    eval env (appnl ~pos return [t])
   | Stream_bind(x, f) ->
     let pos = t.pos in
-    eval env (make ~pos (Stream_return (app ~pos (appnl ~pos f [app x [dtv, var dtv]]) [dtv, var dtv])))
+    let bind = fct ~pos ["",("x",None); "",("f",None)] (fct ~pos [dtv,(dtv,None)] (app ~pos (appnl ~pos (var ~pos "f") [app (var ~pos "x") [dtv, var dtv]]) [dtv, var dtv])) in
+    eval env (appnl ~pos bind [x; f])
   | Stream_get s ->
     let pos = t.pos in
     eval env (app ~pos s [dtv, var dtv])
