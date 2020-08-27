@@ -65,7 +65,7 @@ expr:
   | IF expr THEN expr elif END { app ~pos:$loc (Builtin.get ~pos:$loc "ite") ["if",$2; "then", fct ~pos:$loc [] $4; "else", fct ~pos:$loc [] $5] }
   | BEGIN nexpr END { $2 }
   | NULL { null ~pos:$loc () }
-  | STREAM LPAR def_args RPAR ARR n expr { fct ~pos:$loc ($3@["",(dtv,None)]) $7 }
+  | STREAM LPAR def_args RPAR ARR n expr { fct ~pos:$loc ($3) (fct ~pos:$loc ["",(dtv,None)] $7) }
   | DT { var ~pos:$loc dtv }
 
 elif:
@@ -83,6 +83,7 @@ nexpr:
 decl:
   | IDENT EQ expr { $1, $3 }
   | DEF IDENT EQ nexpr END { $2, $4 }
+  | DEF IDENT NEWLINE expr END { $2, $4 }
   | DEF IDENT LPAR def_args RPAR EQ nexpr END { $2, fct ~pos:$loc $4 $7 }
 
 arg:
@@ -103,7 +104,6 @@ def_args:
   | def_arg COMMA def_args { $1::$3 }
   | def_arg { [$1] }
   | { [] }
-
 
 
 

@@ -38,7 +38,7 @@ end
 
 # def succ(x) = x + 1. end
 
-def integrator(init, periodic=false, on_reset=fun()->()) =
+def integrate(init=0., periodic=false, on_reset=fun()->()) =
   y = ref_new(init)
   stream (x) ->
     ans = ref_get(y)
@@ -47,8 +47,20 @@ def integrator(init, periodic=false, on_reset=fun()->()) =
     ans
 end
 
-x = null
+def periodic(init=0.) =
+  integrate(periodic=true,init=init)
+end
 
-# def sine() =
-  # t 
-# end
+def saw() =
+  p = periodic(init=0.5)
+  stream (freq) ->
+    t = get(p(freq))
+    4. * t - 2.
+end    
+
+def sine() =
+  p = periodic()
+  stream (freq) ->
+    t = get(p(freq))
+    sin(t)
+end

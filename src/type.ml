@@ -83,7 +83,7 @@ let to_string ?(generalized=[]) t =
           then Printf.sprintf "?[%s]" (to_string false t)
           else to_string p t
         | Free l ->
-          (if List.memq v generalized then "'" else "?")
+          (if List.memq v generalized then "'" else "_")
           ^ namer v
           ^ (if !Config.Debug.Typing.show_levels then "@" ^ string_of_int l else "")
       )
@@ -150,15 +150,17 @@ let rec ( <: ) (t1:t) (t2:t) =
     if !Config.Debug.Typing.show_assignations then Printf.printf "%s <- %s\n%!" (to_string t1) (to_string t2);
     x := Link t2
   | Arr (a, b), Arr (a', b') ->
-    if List.length a <> List.length a' then raise Error;
     let a' = ref a' in
     List.iter
       (fun (l,(t,o)) ->
-         let t',o' = try List.assoc l !a' with Not_found -> raise Error in
-         a' := List.remove_assoc l !a';
-         t' <: t;
-         if o' && not o then raise Error
+         try
+           let t',o' = try List.assoc l !a' with Not_found -> if o then raise Exit else raise Error in
+           a' := List.remove_assoc l !a';
+           t' <: t;
+           if o' && not o then raise Error
+         with Exit -> ()
       ) a;
+    if not (List.for_all (fun (l,(t,o)) -> o) !a') then raise Error;
     b <: b'
   | Tuple l, Tuple l' ->
     if List.length l <> List.length l' then raise Error;
