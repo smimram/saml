@@ -68,14 +68,24 @@ def stereo =
  stream (x) -> (x,x)
 end
 
-def s =
-  # l = sine()(440.)
-  l = sine()(440.)
-  r = sine()(880.)
+def alt() =
+  x = ref_new(true)
   stream ->
-    x = !l
-    (x, x)
+    ref_set(x, not ref_get(x))
+    if ref_get(x) then 1. else 0. end
 end
+
+# def s =
+  # # l = sine()(440.)
+  # l = saw()(440.)
+  # r = saw()(880.)
+  # n = alt()
+  # stream ->
+    # x = !n
+    # (x, x)
+# end
+
+s = alt() | stereo
 
 # s = sine()(440.) | stereo
 

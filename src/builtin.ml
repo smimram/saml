@@ -67,7 +67,16 @@ let () =
     in
     register name t f
   in
-  bb_b "and" ( && )
+  let b_b name f =
+    let t = T.arrnl [T.bool ()] (T.bool ()) in
+    let f a =
+      let x = List.assoc "" a |> V.to_bool in
+      V.bool (f x)
+    in
+    register name t f
+  in
+  bb_b "and" ( && );
+  b_b  "not" ( not )
 
 (* Ref *)
 let () =

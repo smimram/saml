@@ -29,6 +29,7 @@
 %right NEWLINE SEMICOLON
 %right BOR
 %right BAND
+%nonassoc BNOT
 %nonassoc EQ LT LE GT GE
 %left PLUS MINUS
 %left TIMES DIV
@@ -55,6 +56,7 @@ expr:
   | expr TIMES expr { appnl ~pos:$loc (Builtin.get ~pos:$loc($2) "fmul") [$1; $3] }
   | expr BAND expr { appnl ~pos:$loc (Builtin.get ~pos:$loc "and") [$1; $3] }
   | expr BOR expr { appnl ~pos:$loc (Builtin.get ~pos:$loc "or") [$1; $3] }
+  | BNOT expr { appnl ~pos:$loc (Builtin.get ~pos:$loc "not") [$2] }
   | expr LE expr { appnl ~pos:$loc (Builtin.get ~pos:$loc "fle") [$1; $3] }
   | expr GE expr { appnl ~pos:$loc (Builtin.get ~pos:$loc "fge") [$1; $3] }
   | expr LT expr { appnl ~pos:$loc (Builtin.get ~pos:$loc "flt") [$1; $3] }
@@ -152,9 +154,6 @@ tuple:
   /* | simple_expr TIMES simple_expr { app ~pos:$loc (Builtin.get ~pos:$loc "fmul") (pair ~pos:$loc $1 $3) } */
   /* | simple_expr DIV simple_expr { app ~pos:$loc (Builtin.get ~pos:$loc "fdiv") (pair ~pos:$loc $1 $3) } */
   /* | UMINUS simple_expr { app ~pos:$loc (Builtin.get ~pos:$loc "fsub") (pair ~pos:$loc (float 0.) $2) } */
-  /* | simple_expr BAND simple_expr { app ~pos:$loc (Builtin.get ~pos:$loc "and") (pair ~pos:$loc $1 $3) } */
-  /* | simple_expr BOR simple_expr { app ~pos:$loc (Builtin.get ~pos:$loc "or") (pair ~pos:$loc $1 $3) } */
-  /* | BNOT simple_expr { app ~pos:$loc (Builtin.get ~pos:$loc "not") $2 } */
   /* | IF expr THEN exprs elif END { app ~pos:$loc (Builtin.get ~pos:$loc "ite") (record ~pos:$loc ["if",$2; "then", ufun ~pos:$loc $4; "else", ufun ~pos:$loc $5]) } */
   /* | WHILE expr DO exprs DONE { app ~pos:$loc (Builtin.get ~pos:$loc "while") (record ~pos:$loc ["cond",$2; "body", ufun ~pos:$loc $4]) } */
 

@@ -24,8 +24,8 @@ and descr =
   | Seq of t * t
   | Tuple of t list
   | Null
-  | Stream_bind of t * t
   | Stream_return of t
+  | Stream_bind of t * t
   | Stream_get of t
 (** An environment. *)
 and env = (string * t) list
@@ -37,7 +37,6 @@ module Value = struct
     | Float of float
     | Bool of bool
     | Null
-    | Var of string
     | Fun of (env -> value)
     | Tuple of value list
     | Neutral of neutral
@@ -53,7 +52,6 @@ module Value = struct
     | Float x -> string_of_float x
     | Bool b -> string_of_bool b
     | Null -> "null"
-    | Var x -> x
     | Fun _ -> "<fun>"
     | Tuple l -> Printf.sprintf "(%s)" (l |> List.map to_string |> String.concat ", ")
     | Ref x -> Printf.sprintf "ref(%s)" (to_string !x)
@@ -143,7 +141,7 @@ let rec to_string ~tab p e =
   | App (e, a) ->
     let e = to_string ~tab true e in
     let a = a |> List.map (fun (l,v) -> (if l<>"" then l^"=" else "") ^ to_string ~tab:(tab+1) false v) |> String.concat ", " in
-    pa p (Printf.sprintf "%s(%s)" e a)
+    Printf.sprintf "%s(%s)" e a
   | Seq (e1, e2) ->
     let e1 = to_string ~tab false e1 in
     let e2 = to_string ~tab false e2 in
@@ -265,7 +263,7 @@ let check env t = check 0 env t
 
 (** Evaluate a term to a value *)
 let rec eval (env : V.env) t : V.t =
-  (* Printf.printf "eval: %s\n\n%!" (to_string t); *)
+  Printf.printf "eval: %s\n\n%!" (to_string t);
   match t.descr with
   | Float x -> Float x
   | Bool b -> Bool b
