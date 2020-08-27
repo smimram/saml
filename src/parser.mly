@@ -32,6 +32,7 @@
 %nonassoc EQ LT LE GT GE
 %left PLUS MINUS
 %left TIMES DIV
+%left PIPE
 %nonassoc LPAR
 
 %start prog
@@ -45,7 +46,6 @@ expr:
   | IDENT { var ~pos:$loc $1 }
   | FLOAT { make ~pos:$loc (Float $1) }
   | BOOL { make ~pos:$loc (Bool $1) }
-  | LPAR RPAR { unit ~pos:$loc () }
   | BUILTIN LPAR STRING RPAR { Builtin.get ~pos:$loc $3 }
   | FUN LPAR def_args RPAR ARR n expr { fct ~pos:$loc $3 $7 }
   | expr LPAR args RPAR { app ~pos:$loc $1 $3 }
@@ -67,6 +67,8 @@ expr:
   | NULL { null ~pos:$loc () }
   | STREAM LPAR def_args RPAR ARR n expr { fct ~pos:$loc ($3) (fct ~pos:$loc ["",(dtv,None)] $7) }
   | DT { var ~pos:$loc dtv }
+  | LPAR tuple RPAR { tuple ~pos:$loc $2 }
+  | expr PIPE expr { appnl ~pos:$loc (var ~pos:$loc($2) "stream_bind") [$1; $3] }
 
 elif:
   | { unit () }
@@ -77,14 +79,21 @@ n:
   | NEWLINE { () }
   | { () }
 
+eqn:
+  | EQ { () }
+  | NEWLINE { () }
+
+eq:
+  | EQ { () }
+  | { () }
+
 nexpr:
   | n expr { $2 }
 
 decl:
   | IDENT EQ expr { $1, $3 }
-  | DEF IDENT EQ nexpr END { $2, $4 }
-  | DEF IDENT NEWLINE expr END { $2, $4 }
-  | DEF IDENT LPAR def_args RPAR EQ nexpr END { $2, fct ~pos:$loc $4 $7 }
+  | DEF IDENT eqn nexpr END { $2, $4 }
+  | DEF IDENT LPAR def_args RPAR eq nexpr END { $2, fct ~pos:$loc $4 $7 }
 
 arg:
   | expr { "", $1 }
@@ -105,7 +114,10 @@ def_args:
   | def_arg { [$1] }
   | { [] }
 
-
+tuple:
+  | expr COMMA tuple { $1::$3 }
+  | expr { [$1] }
+  | { [] }
 
 
 

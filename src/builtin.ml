@@ -84,6 +84,11 @@ let () =
 (* let () = *)
 (* register "print" ~eval:(fun t -> print_string (E.get_string t); E.unit ()) (T.string ()) (T.unit ()) *)
 
+(* Multimedia. *)
+let () =
+  let t = T.arrnl [T.arrnl [T.float ()] (T.pair (T.float ()) (T.float ()))] (T.unit ()) in
+  register "play" t
+
 let tenv () =
   let typ e =
     match e.E.descr with

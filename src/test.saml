@@ -4,6 +4,15 @@
 # null_elim = builtin("null_elim")
 # sin = builtin("sin")
 
+# Streams
+
+def get(s) = s(dt) end
+
+def stream_bind(x, f) =
+  fun (d) ->
+    f(x(d))(d)
+end
+
 def null_is(x) =
   def t() = true end
   def f(_) = false end
@@ -11,8 +20,6 @@ def null_is(x) =
 end
 
 x = if true then 3. else 4. end
-
-def get(s) = s(dt) end
 
 x = 2.
 xx = x
@@ -64,3 +71,10 @@ def sine() =
     t = get(p(freq))
     sin(t)
 end
+
+def stereo =
+ stream (x) -> (x,x)
+end
+
+s = sine()(440.) | stereo
+play(s)

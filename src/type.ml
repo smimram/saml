@@ -35,6 +35,8 @@ let bool () = make Bool
 
 let tuple l = make (Tuple l)
 
+let pair a b = tuple [a;b]
+
 let unit () = tuple []
 
 let var =

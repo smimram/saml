@@ -66,6 +66,8 @@ let seq ?pos e1 e2 = make ?pos (Seq (e1, e2))
 
 let letin ?pos var def body = make ?pos (Let (var, def, body))
 
+let tuple ?pos l = make ?pos (Tuple l)
+
 let ffi ?pos name ?(eval=fun _ -> error "Not implemented: %s" name) t =
   let f =
     FFI
