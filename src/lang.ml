@@ -140,6 +140,7 @@ let rec check level (env:T.env) e =
     e >: typ e
   | Let (var,def,body) ->
     check (level+1) env def;
+    if level = 0 then Printf.printf "%s : %s\n%!" var (T.to_string (typ def));
     let env = (var, T.generalize level (typ def))::env in
     check level env body;
     e >: typ body

@@ -42,7 +42,7 @@ expr:
   | FLOAT { make ~pos:$loc (Float $1) }
   | LPAR RPAR { unit ~pos:$loc () }
   | BUILTIN LPAR STRING RPAR { Builtin.get ~pos:$loc $3 }
-  | FUN def_args ARR expr { fct ~pos:$loc $2 $4 }
+  | FUN LPAR def_args RPAR ARR n expr { fct ~pos:$loc $3 $7 }
   | expr LPAR args RPAR { app ~pos:$loc $1 $3 }
   | expr PLUS expr { app ~pos:$loc (Builtin.get ~pos:$loc($2) "fadd") [$1; $3] }
   | expr NEWLINE expr { seq ~pos:$loc $1 $3 }

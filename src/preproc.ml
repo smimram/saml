@@ -1,5 +1,15 @@
 (** Preprocessing on files. *)
 
+(* Allow a tokenizer to return a list of tokens. *)
+let flatten tokenl =
+  let queue = ref [] in
+  let rec token lexbuf =
+    match !queue with
+    | t::q -> queue := q; t
+    | [] -> queue := tokenl lexbuf; token lexbuf
+  in
+  token
+
 (* Expand includes. *)
 let rec includer tokenizer =
   let queue = ref [] in
@@ -39,16 +49,6 @@ let merge_newlines tokenizer =
     | x ->
        state := false;
        x
-  in
-  token
-
-(* Allow a tokenizer to return a list of tokens. *)
-let flatten tokenl =
-  let queue = ref [] in
-  let rec token lexbuf =
-    match !queue with
-    | t::q -> queue := q; t
-    | [] -> queue := tokenl lexbuf; token lexbuf
   in
   token
 

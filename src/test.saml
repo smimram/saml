@@ -1,6 +1,6 @@
-# ref_new = builtin("ref_new")
-# ref_get = builtin("ref_get")
-# ref_set = builtin("ref_set")
+ref_new = builtin("ref_new")
+ref_get = builtin("ref_get")
+ref_set = builtin("ref_set")
 
 x = 2.
 xx = x
@@ -26,9 +26,9 @@ end
 
 # def succ(x) = x + 1. end
 
-# def integrator(init) =
-  # x = ref_new(init)
-  # # fun(x, dt) ->
-  # x
-# end
-# integrator
+def integrator(init) =
+  x = ref_new(init)
+  fun (x, dt) ->
+    x
+end
+
