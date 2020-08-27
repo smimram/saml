@@ -17,10 +17,10 @@ type t =
 and descr =
   | Float of float
   | Var of string (** A variable. *)
-  | Fun of string list * t (** A function with given arguments. *)
+  | Fun of (string * (string * t option)) list * t (** A function with given arguments (label, variable, default value). *)
   | FFI of ffi
   | Let of string * t * t (** A variable declaration. *)
-  | App of t * t list
+  | App of t * (string * t) list
   | Seq of t * t
   | Tuple of t list
   | Null
@@ -59,6 +59,8 @@ let fct ?pos args e = make ?pos (Fun (args, e))
 
 let app ?pos f l = make ?pos (App (f, l))
 
+let appnl ?pos f l = app ?pos f (List.map (fun e -> "", e) l)
+
 let seq ?pos e1 e2 = make ?pos (Seq (e1, e2))
 
 let letin ?pos var def body = make ?pos (Let (var, def, body))
@@ -84,12 +86,12 @@ let rec to_string ~tab p e =
   | Float f -> string_of_float f
   | FFI ffi -> Printf.sprintf "<%s>" ffi.ffi_name
   | Fun (args, e) ->
-    let args = String.concat ", " args in
+    let args = args |> List.map (fun (l,(x,d)) -> (if l<>"" then "~"^l^":" else "")^x^(match d with None -> "" | Some d -> "="^to_string ~tab:(tab+1) true d)) |> String.concat ", " in
     let e = to_string ~tab:(tab+1) false e in
     pa p (Printf.sprintf "fun (%s) ->%s%s" args (if String.contains e '\n' then ("\n"^(tabs ~tab:(tab+1) ())) else " ") e)
   | App (e, a) ->
     let e = to_string ~tab true e in
-    let a = List.map (to_string ~tab:(tab+1) false) a |> String.concat ", " in
+    let a = a |> List.map (fun (l,v) -> (if l<>"" then l^"=" else "") ^ to_string ~tab:(tab+1) false v) |> String.concat ", " in
     pa p (Printf.sprintf "%s(%s)" e a)
   | Seq (e1, e2) ->
     let e1 = to_string ~tab false e1 in
@@ -158,15 +160,35 @@ let rec check level (env:T.env) e =
     check level env body;
     e >: typ body
   | Fun (args,v) ->
-    let targs = List.map (fun x -> x, if x = dtv then T.float () else T.var level) args in 
-    let env = (List.map (fun (x,t) -> x,([],t)) targs)@env in
+    let targs =
+      List.map
+        (fun (l,(x,d)) ->
+           let t, o =
+             match d with
+             | Some d ->
+               check level env d;
+               typ d, true
+             | None ->
+               (if x = dtv then T.float () else T.var level),
+               false
+           in
+           l,x,t,o
+        ) args
+    in 
+    let env = (List.map (fun (l,x,t,o) -> x,([],t)) targs)@env in
     check level env v;
-    e >: T.arr (List.map snd targs) (typ v)
-  | App (f, v) ->
+    e >: T.arr (List.map (fun (l,x,t,o) -> l,(t,o)) targs) (typ v)
+  | App (f, a) ->
     let b = T.var level in
     check level env f;
-    List.iter (check level env) v;
-    f <: T.arr (List.map typ v) b;
+    let a =
+      List.map
+        (fun (l,v) ->
+           check level env v;
+           l,(typ v,false)
+        ) a
+    in
+    f <: T.arr a b;
     e >: b
   | Tuple l ->
     List.iter (check level env) l;

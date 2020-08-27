@@ -12,7 +12,7 @@ and descr =
   | Float
   | Bool
   | Var of var ref
-  | Arr of t list * t
+  | Arr of (string * (t * bool)) list * t (* label, type, optional? *)
   | Tuple of t list
   | Ref of t
   | Nullable of t
@@ -42,6 +42,10 @@ let var =
     make (Var (ref (Free level)))
 
 let arr a b = make (Arr (a, b))
+
+let arrnl a b =
+  let a = List.map (fun t -> "",(t,false)) a in
+  arr a b
 
 let nullable a = make (Nullable a)
 
@@ -84,7 +88,7 @@ let to_string ?(generalized=[]) t =
         let l = List.map (to_string false) l |> String.concat ", " in
         Printf.sprintf "(%s)" l
     | Arr (a, b) ->
-      let a = List.map (to_string false) a |> String.concat ", " in 
+      let a = a |> List.map (fun (l,(t,o)) -> (if o then "?" else "") ^ (if l = "" then "" else l ^ " : ") ^ to_string false t) |> String.concat ", " in 
       let b = to_string false b in
       pa p (Printf.sprintf "(%s) -> %s" a b)
     | Ref t ->
@@ -101,7 +105,7 @@ let string_of_scheme ((generalized,t):scheme) =
 
 let rec occurs x t =
   match (unlink t).descr with
-  | Arr (a, b) -> List.exists (occurs x) a || occurs x b
+  | Arr (a, b) -> List.exists (fun (l,(t,o)) -> occurs x t) a || occurs x b
   | Var v -> x == v
   | Tuple l -> List.exists (occurs x) l
   | Float | Bool -> false
@@ -141,7 +145,14 @@ let rec ( <: ) (t1:t) (t2:t) =
     x := Link t2
   | Arr (a, b), Arr (a', b') ->
     if List.length a <> List.length a' then raise Error;
-    List.iter2 ( <: ) a' a;
+    let a' = ref a' in
+    List.iter
+      (fun (l,(t,o)) ->
+         let t',o' = try List.assoc l !a' with Not_found -> raise Error in
+         a' := List.remove_assoc l !a';
+         t' <: t;
+         if o' && not o then raise Error
+      ) a;
     b <: b'
   | Tuple l, Tuple l' ->
     if List.length l <> List.length l' then raise Error;
@@ -160,7 +171,7 @@ let generalize level t : scheme =
     | Var ({ contents = Free l } as x) -> if l > level then [x] else []
     | Var { contents = Link _ } -> assert false
     | Arr (a, b) ->
-      let a = List.fold_left (fun v t -> (vars t)@v) [] a in
+      let a = List.fold_left (fun v (l,(t,o)) -> (vars t)@v) [] a in
       a@(vars b)
     | Tuple l -> List.fold_left (fun v t -> (vars t)@v) [] l
     | Ref t | Nullable t -> vars t
@@ -180,7 +191,7 @@ let instantiate level (g,t) =
         if not (List.mem_assq x !tenv) then tenv := (x, (var level).descr) :: !tenv;
         List.assq x !tenv
       | Var x -> Var x
-      | Arr (a, b) -> Arr (List.map aux a, aux b)
+      | Arr (a, b) -> Arr (List.map (fun (l,(t,o)) -> l, (aux t,o)) a, aux b)
       | Tuple l -> Tuple (List.map aux l)
       | Ref t -> Ref (aux t)
       | Nullable t -> Nullable (aux t)

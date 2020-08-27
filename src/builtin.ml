@@ -13,7 +13,7 @@ let register name ?eval t =
   builtins := (name, f) :: !builtins
 
 let f_f name f =
-  let t = T.arr [T.float ()] (T.float ()) in
+  let t = T.arrnl [T.float ()] (T.float ()) in
   let eval = function
     | [_,x] -> E.float (f (E.get_float x))
     | _ -> assert false
@@ -21,7 +21,7 @@ let f_f name f =
   register name ~eval t
 
 let ff_f name f =
-  let t = T.arr [T.float (); T.float ()] (T.float ()) in
+  let t = T.arrnl [T.float (); T.float ()] (T.float ()) in
   let eval = function
     | [_,x;_,y] -> E.float (f (E.get_float x) (E.get_float y))
     | _ -> assert false
@@ -39,11 +39,11 @@ let () =
 (* Ref *)
 let () =
   let a = T.var 0 in
-  let t = T.arr [a] (T.ref a) in
+  let t = T.arrnl [a] (T.ref a) in
   register "ref_new" t;
-  let t = T.arr [T.ref a] a in
+  let t = T.arrnl [T.ref a] a in
   register "ref_get" t;
-  let t = T.arr [T.ref a; a] (T.unit ()) in
+  let t = T.arrnl [T.ref a; a] (T.unit ()) in
   register "ref_set" t
 
 (* String *)

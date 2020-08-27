@@ -46,14 +46,14 @@ expr:
   | BUILTIN LPAR STRING RPAR { Builtin.get ~pos:$loc $3 }
   | FUN LPAR def_args RPAR ARR n expr { fct ~pos:$loc $3 $7 }
   | expr LPAR args RPAR { app ~pos:$loc $1 $3 }
-  | expr PLUS expr { app ~pos:$loc (Builtin.get ~pos:$loc($2) "fadd") [$1; $3] }
-  | expr MINUS expr { app ~pos:$loc (Builtin.get ~pos:$loc($2) "fsub") [$1; $3] }
-  | expr TIMES expr { app ~pos:$loc (Builtin.get ~pos:$loc($2) "fmul") [$1; $3] }
+  | expr PLUS expr { appnl ~pos:$loc (Builtin.get ~pos:$loc($2) "fadd") [$1; $3] }
+  | expr MINUS expr { appnl ~pos:$loc (Builtin.get ~pos:$loc($2) "fsub") [$1; $3] }
+  | expr TIMES expr { appnl ~pos:$loc (Builtin.get ~pos:$loc($2) "fmul") [$1; $3] }
   | expr NEWLINE expr { seq ~pos:$loc $1 $3 }
   | decl NEWLINE expr { letin ~pos:$loc($1) $1 $3 }
   | BEGIN nexpr END { $2 }
   | NULL { null ~pos:$loc () }
-  | STREAM LPAR def_args RPAR ARR n expr { fct ~pos:$loc ($3@[dtv]) $7 }
+  | STREAM LPAR def_args RPAR ARR n expr { fct ~pos:$loc ($3@["",(dtv,None)]) $7 }
   | DT { var ~pos:$loc dtv }
 
 n:
@@ -68,14 +68,21 @@ decl:
   | DEF IDENT EQ nexpr END { $2, $4 }
   | DEF IDENT LPAR def_args RPAR EQ nexpr END { $2, fct ~pos:$loc $4 $7 }
 
+arg:
+  | expr { "", $1 }
+  | IDENT EQ expr { $1, $3 }
+
 args:
-  | expr COMMA args { $1::$3 }
-  | expr { [$1] }
+  | arg COMMA args { $1::$3 }
+  | arg { [$1] }
   | { [] }
 
+def_arg:
+  | IDENT { "",($1,None) }
+
 def_args:
-  | IDENT COMMA def_args { $1::$3 }
-  | IDENT { [$1] }
+  | def_arg COMMA def_args { $1::$3 }
+  | def_arg { [$1] }
   | { [] }
 
 
