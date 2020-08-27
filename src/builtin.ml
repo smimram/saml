@@ -46,6 +46,13 @@ let () =
   let t = T.arrnl [T.ref a; a] (T.unit ()) in
   register "ref_set" t
 
+(* Nullable *)
+let () =
+  let a = T.var 0 in
+  let b = T.var 0 in
+  let t = T.arrnl [T.nullable a; T.arrnl [] b; T.arrnl [a] b] b in
+  register "null_elim" t
+
 (* String *)
 (* let () = *)
   (* let t = T.arr [T.var 0] (T.string ()) in *)
@@ -58,7 +65,15 @@ let () =
 
 (* IO *)
 (* let () = *)
-  (* register "print" ~eval:(fun t -> print_string (E.get_string t); E.unit ()) (T.string ()) (T.unit ()) *)
+(* register "print" ~eval:(fun t -> print_string (E.get_string t); E.unit ()) (T.string ()) (T.unit ()) *)
+
+let tenv () =
+  let typ e =
+    match e.E.descr with
+    | E.FFI f -> f.E.ffi_type
+    | _ -> assert false
+  in
+  List.map (fun (f,e) -> f, typ e) !builtins
 
 let get ?pos name =
   let t = try List.assoc name !builtins with Not_found -> failwith ("Builtin not implemented: "^name^".") in

@@ -42,6 +42,7 @@ prog:
 expr:
   | IDENT { var ~pos:$loc $1 }
   | FLOAT { make ~pos:$loc (Float $1) }
+  | BOOL { make ~pos:$loc (Bool $1) }
   | LPAR RPAR { unit ~pos:$loc () }
   | BUILTIN LPAR STRING RPAR { Builtin.get ~pos:$loc $3 }
   | FUN LPAR def_args RPAR ARR n expr { fct ~pos:$loc $3 $7 }
@@ -51,10 +52,16 @@ expr:
   | expr TIMES expr { appnl ~pos:$loc (Builtin.get ~pos:$loc($2) "fmul") [$1; $3] }
   | expr NEWLINE expr { seq ~pos:$loc $1 $3 }
   | decl NEWLINE expr { letin ~pos:$loc($1) $1 $3 }
+  | IF expr THEN expr elif END { app ~pos:$loc (Builtin.get ~pos:$loc "ite") ["if",$2; "then", fct ~pos:$loc [] $4; "else", fct ~pos:$loc [] $5] }
   | BEGIN nexpr END { $2 }
   | NULL { null ~pos:$loc () }
   | STREAM LPAR def_args RPAR ARR n expr { fct ~pos:$loc ($3@["",(dtv,None)]) $7 }
   | DT { var ~pos:$loc dtv }
+
+elif:
+  | { unit () }
+  | ELSE expr { $2 }
+  | ELIF expr THEN expr elif { app ~pos:$loc (Builtin.get ~pos:$loc "ite") ["if",$2; "then", fct ~pos:$loc [] $4; "else", fct ~pos:$loc [] $5] }
 
 n:
   | NEWLINE { () }

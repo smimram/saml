@@ -31,6 +31,8 @@ let make t = { descr = t }
 
 let float () = make Float
 
+let bool () = make Bool
+
 let tuple l = make (Tuple l)
 
 let unit () = tuple []

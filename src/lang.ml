@@ -16,6 +16,7 @@ type t =
 (** Contents of an expression. *)
 and descr =
   | Float of float
+  | Bool of bool
   | Var of string (** A variable. *)
   | Fun of (string * (string * t option)) list * t (** A function with given arguments (label, variable, default value). *)
   | FFI of ffi
@@ -84,6 +85,7 @@ let rec to_string ~tab p e =
   match e.descr with
   | Var x -> x
   | Float f -> string_of_float f
+  | Bool b -> string_of_bool b
   | FFI ffi -> Printf.sprintf "<%s>" ffi.ffi_name
   | Fun (args, e) ->
     let args = args |> List.map (fun (l,(x,d)) -> (if l<>"" then "~"^l^":" else "")^x^(match d with None -> "" | Some d -> "="^to_string ~tab:(tab+1) true d)) |> String.concat ", " in
@@ -142,6 +144,7 @@ let rec check level (env:T.env) e =
   e.t <- Some (T.var level);
   match e.descr with
   | Float _ -> e >: T.float ()
+  | Bool _ -> e >: T.bool ()
   | FFI f -> e >: T.instantiate level f.ffi_type
   | Var x when x = dtv -> e >: T.float ()
   | Var x ->

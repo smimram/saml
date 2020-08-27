@@ -1,7 +1,14 @@
-ref_new = builtin("ref_new")
-ref_get = builtin("ref_get")
-ref_set = builtin("ref_set")
-sin = builtin("sin")
+# ref_new = builtin("ref_new")
+# ref_get = builtin("ref_get")
+# ref_set = builtin("ref_set")
+# null_elim = builtin("null_elim")
+# sin = builtin("sin")
+
+def null_is(x) =
+  def t() = true end
+  def f(_) = false end
+  null_elim(x, t, f)
+end
 
 def get(s) = s(dt) end
 
