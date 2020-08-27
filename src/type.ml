@@ -10,10 +10,12 @@ type t =
   }
 and descr =
   | Float
+  | Bool
   | Var of var ref
   | Arr of t list * t
   | Tuple of t list
   | Ref of t
+  | Nullable of t
 (** Contents of a variable. *)
 and var =
   | Free of int (** A free variable with given level. *)
@@ -40,6 +42,8 @@ let var =
     make (Var (ref (Free level)))
 
 let arr a b = make (Arr (a, b))
+
+let nullable a = make (Nullable a)
 
 (** Follow links in variables. *)
 let rec unlink t =
@@ -74,6 +78,7 @@ let to_string ?(generalized=[]) t =
           ^ (if !Config.Debug.Typing.show_levels then "@" ^ string_of_int l else "")
       )
     | Float -> "float"
+    | Bool -> "bool"
     | Tuple l ->
       if l = [] then "unit" else
         let l = List.map (to_string false) l |> String.concat ", " in
@@ -85,6 +90,9 @@ let to_string ?(generalized=[]) t =
     | Ref t ->
       let t = to_string true t in
       pa p (Printf.sprintf "ref %s" t)
+    | Nullable t ->
+      let t = to_string true t in
+      "?"^t
   in
   to_string false t
 
@@ -96,8 +104,8 @@ let rec occurs x t =
   | Arr (a, b) -> List.exists (occurs x) a || occurs x b
   | Var v -> x == v
   | Tuple l -> List.exists (occurs x) l
-  | Float -> false
-  | Ref t -> occurs x t
+  | Float | Bool -> false
+  | Ref t | Nullable t -> occurs x t
 
 let rec update_level l t =
   match t.descr with
@@ -109,38 +117,41 @@ let rec update_level l t =
       | Free l' -> v := Free (min l l')
     )
   | Tuple t -> List.iter (update_level l) t
-  | Ref t -> update_level l t
-  | Float -> ()
+  | Ref t | Nullable t -> update_level l t
+  | Float | Bool -> ()
 
 exception Error
 
 let rec ( <: ) (t1:t) (t2:t) =
-    (* Printf.printf "st: %s with %s\n%!" (to_string t1) (to_string t2); *)
-    let t1 = unlink t1 in
-    let t2 = unlink t2 in
-    match t1.descr, t2.descr with
-    | Var v1, Var v2 when v1 == v2 -> ()
-    | _, Var x ->
-      if occurs x t1 then raise Error;
-      (* TODO: as usual, we could do occurs and update_level at the same time *)
-      update_level (var_level x) t1;
-      if !Config.Debug.Typing.show_assignations then Printf.printf "%s <- %s\n%!" (to_string t2) (to_string t1);
-      x := Link t1
-    | Var x, _ ->
-       if occurs x t2 then raise Error;
-       update_level (var_level x) t2;
-       if !Config.Debug.Typing.show_assignations then Printf.printf "%s <- %s\n%!" (to_string t1) (to_string t2);
-       x := Link t2
-    | Arr (a, b), Arr (a', b') ->
-      if List.length a <> List.length a' then raise Error;
-      List.iter2 ( <: ) a' a;
-      b <: b'
-    | Tuple l, Tuple l' ->
-      if List.length l <> List.length l' then raise Error;
-      List.iter2 ( <: ) l l'
-    | Ref a, Ref b -> a <: b
-    | Float, Float -> ()
-    | _, _ -> raise Error
+  (* Printf.printf "st: %s with %s\n%!" (to_string t1) (to_string t2); *)
+  let t1 = unlink t1 in
+  let t2 = unlink t2 in
+  match t1.descr, t2.descr with
+  | Var v1, Var v2 when v1 == v2 -> ()
+  | _, Var x ->
+    if occurs x t1 then raise Error;
+    (* TODO: as usual, we could do occurs and update_level at the same time *)
+    update_level (var_level x) t1;
+    if !Config.Debug.Typing.show_assignations then Printf.printf "%s <- %s\n%!" (to_string t2) (to_string t1);
+    x := Link t1
+  | Var x, _ ->
+    if occurs x t2 then raise Error;
+    update_level (var_level x) t2;
+    if !Config.Debug.Typing.show_assignations then Printf.printf "%s <- %s\n%!" (to_string t1) (to_string t2);
+    x := Link t2
+  | Arr (a, b), Arr (a', b') ->
+    if List.length a <> List.length a' then raise Error;
+    List.iter2 ( <: ) a' a;
+    b <: b'
+  | Tuple l, Tuple l' ->
+    if List.length l <> List.length l' then raise Error;
+    List.iter2 ( <: ) l l'
+  | Ref a, Ref b
+  | Nullable a, Nullable b -> a <: b
+  | _, Nullable t2 -> t1 <: t2
+  | Float, Float -> ()
+  | Bool, Bool -> ()
+  | _, _ -> raise Error
 
 (** Generalize existential variable to universal ones. *)
 let generalize level t : scheme =
@@ -152,8 +163,8 @@ let generalize level t : scheme =
       let a = List.fold_left (fun v t -> (vars t)@v) [] a in
       a@(vars b)
     | Tuple l -> List.fold_left (fun v t -> (vars t)@v) [] l
-    | Ref t -> vars t
-    | Float -> []
+    | Ref t | Nullable t -> vars t
+    | Float | Bool -> []
   in
   (* TODO: remove duplicates *)
   vars t, t
@@ -172,7 +183,8 @@ let instantiate level (g,t) =
       | Arr (a, b) -> Arr (List.map aux a, aux b)
       | Tuple l -> Tuple (List.map aux l)
       | Ref t -> Ref (aux t)
-      | Float as t -> t
+      | Nullable t -> Nullable (aux t)
+      | Float | Bool as t -> t
     in
     { descr }
   in

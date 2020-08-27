@@ -1,6 +1,7 @@
 ref_new = builtin("ref_new")
 ref_get = builtin("ref_get")
 ref_set = builtin("ref_set")
+sin = builtin("sin")
 
 def get(s) = s(dt) end
 
@@ -35,3 +36,9 @@ def integrator(init) =
     ref_set(y, ref_get(y) + x * dt)
     ans
 end
+
+x = null
+
+# def sine() =
+  # t 
+# end

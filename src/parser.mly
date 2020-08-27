@@ -18,6 +18,7 @@
 %token EQ PLUS MINUS UMINUS TIMES DIV POW
 %token EOF
 %token NEWLINE
+%token NULL
 %token <int> INT
 %token <float> FLOAT
 %token <bool> BOOL
@@ -51,6 +52,7 @@ expr:
   | expr NEWLINE expr { seq ~pos:$loc $1 $3 }
   | decl NEWLINE expr { letin ~pos:$loc($1) $1 $3 }
   | BEGIN nexpr END { $2 }
+  | NULL { null ~pos:$loc () }
   | STREAM LPAR def_args RPAR ARR n expr { fct ~pos:$loc ($3@[dtv]) $7 }
   | DT { var ~pos:$loc dtv }
 

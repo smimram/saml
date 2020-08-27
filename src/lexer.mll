@@ -56,6 +56,7 @@ rule token = parse
   | "fun" { FUN }
   | "stream" { STREAM }
   | "dt" { DT }
+  | "null" { NULL }
 
   (***** Identifiers *****)
   | (['_''a'-'z''A'-'Z']['a'-'z''A'-'Z''0'-'9''_']*['\'']* as str) { IDENT str }

@@ -23,6 +23,7 @@ and descr =
   | App of t * t list
   | Seq of t * t
   | Tuple of t list
+  | Null
 and ffi =
   {
     ffi_name : string;
@@ -47,6 +48,8 @@ let dtv = "#dt"
 let typ e = Option.get e.t
 
 let var ?pos s = make ?pos (Var s)
+
+let null ?pos () = make ?pos Null
 
 let float ?pos x = make ?pos (Float x)
 
@@ -106,6 +109,7 @@ let rec to_string ~tab p e =
   | Tuple l ->
     let l = List.map (to_string ~tab:(tab+1) false) l |> String.concat ", " in
     Printf.sprintf "(%s)" l
+  | Null -> "null"
 
 let to_string e = to_string ~tab:0 false e
 
@@ -167,6 +171,8 @@ let rec check level (env:T.env) e =
   | Tuple l ->
     List.iter (check level env) l;
     e >: T.tuple (List.map typ l)
+  | Null ->
+    e >: T.nullable (T.var level)
 
 let check env t = check 0 env t
 
