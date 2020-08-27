@@ -5,6 +5,8 @@
 *.annot
 *.a
 *.cmxa
+*.cmt
+*.cmti
 *.conflicts
 ._d
 ._ncdi
