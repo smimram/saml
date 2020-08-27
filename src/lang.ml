@@ -6,6 +6,31 @@ open Common
 
 module T = Type
 
+(** Values. *)
+module Value = struct
+  type value =
+    | Float of float
+    | Bool of bool
+    | Null
+    | Var of string
+    | Fun of (env -> value)
+    | Tuple of value list
+    | Neutral of neutral
+  and neutral =
+    | App of neutral * (string * value) list
+    | Seq of neutral * (unit -> value)
+  and env = (string * value) list
+
+  type t = value
+
+  let float x = Float x
+    
+  let get_float = function
+    | Float x -> x
+    | _ -> assert false
+end
+module V = Value
+
 (** An expression. *)
 type t =
   {
@@ -29,7 +54,7 @@ and ffi =
   {
     ffi_name : string;
     ffi_type : T.scheme;
-    ffi_eval : env -> t; (** evaluation *)
+    ffi_eval : V.env -> V.t; (** evaluation *)
   }
 (** An environment. *)
 and env = (string * t) list
@@ -119,11 +144,6 @@ let rec to_string ~tab p e =
 
 let to_string e = to_string ~tab:0 false e
 
-let get_float t =
-  match t.descr with
-  | Float x -> x
-  | _ -> error "Expected float but got %s" (to_string t)
-
 (** {2 Type inference} *)
 
 (** Typing error. *)
@@ -203,48 +223,60 @@ let rec check level (env:T.env) e =
 
 let check env t = check 0 env t
 
-(* (\** Evaluate a term to a value *\) *)
-(* let rec reduce env t = *)
-  (* (\* Printf.printf "reduce: %s\n\n%!" (to_string t); *\) *)
-  (* match t.desc with *)
-  (* | Bool _ | Int _ | Float _ | String _ | FFI _ -> t *)
-  (* | Var x -> (try List.assoc x env with Not_found -> error "Unbound variable during reduction: %s" x) *)
-  (* | Fun _ -> make ~pos:t.pos (Closure (env, t)) *)
-  (* | Closure (env, t) -> reduce env t *)
-  (* | Let (pat, def, body) -> *)
-     (* let def = reduce env def in *)
-     (* let env = reduce_pattern env pat def in *)
-     (* reduce env body *)
-  (* | App (t, u) -> *)
-     (* let u = reduce env u in *)
-     (* let t = reduce env t in *)
-     (* ( *)
-       (* match t.desc with *)
-       (* | Closure (env', {desc = Fun (pat, t)}) -> *)
-          (* let env' = reduce_pattern [] pat u in *)
-          (* let t = closure env' t in *)
-          (* let t = letin args_pattern u t in *)
-          (* reduce env t *)
-       (* | FFI f -> f.ffi_eval u *)
-       (* | _ -> error "Unexpected term during application: %s" (to_string t) *)
-     (* ) *)
-  (* | Seq (t, u) -> *)
-     (* let _ = reduce env t in *)
-     (* reduce env u *)
-  (* | Record (r, l) -> *)
-     (* let l = *)
-       (* List.fold_left *)
-         (* (fun l (x,t) -> *)
-           (* let env = if r then l@env else env in *)
-           (* (x, reduce env t)::l *)
-         (* ) [] l *)
-     (* in *)
-     (* make ~pos:t.pos (Record (false, List.rev l)) *)
+(** Evaluate a term to a value *)
+let rec eval (env : V.env) t : V.t =
+  (* Printf.printf "eval: %s\n\n%!" (to_string t); *)
+  match t.descr with
+  | Float x -> Float x
+  | Bool b -> Bool b
+  | Null -> Null
+  | Tuple l -> Tuple (List.map (eval env) l)
+  | Var x -> List.assoc x env
+  | Seq (t,u) ->
+    (
+      match eval env t with
+      | Tuple [] -> eval env u
+      | Neutral t -> Neutral (Seq (t, (fun () -> eval env u)))
+      | _ -> assert false
+    )
+  | App (t, u) ->
+    (
+      let t = eval env t in
+      let u = List.map (fun (l,t) -> l, eval env t) u in
+      match t with
+      | Fun f -> f u
+      | Neutral t -> Neutral (App (t, u))
+      | _ -> assert false
+    )
+  | Let (x, def, body) ->
+    let def = eval env def in
+    let env = (x,def)::env in
+    eval env body
+  | Fun (a,b) ->
+    let f args =
+      let args =
+        let args = ref args in
+        List.map
+          (fun (l,(x,d)) ->
+             try
+               let v = List.assoc l !args in
+               args := List.remove_assoc l !args;
+               x, v
+             with Not_found ->
+               let d = Option.get d in
+               x, eval env d
+          ) a
+      in
+      let env = args@env in
+      eval env b
+    in
+    Fun f
+  | FFI f -> Fun f.ffi_eval
 
-(* let reduce t = reduce [] t *)
+(* let eval t = eval [] t *)
 
 (* module Run = struct *)
-  (* let fst t = reduce (fst t) *)
+  (* let fst t = eval (fst t) *)
 
-  (* let snd t = reduce (snd t) *)
+  (* let snd t = eval (snd t) *)
 (* end *)

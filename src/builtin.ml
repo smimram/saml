@@ -2,6 +2,7 @@
 
 module T = Type
 module E = Lang
+module V = Lang.Value
 
 type t = E.ffi
 
@@ -15,7 +16,7 @@ let register name ?eval t =
 let f_f name f =
   let t = T.arrnl [T.float ()] (T.float ()) in
   let eval = function
-    | [_,x] -> E.float (f (E.get_float x))
+    | [_,x] -> V.float (f (V.get_float x))
     | _ -> assert false
   in
   register name ~eval t
@@ -23,7 +24,7 @@ let f_f name f =
 let ff_f name f =
   let t = T.arrnl [T.float (); T.float ()] (T.float ()) in
   let eval = function
-    | [_,x;_,y] -> E.float (f (E.get_float x) (E.get_float y))
+    | [_,x;_,y] -> V.float (f (V.get_float x) (V.get_float y))
     | _ -> assert false
   in
   register name ~eval t
