@@ -24,6 +24,9 @@ and descr =
   | Seq of t * t
   | Tuple of t list
   | Null
+  | Stream_bind of t * t
+  | Stream_return of t
+  | Stream_get of t
 (** An environment. *)
 and env = (string * t) list
 type expr = t
@@ -100,7 +103,7 @@ let make ?(pos=dummy_pos) ?t e =
   }
 
 (** The dt special variable. *)
-let dtv = "#dt"
+let dtv = T.dtv
 
 let typ e = Option.get e.t
 
@@ -160,6 +163,9 @@ let rec to_string ~tab p e =
     let l = List.map (to_string ~tab:(tab+1) false) l |> String.concat ", " in
     Printf.sprintf "(%s)" l
   | Null -> "null"
+  | Stream_bind (e1, e2) -> Printf.sprintf "%s | %s" (to_string ~tab:(tab+1) true e1) (to_string ~tab:(tab+1) true e2)
+  | Stream_return e -> Printf.sprintf "return %s" (to_string ~tab:(tab+1) true e)
+  | Stream_get e -> Printf.sprintf "get %s" (to_string ~tab:(tab+1) true e)
 
 let to_string e = to_string ~tab:0 false e
 
@@ -238,6 +244,22 @@ let rec check level (env:T.env) e =
     e >: T.tuple (List.map typ l)
   | Null ->
     e >: T.nullable (T.var level)
+  | Stream_return a ->
+    check level env a;
+    e >: T.stream (typ a)
+  | Stream_bind (a, b) ->
+    check level env a;
+    check level env b;
+    let ta = T.var level in
+    let tb = T.var level in
+    a <: T.stream ta;
+    b <: T.arrnl [ta] (T.stream tb);
+    e >: T.stream tb
+  | Stream_get a ->
+    check level env a;
+    let x = T.var level in
+    a <: T.stream x;
+    e >: x
 
 let check env t = check 0 env t
 
@@ -289,3 +311,11 @@ let rec eval (env : V.env) t : V.t =
       eval env b
     in
     Fun f
+  | Stream_return t ->
+    eval env (fct ~pos:t.pos [dtv,(dtv,None)] t)
+  | Stream_bind(x, f) ->
+    let pos = t.pos in
+    eval env (make ~pos (Stream_return (app ~pos (appnl ~pos f [app x [dtv, var dtv]]) [dtv, var dtv])))
+  | Stream_get s ->
+    let pos = t.pos in
+    eval env (app ~pos s [dtv, var dtv])

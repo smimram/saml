@@ -3,13 +3,7 @@
 # ref_set = builtin("ref_set")
 # null_elim = builtin("null_elim")
 # sin = builtin("sin")
-
-# Streams
-
-def stream_bind(x, f) =
-  fun (d) ->
-    f(x(d))(d)
-end
+pi = pi()
 
 def null_is(x) =
   def t() = true end
@@ -67,12 +61,28 @@ def sine() =
   p = periodic()
   stream (freq) ->
     t = !p(freq)
-    sin(t)
+    sin(2.*pi*t)
 end
 
 def stereo =
  stream (x) -> (x,x)
 end
 
-s = sine()(440.) | stereo
+def s =
+  # l = sine()(440.)
+  l = sine()(440.)
+  r = sine()(880.)
+  stream ->
+    x = !l
+    (x, x)
+end
+
+# s = sine()(440.) | stereo
+
+# x = ref_new(0.)
+# def s = stream ->
+  # ref_set(x, ref_get(x) + dt * 440.)
+  # x = ref_get(x)
+  # (x, x)
+# end
 play(s)

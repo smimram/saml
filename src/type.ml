@@ -68,6 +68,11 @@ let var_level x =
   | Free l -> l
   | Link _ -> assert false
 
+let dtv = "#dt"
+
+let stream a =
+  arrno [dtv, float ()] a
+
 let global_namer = univ_namer ()
 
 (** String representation of a type. *)

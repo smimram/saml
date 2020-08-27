@@ -12,43 +12,49 @@ let register name t f =
   let t = T.generalize min_int t in
   builtins := (name,(t,f)) :: !builtins
 
-let f_f name f =
-  let t = T.arrnl [T.float ()] (T.float ()) in
-  let f = function
-    | [_,x] -> V.float (f (V.to_float x))
-    | _ -> assert false
-  in
-  register name t f
-
-let ff_f name f =
-  let t = T.arrnl [T.float (); T.float ()] (T.float ()) in
-  let f a =
-    let x = List.assoc_nth 0 "" a |> V.to_float in
-    let y = List.assoc_nth 1 "" a |> V.to_float in
-    V.float (f x y)
-  in
-  register name t f
-
-let ff_b name f =
-  let t = T.arrnl [T.float (); T.float ()] (T.bool ()) in
-  let f a =
-    let x = List.assoc_nth 0 "" a |> V.to_float in
-    let y = List.assoc_nth 1 "" a |> V.to_float in
-    V.bool (f x y)
-  in
-  register name t f
-
 (* Floats *)
 let () =
+  let _f name f =
+    let t = T.arr [] (T.float ()) in
+    let f a = V.float (f ()) in
+    register name t f
+  in
+  let f_f name f =
+    let t = T.arrnl [T.float ()] (T.float ()) in
+    let f a =
+      let x = List.assoc "" a in
+      V.float (f (V.to_float x))
+    in
+    register name t f
+  in
+  let ff_f name f =
+    let t = T.arrnl [T.float (); T.float ()] (T.float ()) in
+    let f a =
+      let x = List.assoc_nth 0 "" a |> V.to_float in
+      let y = List.assoc_nth 1 "" a |> V.to_float in
+      V.float (f x y)
+    in
+    register name t f
+  in
+  let ff_b name f =
+    let t = T.arrnl [T.float (); T.float ()] (T.bool ()) in
+    let f a =
+      let x = List.assoc_nth 0 "" a |> V.to_float in
+      let y = List.assoc_nth 1 "" a |> V.to_float in
+      V.bool (f x y)
+    in
+    register name t f
+  in
   ff_f "fadd" ( +. );
   ff_f "fsub" ( -. );
   ff_f "fmul" ( *. );
   ff_f "fdiv" ( /. );
-  ff_b "fle" ( <= );
-  ff_b "fge" ( >= );
-  ff_b "flt" ( < );
-  ff_b "fgt" ( > );
-  f_f "sin" sin
+  ff_b "fle"  ( <= );
+  ff_b "fge"  ( >= );
+  ff_b "flt"  ( < );
+  ff_b "fgt"  ( > );
+  _f   "pi"   (fun _ -> Float.pi);
+  f_f  "sin"  sin
 
 (* Bool *)
 let () =
@@ -118,10 +124,10 @@ let () =
 
 (* Multimedia. *)
 let () =
-  let t = T.arrnl [T.arrnl [T.float ()] (T.pair (T.float ()) (T.float ()))] (T.unit ()) in
+  let t = T.arrnl [T.arrno [T.dtv, T.float ()] (T.pair (T.float ()) (T.float ()))] (T.unit ()) in
   let play a =
     let s = List.assoc "" a |> V.to_fun in
-    let s dt = s ["",V.float dt] |> V.to_pair |> Pair.map V.to_float V.to_float in
+    let s dt = s [T.dtv, V.float dt] |> V.to_pair |> Pair.map V.to_float V.to_float in
     let samplerate = 44100 in
     let dt = 1. /. float samplerate in
     let handle =
@@ -141,7 +147,8 @@ let () =
       for i = 0 to len-1 do
         let x, y = s dt in
         a.(0).(i) <- x;
-        a.(1).(i) <- y
+        a.(1).(i) <- y;
+        Printf.printf "%f / %f\n%!" x y
       done;
       Pulseaudio.Simple.write handle a 0 len
     done;
