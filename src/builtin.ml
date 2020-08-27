@@ -28,13 +28,29 @@ let ff_f name f =
   in
   register name ~eval t
 
+let ff_b name f =
+  let t = T.arrnl [T.float (); T.float ()] (T.bool ()) in
+  register name t
+
 (* Floats *)
 let () =
   ff_f "fadd" ( +. );
   ff_f "fsub" ( -. );
   ff_f "fmul" ( *. );
   ff_f "fdiv" ( /. );
+  ff_b "fle" ( <= );
+  ff_b "fge" ( >= );
+  ff_b "flt" ( < );
+  ff_b "fgt" ( > );
   f_f "sin" sin
+
+(* Bool *)
+let () =
+  let bb_b name f =
+    let t = T.arrnl [T.bool (); T.bool ()] (T.bool ()) in
+    register name t
+  in
+  bb_b "and" ( && )
 
 (* Ref *)
 let () =
@@ -59,9 +75,10 @@ let () =
   (* register "repr" ~eval:(fun l -> E.string (E.to_string (snd (List.hd l)))) t *)
 
 (* Control *)
-(* let () = *)
-  (* let a = T.uvar () in *)
-  (* register "ite" (T.record ["if", T.bool (); "then", T.arr (T.unit ()) a; "else", T.arr (T.unit ()) a]) a *)
+let () =
+  let a = T.var 0 in
+  let t = T.arrno ["if", T.bool (); "then", T.arrnl [] a; "else", T.arrnl [] a] a in
+  register "ite" t
 
 (* IO *)
 (* let () = *)

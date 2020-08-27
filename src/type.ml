@@ -49,6 +49,10 @@ let arrnl a b =
   let a = List.map (fun t -> "",(t,false)) a in
   arr a b
 
+let arrno a b =
+  let a = List.map (fun (l,t) -> l,(t,false)) a in
+  arr a b
+
 let nullable a = make (Nullable a)
 
 (** Follow links in variables. *)

@@ -27,7 +27,9 @@
 
 %nonassoc ARR
 %right NEWLINE SEMICOLON
-%nonassoc EQ
+%right BOR
+%right BAND
+%nonassoc EQ LT LE GT GE
 %left PLUS MINUS
 %left TIMES DIV
 %nonassoc LPAR
@@ -50,7 +52,15 @@ expr:
   | expr PLUS expr { appnl ~pos:$loc (Builtin.get ~pos:$loc($2) "fadd") [$1; $3] }
   | expr MINUS expr { appnl ~pos:$loc (Builtin.get ~pos:$loc($2) "fsub") [$1; $3] }
   | expr TIMES expr { appnl ~pos:$loc (Builtin.get ~pos:$loc($2) "fmul") [$1; $3] }
+  | expr BAND expr { appnl ~pos:$loc (Builtin.get ~pos:$loc "and") [$1; $3] }
+  | expr BOR expr { appnl ~pos:$loc (Builtin.get ~pos:$loc "or") [$1; $3] }
+  | expr LE expr { appnl ~pos:$loc (Builtin.get ~pos:$loc "fle") [$1; $3] }
+  | expr GE expr { appnl ~pos:$loc (Builtin.get ~pos:$loc "fge") [$1; $3] }
+  | expr LT expr { appnl ~pos:$loc (Builtin.get ~pos:$loc "flt") [$1; $3] }
+  | expr GT expr { appnl ~pos:$loc (Builtin.get ~pos:$loc "fgt") [$1; $3] }
+  /* | expr CMP expr { appnl ~pos:$loc (Builtin.get ~pos:$loc "feq") [$1; $3] } */
   | expr NEWLINE expr { seq ~pos:$loc $1 $3 }
+  | expr SEMICOLON expr { seq ~pos:$loc $1 $3 }
   | decl NEWLINE expr { letin ~pos:$loc($1) $1 $3 }
   | IF expr THEN expr elif END { app ~pos:$loc (Builtin.get ~pos:$loc "ite") ["if",$2; "then", fct ~pos:$loc [] $4; "else", fct ~pos:$loc [] $5] }
   | BEGIN nexpr END { $2 }
@@ -127,11 +137,6 @@ def_args:
   /* | simple_expr TIMES simple_expr { app ~pos:$loc (Builtin.get ~pos:$loc "fmul") (pair ~pos:$loc $1 $3) } */
   /* | simple_expr DIV simple_expr { app ~pos:$loc (Builtin.get ~pos:$loc "fdiv") (pair ~pos:$loc $1 $3) } */
   /* | UMINUS simple_expr { app ~pos:$loc (Builtin.get ~pos:$loc "fsub") (pair ~pos:$loc (float 0.) $2) } */
-  /* | simple_expr LE simple_expr { app ~pos:$loc (Builtin.get ~pos:$loc "fle") (pair ~pos:$loc $1 $3) } */
-  /* | simple_expr GE simple_expr { app ~pos:$loc (Builtin.get ~pos:$loc "fge") (pair ~pos:$loc $1 $3) } */
-  /* | simple_expr LT simple_expr { app ~pos:$loc (Builtin.get ~pos:$loc "flt") (pair ~pos:$loc $1 $3) } */
-  /* | simple_expr GT simple_expr { app ~pos:$loc (Builtin.get ~pos:$loc "fgt") (pair ~pos:$loc $1 $3) } */
-  /* | simple_expr CMP simple_expr { app ~pos:$loc (Builtin.get ~pos:$loc "feq") (pair ~pos:$loc $1 $3) } */
   /* | simple_expr BAND simple_expr { app ~pos:$loc (Builtin.get ~pos:$loc "and") (pair ~pos:$loc $1 $3) } */
   /* | simple_expr BOR simple_expr { app ~pos:$loc (Builtin.get ~pos:$loc "or") (pair ~pos:$loc $1 $3) } */
   /* | BNOT simple_expr { app ~pos:$loc (Builtin.get ~pos:$loc "not") $2 } */

@@ -10,6 +10,8 @@ def null_is(x) =
   null_elim(x, t, f)
 end
 
+x = if true then 3. else 4. end
+
 def get(s) = s(dt) end
 
 x = 2.
@@ -36,11 +38,12 @@ end
 
 # def succ(x) = x + 1. end
 
-def integrator(init, periodic=null) =
+def integrator(init, periodic=false, on_reset=fun()->()) =
   y = ref_new(init)
   stream (x) ->
     ans = ref_get(y)
     ref_set(y, ref_get(y) + x * dt)
+    if periodic && ref_get(y) >= 1. then ref_set(y, ref_get(y) - 1.); on_reset() end 
     ans
 end
 
