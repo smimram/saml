@@ -46,7 +46,7 @@ def integrate(init=0., periodic=false, on_reset=fun()->()) =
     ans
 end
 
-def periodic(init=0.) =
+def periodic(init=0.)
   integrate(periodic=true,init=init)
 end
 
