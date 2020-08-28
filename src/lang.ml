@@ -69,11 +69,11 @@ module Value = struct
       | String s -> Printf.sprintf "%S" s
       | Fun _ -> "<fun>"
       | Ref _ -> "<ref>"
-      | Tuple l -> "("^(List.map value l |> String.concat ",")^")"
+      | Tuple l -> "("^(List.map value l |> String.concat ", ")^")"
       | Neutral n -> neutral n
     and neutral = function
       | App (t, a) ->
-        let a = a |> List.map (fun (l,v) -> assert (l = ""); value v) |> String.concat ", " in
+        let a = a |> List.map (fun (l,v) -> (if l = "" then "" else l^"=") ^ value v) |> String.concat ", " in
         Printf.sprintf "%s(%s)" (neutral t) a
       | Seq (t, u) -> Printf.sprintf "%s;\n%s" (neutral t) (value (u ()))
       | Code c -> c
@@ -104,7 +104,7 @@ module Value = struct
 
   let get_ref = function
     | Ref r -> r
-    | _ -> assert false
+    | x -> failwith ("Expected ref but got "^to_string x)
 
   let tuple l = Tuple l
 
@@ -300,7 +300,7 @@ let check env t = check 0 env t
 
 (** Evaluate a term to a value *)
 let rec eval (env : V.env) t : V.t =
-  (* Printf.printf "eval: %s\n\n%!" (to_string t); *)
+  Printf.printf "eval: %s\n\n%!" (to_string t);
   match t.descr with
   | Float x -> Float x
   | Bool b -> Bool b

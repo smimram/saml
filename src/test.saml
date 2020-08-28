@@ -89,10 +89,11 @@ s = sine()(440.) | stereo
 # play(s)
 
 def gen()
-  # sine()(440.) | stereo
-  stream -> (3.,2.+1.)
+  sine()(440.) | stereo
+  # stream -> (3.*dt,2.+1.)
 end
 
 c = compile(gen)
-print("Compiled\n")
+print("Compiled:\n")
 print(c)
+print("\n\n")

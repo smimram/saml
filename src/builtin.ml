@@ -165,11 +165,14 @@ let () =
   let t = T.arrnl [T.arr [] (T.stream (T.pair (T.float ()) (T.float ())))] (T.string ()) in
   let compile a =
     let s = List.assoc "" a |> V.get_fun in
+    Printf.printf "begin compilation\n%!";
     formal := true;
     let s = s [] |> V.get_fun in
     let s = s [T.dtv, V.code "DT"] in
+    let s = V.compile s in
     formal := false;
-    V.string (V.compile s)
+    Printf.printf "end compilation\n%!";
+    V.string s
   in
   register "compile" t compile
 
