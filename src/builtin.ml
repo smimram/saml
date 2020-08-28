@@ -137,15 +137,15 @@ let () =
   let play a =
     let s = List.assoc "" a |> V.to_fun in
     let s dt = s [T.dtv, V.float dt] |> V.to_pair |> Pair.map V.to_float V.to_float in
-    let samplerate = 44100 in
-    let dt = 1. /. float samplerate in
+    let sample_rate = 44100 in
+    let dt = 1. /. float sample_rate in
     let handle =
       let open Pulseaudio in
       let sample =
         {
           sample_format = Sample_format_float32le;
-          sample_rate = samplerate;
-          sample_chans = 1
+          sample_rate;
+          sample_chans = 2
         }
       in
       Simple.create ~client_name:"SAML" ~dir:Dir_playback ~stream_name:"run" ~sample ()
@@ -157,7 +157,7 @@ let () =
         let x, y = s dt in
         a.(0).(i) <- x;
         a.(1).(i) <- y;
-        Printf.printf "%f / %f\n%!" x y
+        (* Printf.printf "%f / %f\n%!" x y *)
       done;
       Pulseaudio.Simple.write handle a 0 len
     done;

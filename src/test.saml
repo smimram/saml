@@ -87,8 +87,6 @@ end
 
 s = sine()(440.) | stereo
 
-# s = sine()(440.) | stereo
-
 # x = ref_new(0.)
 # def s = stream ->
   # ref_set(x, ref_get(x) + dt * 440.)
