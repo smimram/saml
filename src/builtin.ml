@@ -14,8 +14,8 @@ let formal = ref false
 (** Register a builtin function. *)
 let register name t f =
   let f a =
-    if !formal then
-      V.Neutral (V.App (V.Code ("saml_"^name), a))
+    if !formal && not (List.mem name ["ref_new"; "ref_set"; "ref_get"]) then
+      V.Neutral (V.App (V.Code name, a))
     else
       f a
   in

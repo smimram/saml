@@ -62,6 +62,7 @@ module Value = struct
     | Neutral _ -> "<code>"
 
   let compile t =
+    let commands = ref [] in
     let rec value = function
       | Float x -> string_of_float x
       | Bool b -> string_of_bool b
@@ -75,10 +76,15 @@ module Value = struct
       | App (t, a) ->
         let a = a |> List.map (fun (l,v) -> (if l = "" then "" else l^"=") ^ value v) |> String.concat ", " in
         Printf.sprintf "%s(%s)" (neutral t) a
-      | Seq (t, u) -> Printf.sprintf "%s;\n%s" (neutral t) (value (u ()))
+      | Seq (t, u) ->
+        (* Printf.sprintf "%s;\n%s" (neutral t) (value (u ())) *)
+        commands := (neutral t) :: !commands;
+        value (u ())
       | Code c -> c
     in
-    value t
+    let t = value t in
+    let commands = List.rev !commands |> String.concat ";\n" in
+    commands ^ ";\n" ^ t
 
   let float x = Float x
     
