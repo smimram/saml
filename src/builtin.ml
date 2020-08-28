@@ -22,38 +22,46 @@ let register name t f =
   let t = T.generalize min_int t in
   builtins := (name,(t,f)) :: !builtins
 
+(** Same as [register] but for functions with no labels. *)
+let registernl name t f =
+  let f a =
+    let a = a |> List.map (fun (l,v) -> assert (l = ""); v) |> Array.of_list in
+    f a
+  in
+  register name t f
+
 (* Floats *)
 let () =
   let _f name f =
     let t = T.arr [] (T.float ()) in
-    let f a = V.float (f ()) in
+    let f _ = V.float (f ()) in
     register name t f
   in
   let f_f name f =
     let t = T.arrnl [T.float ()] (T.float ()) in
     let f a =
-      let x = List.assoc "" a in
-      V.float (f (V.get_float x))
+      let x = a.(0) |> V.get_float in
+      V.float (f x)
     in
-    register name t f
+    registernl name t f
   in
   let ff_f name f =
     let t = T.arrnl [T.float (); T.float ()] (T.float ()) in
     let f a =
-      let x = List.assoc_nth 0 "" a |> V.get_float in
-      let y = List.assoc_nth 1 "" a |> V.get_float in
+      let x = V.get_float a.(0) in
+      let y = V.get_float a.(1) in
       V.float (f x y)
     in
-    register name t f
+    registernl name t f
   in
   let ff_b name f =
     let t = T.arrnl [T.float (); T.float ()] (T.bool ()) in
     let f a =
-      let x = List.assoc_nth 0 "" a |> V.get_float in
-      let y = List.assoc_nth 1 "" a |> V.get_float in
+      let x = V.get_float a.(0) in
+      let y = V.get_float a.(1) in
       V.bool (f x y)
     in
-    register name t f
+    registernl name t f
   in
   ff_f "fadd" ( +. );
   ff_f "fsub" ( -. );
@@ -71,19 +79,19 @@ let () =
   let bb_b name f =
     let t = T.arrnl [T.bool (); T.bool ()] (T.bool ()) in
     let f a =
-      let x = List.assoc_nth 0 "" a |> V.get_bool in
-      let y = List.assoc_nth 1 "" a |> V.get_bool in
+      let x = V.get_bool a.(0) in
+      let y = V.get_bool a.(1) in
       V.bool (f x y)
     in
-    register name t f
+    registernl name t f
   in
   let b_b name f =
     let t = T.arrnl [T.bool ()] (T.bool ()) in
     let f a =
-      let x = List.assoc "" a |> V.get_bool in
+      let x = V.get_bool a.(0) in
       V.bool (f x)
     in
-    register name t f
+    registernl name t f
   in
   bb_b "and" ( && );
   b_b  "not" ( not )

@@ -300,7 +300,7 @@ let check env t = check 0 env t
 
 (** Evaluate a term to a value *)
 let rec eval (env : V.env) t : V.t =
-  Printf.printf "eval: %s\n\n%!" (to_string t);
+  (* Printf.printf "eval: %s\n\n%!" (to_string t); *)
   match t.descr with
   | Float x -> Float x
   | Bool b -> Bool b
@@ -358,3 +358,9 @@ let rec eval (env : V.env) t : V.t =
   | Stream_get s ->
     let pos = t.pos in
     eval env (app ~pos s [dtv, var dtv])
+
+module Compiler = struct
+  (* type t = *)
+    (* | Code of string *)
+    (* | Fun of  *)
+end
