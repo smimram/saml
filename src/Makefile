@@ -5,6 +5,8 @@ PACKS = pulseaudio
 ANNOTATE = true
 
 all: dnc
+
+test: all
 	./saml test.saml
 
 install: dnc

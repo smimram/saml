@@ -61,7 +61,7 @@ rule token = parse
 
   (***** Identifiers *****)
   | (['_''a'-'z''A'-'Z']['a'-'z''A'-'Z''0'-'9''_']*['\'']* as str) { IDENT str }
-  | ('"'[^'"']*'"' as str) { STRING (Scanf.sscanf str "%S%!" (fun u -> u)) }
+  | '"'([^'"']* as str)'"' { STRING (Scanf.unescaped str) }
   | ['0'-'9']+ as str { INT (int_of_string str) }
   | ['0'-'9']+"."['0'-'9']* as str { FLOAT (float_of_string str) }
 

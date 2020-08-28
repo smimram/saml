@@ -86,11 +86,13 @@ end
 # end
 
 s = sine()(440.) | stereo
+# play(s)
 
-# x = ref_new(0.)
-# def s = stream ->
-  # ref_set(x, ref_get(x) + dt * 440.)
-  # x = ref_get(x)
-  # (x, x)
-# end
-play(s)
+def gen()
+  # sine()(440.) | stereo
+  stream -> (3.,2.+1.)
+end
+
+c = compile(gen)
+print("Compiled\n")
+print(c)

@@ -8,7 +8,17 @@ module V = Lang.Value
 
 let builtins = ref []
 
+(** When set to true, the evaluation will be formal, i.e. return constants. *)
+let formal = ref false
+
+(** Register a builtin function. *)
 let register name t f =
+  let f a =
+    if !formal then
+      V.Neutral (V.App (V.Code ("saml_"^name), a))
+    else
+      f a
+  in
   let t = T.generalize min_int t in
   builtins := (name,(t,f)) :: !builtins
 
@@ -23,15 +33,15 @@ let () =
     let t = T.arrnl [T.float ()] (T.float ()) in
     let f a =
       let x = List.assoc "" a in
-      V.float (f (V.to_float x))
+      V.float (f (V.get_float x))
     in
     register name t f
   in
   let ff_f name f =
     let t = T.arrnl [T.float (); T.float ()] (T.float ()) in
     let f a =
-      let x = List.assoc_nth 0 "" a |> V.to_float in
-      let y = List.assoc_nth 1 "" a |> V.to_float in
+      let x = List.assoc_nth 0 "" a |> V.get_float in
+      let y = List.assoc_nth 1 "" a |> V.get_float in
       V.float (f x y)
     in
     register name t f
@@ -39,8 +49,8 @@ let () =
   let ff_b name f =
     let t = T.arrnl [T.float (); T.float ()] (T.bool ()) in
     let f a =
-      let x = List.assoc_nth 0 "" a |> V.to_float in
-      let y = List.assoc_nth 1 "" a |> V.to_float in
+      let x = List.assoc_nth 0 "" a |> V.get_float in
+      let y = List.assoc_nth 1 "" a |> V.get_float in
       V.bool (f x y)
     in
     register name t f
@@ -61,8 +71,8 @@ let () =
   let bb_b name f =
     let t = T.arrnl [T.bool (); T.bool ()] (T.bool ()) in
     let f a =
-      let x = List.assoc_nth 0 "" a |> V.to_bool in
-      let y = List.assoc_nth 1 "" a |> V.to_bool in
+      let x = List.assoc_nth 0 "" a |> V.get_bool in
+      let y = List.assoc_nth 1 "" a |> V.get_bool in
       V.bool (f x y)
     in
     register name t f
@@ -70,7 +80,7 @@ let () =
   let b_b name f =
     let t = T.arrnl [T.bool ()] (T.bool ()) in
     let f a =
-      let x = List.assoc "" a |> V.to_bool in
+      let x = List.assoc "" a |> V.get_bool in
       V.bool (f x)
     in
     register name t f
@@ -80,26 +90,39 @@ let () =
 
 (* Ref *)
 let () =
-  let a = T.var 0 in
-  let t = T.arrnl [a] (T.ref a) in
+  let refs = ref [] in
   let ref_new a =
     let x = List.assoc "" a in
-    V.Ref (ref x)
+    if !formal then
+      let n = List.length !refs in
+      refs := x :: !refs;
+      V.code (Printf.sprintf "ref%d" n)
+    else V.Ref (ref x)
   in
+    let ref_get a =
+      let r = List.assoc "" a in
+      if !formal then r
+      else !(V.get_ref r)
+  in
+  let ref_set a =
+    let r = List.assoc_nth 0 "" a in
+    let x = List.assoc_nth 1 "" a in
+    if !formal then
+      let r = V.get_code r in
+      let x = V.compile x in
+      V.code (Printf.sprintf "%s = %s" r x)
+    else
+      (
+        (V.get_ref r) := x;
+        V.unit
+      )
+  in
+  let a = T.var 0 in
+  let t = T.arrnl [a] (T.ref a) in
   register "ref_new" t ref_new;
   let t = T.arrnl [T.ref a] a in
-  let ref_get a =
-    let r = List.assoc "" a |> V.to_ref in
-    !r
-  in
   register "ref_get" t ref_get;
   let t = T.arrnl [T.ref a; a] (T.unit ()) in
-  let ref_set a =
-    let r = List.assoc_nth 0 "" a |> V.to_ref in
-    let x = List.assoc_nth 1 "" a in
-    r := x;
-    V.unit
-  in
   register "ref_set" t ref_set
 
 (* Nullable *)
@@ -113,30 +136,49 @@ let () =
 (* String *)
 (* let () = *)
   (* let t = T.arr [T.var 0] (T.string ()) in *)
-  (* register "repr" ~eval:(fun l -> E.string (E.to_string (snd (List.hd l)))) t *)
+  (* register "repr" ~eval:(fun l -> E.string (E.get_string (snd (List.hd l)))) t *)
 
 (* Control *)
 let () =
   let a = T.var 0 in
   let t = T.arrno ["if", T.bool (); "then", T.arrnl [] a; "else", T.arrnl [] a] a in
   let ite args =
-    let b = List.assoc "if" args |> V.to_bool in
-    let t = List.assoc "then" args |> V.to_fun in
-    let e = List.assoc "else" args |> V.to_fun in
+    let b = List.assoc "if" args |> V.get_bool in
+    let t = List.assoc "then" args |> V.get_fun in
+    let e = List.assoc "else" args |> V.get_fun in
     if b then t [] else e []
   in
   register "ite" t ite
 
 (* IO *)
-(* let () = *)
-(* register "print" ~eval:(fun t -> print_string (E.get_string t); E.unit ()) (T.string ()) (T.unit ()) *)
+let () =
+  let t = T.arrnl [T.string ()] (T.unit ()) in
+  let print a =
+    let s = List.assoc "" a |> V.get_string in
+    print_string s;
+    V.unit
+  in
+  register "print" t print
+
+(* Compilation *)
+let () =
+  let t = T.arrnl [T.arr [] (T.stream (T.pair (T.float ()) (T.float ())))] (T.string ()) in
+  let compile a =
+    let s = List.assoc "" a |> V.get_fun in
+    formal := true;
+    let s = s [] |> V.get_fun in
+    let s = s [T.dtv, V.code "DT"] in
+    formal := false;
+    V.string (V.compile s)
+  in
+  register "compile" t compile
 
 (* Multimedia. *)
 let () =
   let t = T.arrnl [T.arrno [T.dtv, T.float ()] (T.pair (T.float ()) (T.float ()))] (T.unit ()) in
   let play a =
-    let s = List.assoc "" a |> V.to_fun in
-    let s dt = s [T.dtv, V.float dt] |> V.to_pair |> Pair.map V.to_float V.to_float in
+    let s = List.assoc "" a |> V.get_fun in
+    let s dt = s [T.dtv, V.float dt] |> V.get_pair |> Pair.map V.get_float V.get_float in
     let sample_rate = 44100 in
     let dt = 1. /. float sample_rate in
     let handle =
@@ -170,9 +212,6 @@ let tenv () = List.map (fun (x,(t,f)) -> x, t) !builtins
 
 (** Environment. *)
 let env () = List.map (fun (x,(t,f)) -> x, V.Fun f) !builtins
-
-(** Compiling. *)
-let compile_env () = List.map (fun (x,_) -> x, "saml_"^x) !builtins
 
 (** Use a given builtin. *)
 let get ?pos name =

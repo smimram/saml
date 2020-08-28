@@ -46,6 +46,7 @@ module Value = struct
   and neutral =
     | App of neutral * (string * value) list
     | Seq of neutral * (unit -> value)
+    | Code of string (* Compiled code *)
   and env = (string * value) list
 
   type t = value
@@ -60,38 +61,69 @@ module Value = struct
     | Ref x -> Printf.sprintf "ref(%s)" (to_string !x)
     | Neutral _ -> "<code>"
 
+  let compile t =
+    let rec value = function
+      | Float x -> string_of_float x
+      | Bool b -> string_of_bool b
+      | Null -> "NULL"
+      | String s -> Printf.sprintf "%S" s
+      | Fun _ -> "<fun>"
+      | Ref _ -> "<ref>"
+      | Tuple l -> "("^(List.map value l |> String.concat ",")^")"
+      | Neutral n -> neutral n
+    and neutral = function
+      | App (t, a) ->
+        let a = a |> List.map (fun (l,v) -> assert (l = ""); value v) |> String.concat ", " in
+        Printf.sprintf "%s(%s)" (neutral t) a
+      | Seq (t, u) -> Printf.sprintf "%s;\n%s" (neutral t) (value (u ()))
+      | Code c -> c
+    in
+    value t
+
   let float x = Float x
     
-  let to_float = function
+  let get_float = function
     | Float x -> x
     | _ -> assert false
 
   let bool b = Bool b
 
-  let to_bool = function
+  let get_bool = function
     | Bool b -> b
     | _ -> assert false
 
-  let to_fun = function
+  let string x = String x
+
+  let get_string = function
+    | String s -> s
+    | _ -> assert false
+
+  let get_fun = function
     | Fun f -> f
     | _ -> assert false
 
-  let to_ref = function
+  let get_ref = function
     | Ref r -> r
     | _ -> assert false
 
   let tuple l = Tuple l
 
-  let to_tuple = function
+  let get_tuple = function
     | Tuple l -> l
     | _ -> assert false
 
-  let to_pair x =
-    match to_tuple x with
+  let get_pair x =
+    match get_tuple x with
     | [x;y] -> x, y
     | _ -> assert false
 
   let unit = tuple []
+
+  let code x = Neutral (Code x)
+
+  let get_code = function
+    | Neutral (Code x) -> x
+    | _ -> assert false
 end
 module V = Value
 
@@ -326,20 +358,3 @@ let rec eval (env : V.env) t : V.t =
   | Stream_get s ->
     let pos = t.pos in
     eval env (app ~pos s [dtv, var dtv])
-
-(** Values for compilation. *)
-module CValue = struct
-  type t =
-    | Code of string
-    | Fun of (string -> t)
-end
-module C = CValue
-
-(*
-(** Compile a stream generator. *)
-let compile env t =
-  match t.descr with
-  | Float x -> C.Code (string_of_float x)
-  | Bool b -> Code (string_of_bool b)
-  | Tuple [] -> 
-*)
