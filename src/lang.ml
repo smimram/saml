@@ -39,7 +39,7 @@ module Value = struct
     | Bool of bool
     | String of string
     | Null
-    | Fun of (env -> value)
+    | Fun of ((string * value) list -> value)
     | Tuple of value list
     | Neutral of neutral
     | Ref of value ref
@@ -298,6 +298,15 @@ let rec check level (env:T.env) e =
 
 let check env t = check 0 env t
 
+(** The stream monad. *)
+module Stream = struct
+  let return ?pos () = fct ?pos ["",("x",None)] (fct ?pos [dtv,(dtv,None)] (var ?pos "x"))
+
+  let bind ?pos () = fct ?pos ["",("x",None); "",("f",None)] (fct ?pos [dtv,(dtv,None)] (app ?pos (appnl ?pos (var ?pos "f") [app (var ?pos "x") [dtv, var ?pos dtv]]) [dtv, var ?pos dtv]))
+
+  let get ?pos s = app ?pos s [dtv, var ?pos dtv]
+end
+
 (** Evaluate a term to a value *)
 let rec eval (env : V.env) t : V.t =
   (* Printf.printf "eval: %s\n\n%!" (to_string t); *)
@@ -349,18 +358,10 @@ let rec eval (env : V.env) t : V.t =
     Fun f
   | Stream_return t ->
     let pos = t.pos in
-    let return = fct ~pos ["",("x",None)] (fct ~pos [dtv,(dtv,None)] (var ~pos "x")) in
-    eval env (appnl ~pos return [t])
+    eval env (appnl ~pos (Stream.return ~pos ()) [t])
   | Stream_bind(x, f) ->
     let pos = t.pos in
-    let bind = fct ~pos ["",("x",None); "",("f",None)] (fct ~pos [dtv,(dtv,None)] (app ~pos (appnl ~pos (var ~pos "f") [app (var ~pos "x") [dtv, var dtv]]) [dtv, var dtv])) in
-    eval env (appnl ~pos bind [x; f])
+    eval env (appnl ~pos (Stream.bind ~pos ()) [x; f])
   | Stream_get s ->
     let pos = t.pos in
-    eval env (app ~pos s [dtv, var dtv])
-
-module Compiler = struct
-  (* type t = *)
-    (* | Code of string *)
-    (* | Fun of  *)
-end
+    eval env (Stream.get ~pos s)
