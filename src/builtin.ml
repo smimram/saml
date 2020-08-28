@@ -171,6 +171,9 @@ let tenv () = List.map (fun (x,(t,f)) -> x, t) !builtins
 (** Environment. *)
 let env () = List.map (fun (x,(t,f)) -> x, V.Fun f) !builtins
 
+(** Compiling. *)
+let compile_env () = List.map (fun (x,_) -> x, "saml_"^x) !builtins
+
 (** Use a given builtin. *)
 let get ?pos name =
   assert (List.mem_assoc name !builtins);

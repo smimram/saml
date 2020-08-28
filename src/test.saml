@@ -6,9 +6,7 @@
 pi = pi()
 
 def null_is(x) =
-  def t() = true end
-  def f(_) = false end
-  null_elim(x, t, f)
+  null_elim(x, (fun()->true), (fun(_)->false))
 end
 
 x = if true then 3. else 4. end
@@ -37,7 +35,7 @@ end
 
 # def succ(x) = x + 1. end
 
-def integrate(init=0., periodic=false, on_reset=fun()->()) =
+def integrate(init=0., periodic=false, on_reset=fun()->())
   y = ref_new(init)
   stream (x) ->
     ans = ref_get(y)
@@ -46,29 +44,31 @@ def integrate(init=0., periodic=false, on_reset=fun()->()) =
     ans
 end
 
+def now() = integrate()(1.) end
+
 def periodic(init=0.)
   integrate(periodic=true,init=init)
 end
 
-def saw() =
+def saw()
   p = periodic(init=0.5)
   stream (freq) ->
     t = !p(freq)
     4. * t - 2.
 end    
 
-def sine() =
+def sine()
   p = periodic()
   stream (freq) ->
     t = !p(freq)
     sin(2.*pi*t)
 end
 
-def stereo =
+def stereo
  stream (x) -> (x,x)
 end
 
-def alt() =
+def alt()
   x = ref_new(true)
   stream ->
     ref_set(x, not ref_get(x))

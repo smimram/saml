@@ -11,6 +11,7 @@ type t =
 and descr =
   | Float
   | Bool
+  | String
   | Var of var ref
   | Arr of (string * (t * bool)) list * t (* label, type, optional? *)
   | Tuple of t list
@@ -32,6 +33,8 @@ let make t = { descr = t }
 let float () = make Float
 
 let bool () = make Bool
+
+let string () = make String
 
 let tuple l = make (Tuple l)
 
@@ -96,6 +99,7 @@ let to_string ?(generalized=[]) t =
       )
     | Float -> "float"
     | Bool -> "bool"
+    | String -> "string"
     | Tuple l ->
       if l = [] then "unit" else
         let l = List.map (to_string false) l |> String.concat ", " in
@@ -121,7 +125,7 @@ let rec occurs x t =
   | Arr (a, b) -> List.exists (fun (l,(t,o)) -> occurs x t) a || occurs x b
   | Var v -> x == v
   | Tuple l -> List.exists (occurs x) l
-  | Float | Bool -> false
+  | Float | Bool | String -> false
   | Ref t | Nullable t -> occurs x t
 
 let rec update_level l t =
@@ -135,7 +139,7 @@ let rec update_level l t =
     )
   | Tuple t -> List.iter (update_level l) t
   | Ref t | Nullable t -> update_level l t
-  | Float | Bool -> ()
+  | Float | Bool | String -> ()
 
 exception Error
 
@@ -177,6 +181,7 @@ let rec ( <: ) (t1:t) (t2:t) =
   | _, Nullable t2 -> t1 <: t2
   | Float, Float -> ()
   | Bool, Bool -> ()
+  | String, String -> ()
   | _, _ -> raise Error
 
 (** Generalize existential variable to universal ones. *)
@@ -190,7 +195,7 @@ let generalize level t : scheme =
       a@(vars b)
     | Tuple l -> List.fold_left (fun v t -> (vars t)@v) [] l
     | Ref t | Nullable t -> vars t
-    | Float | Bool -> []
+    | Float | Bool | String -> []
   in
   (* TODO: remove duplicates *)
   vars t, t
@@ -210,7 +215,7 @@ let instantiate level (g,t) =
       | Tuple l -> Tuple (List.map aux l)
       | Ref t -> Ref (aux t)
       | Nullable t -> Nullable (aux t)
-      | Float | Bool as t -> t
+      | Float | Bool | String as t -> t
     in
     { descr }
   in

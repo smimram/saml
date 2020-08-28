@@ -17,6 +17,7 @@ type t =
 and descr =
   | Float of float
   | Bool of bool
+  | String of string
   | Var of string (** A variable. *)
   | Fun of (string * (string * t option)) list * t (** A function with given arguments (label, variable, default value). *)
   | Let of string * t * t (** A variable declaration. *)
@@ -36,6 +37,7 @@ module Value = struct
   type value =
     | Float of float
     | Bool of bool
+    | String of string
     | Null
     | Fun of (env -> value)
     | Tuple of value list
@@ -51,6 +53,7 @@ module Value = struct
   let rec to_string = function
     | Float x -> string_of_float x
     | Bool b -> string_of_bool b
+    | String s -> Printf.sprintf "%S" s
     | Null -> "null"
     | Fun _ -> "<fun>"
     | Tuple l -> Printf.sprintf "(%s)" (l |> List.map to_string |> String.concat ", ")
@@ -134,6 +137,7 @@ let rec to_string ~tab p e =
   | Var x -> x
   | Float f -> string_of_float f
   | Bool b -> string_of_bool b
+  | String s -> Printf.sprintf "%S" s
   | Fun (args, e) ->
     let args = args |> List.map (fun (l,(x,d)) -> (if l<>"" then "~"^l^":" else "")^x^(match d with None -> "" | Some d -> "="^to_string ~tab:(tab+1) true d)) |> String.concat ", " in
     let e = to_string ~tab:(tab+1) false e in
@@ -190,6 +194,7 @@ let rec check level (env:T.env) e =
   match e.descr with
   | Float _ -> e >: T.float ()
   | Bool _ -> e >: T.bool ()
+  | String _ -> e >: T.string ()
   | Var x when x = dtv -> e >: T.float ()
   | Var x ->
     let t = try List.assoc x env with Not_found -> type_error e "Unbound variable %s." x in
@@ -267,6 +272,7 @@ let rec eval (env : V.env) t : V.t =
   match t.descr with
   | Float x -> Float x
   | Bool b -> Bool b
+  | String s -> String s
   | Null -> Null
   | Tuple l -> Tuple (List.map (eval env) l)
   | Var x -> (try List.assoc x env with Not_found -> failwith ("Unbound variable " ^ x))
@@ -320,3 +326,20 @@ let rec eval (env : V.env) t : V.t =
   | Stream_get s ->
     let pos = t.pos in
     eval env (app ~pos s [dtv, var dtv])
+
+(** Values for compilation. *)
+module CValue = struct
+  type t =
+    | Code of string
+    | Fun of (string -> t)
+end
+module C = CValue
+
+(*
+(** Compile a stream generator. *)
+let compile env t =
+  match t.descr with
+  | Float x -> C.Code (string_of_float x)
+  | Bool b -> Code (string_of_bool b)
+  | Tuple [] -> 
+*)

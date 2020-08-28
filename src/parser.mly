@@ -33,6 +33,7 @@
 %nonassoc EQ LT LE GT GE
 %left PLUS MINUS
 %left TIMES DIV
+%nonassoc UMINUS
 %left PIPE
 %nonassoc BANG
 %nonassoc LPAR
@@ -48,11 +49,13 @@ expr:
   | IDENT { var ~pos:$loc $1 }
   | FLOAT { make ~pos:$loc (Float $1) }
   | BOOL { make ~pos:$loc (Bool $1) }
+  | STRING { make ~pos:$loc (String $1) }
   | BUILTIN LPAR STRING RPAR { Builtin.get ~pos:$loc $3 }
   | FUN LPAR def_args RPAR ARR n expr { fct ~pos:$loc $3 $7 }
   | expr LPAR args RPAR { app ~pos:$loc $1 $3 }
   | expr PLUS expr { appnl ~pos:$loc (Builtin.get ~pos:$loc($2) "fadd") [$1; $3] }
   | expr MINUS expr { appnl ~pos:$loc (Builtin.get ~pos:$loc($2) "fsub") [$1; $3] }
+  | UMINUS expr { appnl ~pos:$loc (Builtin.get ~pos:$loc "fsub") [float 0.; $2] }
   | expr TIMES expr { appnl ~pos:$loc (Builtin.get ~pos:$loc($2) "fmul") [$1; $3] }
   | expr BAND expr { appnl ~pos:$loc (Builtin.get ~pos:$loc "and") [$1; $3] }
   | expr BOR expr { appnl ~pos:$loc (Builtin.get ~pos:$loc "or") [$1; $3] }
@@ -139,7 +142,6 @@ tuple:
 
 /* simple_expr: */
   /* | IDENT { var ~pos:$loc $1 } */
-  /* | BOOL { make ~pos:$loc (Bool $1) } */
   /* | INT { make ~pos:$loc (Int $1) } */
   /* | FLOAT { make ~pos:$loc (Float $1) } */
   /* | STRING { make ~pos:$loc (String $1) } */
@@ -148,12 +150,6 @@ tuple:
   /* | LPAR simple_decl_list RPAR { record ~pos:$loc $2 } */
   /* | MODULE n simple_decl_list END { record ~pos:$loc ~recursive:true $3 } */
   /* | simple_expr PIPE IDENT { field ~pos:$loc $3 $1 } */
-  /* | BUILTIN STRING { Builtin.get ~pos:$loc $2 } */
-  /* | simple_expr PLUS simple_expr { app ~pos:$loc (Builtin.get ~pos:$loc "fadd") (pair ~pos:$loc $1 $3) } */
-  /* | simple_expr MINUS simple_expr { app ~pos:$loc (Builtin.get ~pos:$loc "fsub") (pair ~pos:$loc $1 $3) } */
-  /* | simple_expr TIMES simple_expr { app ~pos:$loc (Builtin.get ~pos:$loc "fmul") (pair ~pos:$loc $1 $3) } */
-  /* | simple_expr DIV simple_expr { app ~pos:$loc (Builtin.get ~pos:$loc "fdiv") (pair ~pos:$loc $1 $3) } */
-  /* | UMINUS simple_expr { app ~pos:$loc (Builtin.get ~pos:$loc "fsub") (pair ~pos:$loc (float 0.) $2) } */
   /* | IF expr THEN exprs elif END { app ~pos:$loc (Builtin.get ~pos:$loc "ite") (record ~pos:$loc ["if",$2; "then", ufun ~pos:$loc $4; "else", ufun ~pos:$loc $5]) } */
   /* | WHILE expr DO exprs DONE { app ~pos:$loc (Builtin.get ~pos:$loc "while") (record ~pos:$loc ["cond",$2; "body", ufun ~pos:$loc $4]) } */
 
@@ -177,33 +173,3 @@ elif:
   /* | expr exprs_ctx { fun e -> mk_seq $1 ($2 e) } */
   /* | decl exprs_ctx { fun e -> mk_let $1 ($2 e) } */
   /* | INCLUDE LPAR STRING RPAR exprs_ctx { fun e -> (parse_file_ctx $3) ($5 e) } */
-
-/* simple_decl: */
-  /* | IDENT EQ expr { $1, $3 } */
-  /* | DEF IDENT LPAR args RPAR EQ n exprs END { $2, fct ~pos:$loc $3 $6 } */
-
-/* simple_decl_list: */
-  /* | { [] } */
-  /* | simple_decls { $1 } */
-
-/* simple_decls: */
-  /* | simple_decl n { [$1] } */
-  /* | simple_decl COMMA simple_decls { $1::$3 } */
-  /* | simple_decl NEWLINE simple_decls { $1::$3 } */
-
-/* decl: */
-  /* | simple_decl { let x, v = $1 in PVar x, v } */
-  /* | LET IDENT EQ expr { $2, $4 } */
-  /* | DEF IDENT EQ n exprs END { $2, $5 } */
-
-/* decl_list: */
-  /* | decl n decl_list { $1::$3 } */
-  /* | { [] } */
-
-/* args: */
-  /* | args_list { $1 } */
-  /* | { [] } */
-
-/* args_list: */
-  /* | IDENT COMMA args_list { $1::$3 } */
-  /* | IDENT { [$1] } */
