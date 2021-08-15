@@ -61,6 +61,12 @@ module Value = struct
     | Ref x -> Printf.sprintf "ref(%s)" (to_string !x)
     | Neutral _ -> "<code>"
 
+  (** Whether a term is pure, i.e. without side effects. *)
+  let rec pure = function
+    | Float _ | Bool _ | String _ | Null | Fun _ | Ref _ -> true
+    | Tuple l -> List.for_all pure l
+    | Neutral _ -> false (* TODO: applying a pure function to a value should be pure... *)
+
   let compile t =
     let commands = ref [] in
     let rec value = function
@@ -83,8 +89,10 @@ module Value = struct
       | Code c -> c
     in
     let t = value t in
-    let commands = List.rev !commands |> String.concat ";\n" in
-    commands ^ ";\n" ^ t
+    let commands = !commands in
+    let commands = if commands = [] then [] else ""::commands in
+    let commands = List.rev commands |> String.concat ";\n" in
+    commands ^ t
 
   let float x = Float x
     
@@ -96,7 +104,7 @@ module Value = struct
 
   let get_bool = function
     | Bool b -> b
-    | _ -> assert false
+    | x -> failwith ("Expected bool but got "^to_string x)
 
   let string x = String x
 
@@ -316,6 +324,7 @@ end
 (** Evaluate a term to a value *)
 let rec eval (env : V.env) t : V.t =
   (* Printf.printf "eval: %s\n\n%!" (to_string t); *)
+  (* let eval env t = let ans = eval env t in Printf.printf "EVAL\n%s\nIS\n%s\n\n%!" (to_string t) (V.to_string ans); ans in *)
   match t.descr with
   | Float x -> Float x
   | Bool b -> Bool b

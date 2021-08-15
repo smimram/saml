@@ -1,37 +1,32 @@
-# ref_new = builtin("ref_new")
-# ref_get = builtin("ref_get")
-# ref_set = builtin("ref_set")
-# null_elim = builtin("null_elim")
-# sin = builtin("sin")
 pi = pi()
 
-def null_is(x) =
-  null_elim(x, (fun()->true), (fun(_)->false))
-end
+# def null_is(x) =
+  # null_elim(x, (fun()->true), (fun(_)->false))
+# end
 
-x = if true then 3. else 4. end
+# x = if true then 3. else 4. end
 
-x = 2.
-xx = x
-def x = 3. end
-def f(x) =
-  y = x
-  x
-end
+# x = 2.
+# xx = x
+# def x = 3. end
+# def f(x) =
+  # y = x
+  # x
+# end
 
-def id(x) = x end
-a = id(3.)
-b = id(())
+# def id(x) = x end
+# a = id(3.)
+# b = id(())
 
-a = begin
-  x = 2.
-  5.
-end
+# a = begin
+  # x = 2.
+  # 5.
+# end
 
-def a =
-  ()
-  4.
-end
+# def a =
+  # ()
+  # 4.
+# end
 
 # def succ(x) = x + 1. end
 
@@ -44,18 +39,18 @@ def integrate(init=0., periodic=false, on_reset=fun()->())
     ans
 end
 
-def now() = integrate()(1.) end
+# def now() = integrate()(1.) end
 
 def periodic(init=0.)
   integrate(periodic=true,init=init)
 end
 
-def saw()
-  p = periodic(init=0.5)
-  stream (freq) ->
-    t = !p(freq)
-    4. * t - 2.
-end    
+# def saw()
+  # p = periodic(init=0.5)
+  # stream (freq) ->
+    # t = !p(freq)
+    # 4. * t - 2.
+# end    
 
 def sine()
   p = periodic()
@@ -68,12 +63,12 @@ def stereo
  stream (x) -> (x,x)
 end
 
-def alt()
-  x = ref_new(true)
-  stream ->
-    ref_set(x, not ref_get(x))
-    if ref_get(x) then 1. else 0. end
-end
+# def alt()
+  # x = ref_new(true)
+  # stream ->
+    # ref_set(x, not ref_get(x))
+    # if ref_get(x) then 1. else 0. end
+# end
 
 # def s =
   # # l = sine()(440.)
