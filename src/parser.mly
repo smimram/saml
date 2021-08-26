@@ -63,9 +63,9 @@ simple_expr:
   | STRING { make ~pos:$loc (String $1) }
   | LPAR expr RPAR { $2 }
   | BEGIN exprs END { $2 }
-  | LPAR simple_decl_list RPAR { record ~pos:$loc $2 }
-  | MODULE n simple_decl_list END { record ~pos:$loc ~recursive:true $3 }
-  | simple_expr PIPE IDENT { field ~pos:$loc $3 $1 }
+  (* | LPAR simple_decl_list RPAR { record ~pos:$loc $2 } *)
+  (* | MODULE n simple_decl_list END { record ~pos:$loc ~recursive:true $3 } *)
+  (* | simple_expr PIPE IDENT { field ~pos:$loc $3 $1 } *)
   | BUILTIN STRING { Builtin.get ~pos:$loc $2 }
   | simple_expr PLUS simple_expr { app ~pos:$loc (Builtin.get ~pos:$loc "fadd") (pair ~pos:$loc $1 $3) }
   | simple_expr MINUS simple_expr { app ~pos:$loc (Builtin.get ~pos:$loc "fsub") (pair ~pos:$loc $1 $3) }
@@ -80,13 +80,13 @@ simple_expr:
   | simple_expr BAND simple_expr { app ~pos:$loc (Builtin.get ~pos:$loc "and") (pair ~pos:$loc $1 $3) }
   | simple_expr BOR simple_expr { app ~pos:$loc (Builtin.get ~pos:$loc "or") (pair ~pos:$loc $1 $3) }
   | BNOT simple_expr { app ~pos:$loc (Builtin.get ~pos:$loc "not") $2 }
-  | IF expr THEN exprs elif END { app ~pos:$loc (Builtin.get ~pos:$loc "ite") (record ~pos:$loc ["if",$2; "then", ufun ~pos:$loc $4; "else", ufun ~pos:$loc $5]) }
-  | WHILE expr DO exprs DONE { app ~pos:$loc (Builtin.get ~pos:$loc "while") (record ~pos:$loc ["cond",$2; "body", ufun ~pos:$loc $4]) }
+  | IF expr THEN exprs elif END { app ~pos:$loc (Builtin.get ~pos:$loc "ite") (tuple ~pos:$loc [$2; ufun ~pos:$loc $4; ufun ~pos:$loc $5]) }
+  (* | WHILE expr DO exprs DONE { app ~pos:$loc (Builtin.get ~pos:$loc "while") (record ~pos:$loc ["cond",$2; "body", ufun ~pos:$loc $4]) } *)
 
 elif:
   | { unit () }
   | ELSE exprs { $2 }
-  | ELIF exprs THEN exprs elif { app ~pos:$loc (Builtin.get ~pos:$loc "ite") (record ~pos:$loc ["if",$2; "then", ufun ~pos:$loc $4; "else", ufun ~pos:$loc $5]) }
+  | ELIF exprs THEN exprs elif { app ~pos:$loc (Builtin.get ~pos:$loc "ite") (tuple ~pos:$loc [$2; ufun ~pos:$loc $4; ufun ~pos:$loc $5]) }
 
 
 exprs:
@@ -130,8 +130,8 @@ pattern:
   | LPAR in_pattern_list RPAR { $2 }
 
 in_pattern_list:
-  | { PRecord [] }
-  | in_patterns { PRecord $1 }
+  | { PTuple [] }
+  (* | in_patterns { PTuple $1 } *)
 
 in_patterns:
   | in_pattern { [$1] }

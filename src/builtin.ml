@@ -32,7 +32,7 @@ let () =
 (* Control *)
 let () =
   let a = T.uvar () in
-  register "ite" (T.record ["if", T.bool (); "then", T.arr (T.unit ()) a; "else", T.arr (T.unit ()) a]) a
+  register "ite" (T.tuple [T.bool (); T.arr (T.unit ()) a; T.arr (T.unit ()) a]) a
 
 (* IO *)
 let () =

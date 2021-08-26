@@ -14,14 +14,14 @@ and desc =
   | Float
   | String
   | UVar of t option ref
+  (** A universal variable, which can be unified if necessary. *)
   | EVar of evar
   (** An existential type variable: this is an opaque type whose contents will
       be revealed later (it is used only for states at the moment because they
       are not known at typing time). They cannot be substituted by types with
       universal variables. *)
   | Arr of t * t
-  | Record of (string * t) list
-  | Ptr of t (** Pointer to a memory cell of given type. *)
+  | Tuple of t list
 and evar = evar_contents ref
 (** Contents of a variable. *)
 and evar_contents =
@@ -41,11 +41,11 @@ let float () = make Float
 
 let string () = make String
 
-let record l = make (Record l)
+let tuple l = make (Tuple l)
 
-let pair x y = record ["x",x; "y",y]
+let pair x y = tuple [x;y]
 
-let unit () = record []
+let unit () = tuple []
 
 let uvar () =
   make (UVar (ref None))
@@ -54,12 +54,6 @@ let evar level =
   make (EVar (ref (Level level)))
 
 let arr a b = make (Arr (a, b))
-
-(** An arrow with no labels. *)
-let arrnl aa b =
-  let aa = List.map (fun t -> "",t) aa in
-  let aa = record aa in
-  arr aa b
 
 (** Follow links in variables. *)
 let unvar t =
@@ -80,36 +74,37 @@ let to_string t =
   let rec to_string p t =
     match t.desc with
     | UVar v ->
-       (
-         match !v with
-         | Some t ->
-            if !Config.Debug.Typing.show_links
-            then Printf.sprintf "[%s]" (to_string false t)
-            else to_string p t
-         | None -> un v
-       )
+      (
+        match !v with
+        | Some t ->
+          if !Config.Debug.Typing.show_links
+          then Printf.sprintf "[%s]" (to_string false t)
+          else to_string p t
+        | None -> un v
+      )
     | EVar v ->
-       (
-         match !v with
-         | Link t ->
-            if !Config.Debug.Typing.show_links
-            then Printf.sprintf "?[%s]" (to_string false t)
-            else to_string p t
-         | Level l ->
-            "?" ^ en v ^ (if !Config.Debug.Typing.show_levels then "@" ^ string_of_int l else "")
-       )
+      (
+        match !v with
+        | Link t ->
+          if !Config.Debug.Typing.show_links
+          then Printf.sprintf "?[%s]" (to_string false t)
+          else to_string p t
+        | Level l ->
+          "?" ^ en v ^ (if !Config.Debug.Typing.show_levels then "@" ^ string_of_int l else "")
+      )
     | Int -> "int"
     | Float -> "float"
     | String -> "string"
     | Bool -> "bool"
-    | Record l ->
-       if l = [] then "unit" else
-         let l = String.concat_map ", " (fun (x,t) -> Printf.sprintf "%s : %s" x (to_string false t)) l in
-         Printf.sprintf "(%s)" l
+    | Tuple l ->
+      if l = [] then "unit"
+      else
+        let l = String.concat_map ", " (to_string false) l in
+        Printf.sprintf "(%s)" l
     | Arr (a,b) ->
-       let a = to_string true a in
-       let b = to_string false b in
-       pa p (Printf.sprintf "%s -> %s" a b)
+      let a = to_string true a in
+      let b = to_string false b in
+      pa p (Printf.sprintf "%s -> %s" a b)
   in
   to_string false t
 
@@ -119,7 +114,7 @@ let rec occurs x t =
   | EVar v -> x == v
   | UVar _ -> false
   | Int | Float | String | Bool -> false
-  | Record l -> List.exists (fun (_,t) -> occurs x t) l
+  | Tuple l -> List.exists (occurs x) l
 
 let update_level l t =
   let rec aux t =
@@ -138,7 +133,7 @@ let update_level l t =
          | Level l' -> v := Level (min l l')
        )
     | Int | Float | String | Bool -> ()
-    | Record l -> List.iter (fun (_,t) -> aux t) l
+    | Tuple l -> List.iter aux l
   in
   aux t
 
@@ -170,12 +165,11 @@ let rec ( <: ) (t1:t) (t2:t) =
          )
     | Arr (a, b), Arr (a', b') ->
        a' <: a && b <: b'
-    | Record l1, Record l2 ->
-       (try List.for_all (fun (x,t) -> t <: List.assoc x l1) l2 with Not_found -> false)
     | Bool, Bool
     | Int, Int
     | Float, Float
     | String, String -> true
+    | Tuple l, Tuple l' -> List.length l = List.length l' && List.for_all2 ( <: ) l l'
     | _, _ -> false
 
 (** Generalize existential variable to universal ones. *)
@@ -185,7 +179,7 @@ let rec generalize level t =
   | EVar ({ contents = Level l } as x) -> if l > level then x := Link (uvar ())
   | EVar { contents = Link _ } -> assert false
   | Arr (a, b) -> generalize level a; generalize level b
-  | Record l -> List.iter (fun (_,t) -> generalize level t) l
+  | Tuple l -> List.iter (generalize level) l
   | Bool | Int | Float | String -> ()
 
 (** Instantiate a type scheme: replace universally quantified variables with
@@ -200,9 +194,7 @@ let instantiate level t =
          List.assq x !tenv
       | EVar v -> EVar v
       | Arr (a, b) -> Arr (aux a, aux b)
-      | Record l ->
-         let l = List.map (fun (x,t) -> x, aux t) l in
-         Record l
+      | Tuple l -> Tuple (List.map aux l)
       | Bool | Int | Float | String as t -> t
     in
     { desc }
