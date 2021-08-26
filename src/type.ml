@@ -163,8 +163,7 @@ let rec ( <: ) (t1:t) (t2:t) =
            x := Link t2;
            true
          )
-    | Arr (a, b), Arr (a', b') ->
-       a' <: a && b <: b'
+    | Arr (a, b), Arr (a', b') -> a' <: a && b <: b'
     | Bool, Bool
     | Int, Int
     | Float, Float

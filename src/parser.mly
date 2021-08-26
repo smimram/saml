@@ -107,15 +107,6 @@ simple_decl:
   | IDENT EQ expr { $1, $3 }
   | DEF IDENT pattern EQ n exprs END { $2, fct ~pos:$loc $3 $6 }
 
-simple_decl_list:
-  | { [] }
-  | simple_decls { $1 }
-
-simple_decls:
-  | simple_decl n { [$1] }
-  | simple_decl COMMA simple_decls { $1::$3 }
-  | simple_decl NEWLINE simple_decls { $1::$3 }
-
 decl:
   | simple_decl { let x, v = $1 in PVar x, v }
   | LET pattern EQ expr { $2, $4 }
@@ -127,16 +118,9 @@ decl_list:
 
 pattern:
   | IDENT { PVar $1 }
-  | LPAR in_pattern_list RPAR { $2 }
+  | LPAR pattern_list RPAR { PTuple $2 }
+  | LPAR RPAR { PTuple [] }
 
-in_pattern_list:
-  | { PTuple [] }
-  (* | in_patterns { PTuple $1 } *)
-
-in_patterns:
-  | in_pattern { [$1] }
-  | in_pattern COMMA in_patterns { $1::$3 }
-
-in_pattern:
-  | IDENT { $1,$1,None }
-
+pattern_list:
+  | pattern { [$1] }
+  | pattern COMMA pattern_list { $1::$3 }
