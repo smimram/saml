@@ -8,6 +8,7 @@ type t =
   {
     desc : desc
   }
+
 and desc =
   | Bool
   | Int
@@ -22,12 +23,25 @@ and desc =
       universal variables. *)
   | Arr of t * t
   | Tuple of t list
+  | Monad of monad * t
+
+(** Existential variable. *)
 and evar = evar_contents ref
+
 (** Contents of a variable. *)
 and evar_contents =
   | Level of int (** A free variable at given level. *)
   | Link of t (** A link to another type. *)
+
+(** Typing environment. *)
 and environment = (string * t) list
+
+(** A monad. *)
+and monad =
+  {
+    m_name : string;
+  }
+
 
 type typ = t
 

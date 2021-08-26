@@ -1,5 +1,5 @@
 (** Internal representation of the language and operations to manipulate it
-   (typechecking, reduction, etc.). *)
+    (typechecking, reduction, etc.). *)
 
 open Extralib
 open Common
@@ -39,6 +39,7 @@ and ffi =
   }
 (** An environment. *)
 and environment = (string * t) list
+
 type expr = t
 
 let tenv = ref ([] : T.environment)
@@ -86,14 +87,6 @@ let tuple ?pos l = make ?pos (Tuple l)
 let pair ?pos x y = tuple ?pos [x; y]
 
 let unit ?pos () = tuple ?pos []
-
-(* let meth ?pos (l,v) e = make ?pos (Meth (e,(l,v))) *)
-
-(* let meths ?pos e m = List.fold_left (fun e (l,v) -> meth ?pos (l,v) e) e m *)
-
-(* let record ?pos l = meths ?pos (unit ?pos ()) l *)
-
-(* let field ?pos e f = make ?pos (Invoke (e,f)) *)
 
 let ffi ?pos name ?(eval=fun _ -> error "Not implemented: %s" name) a b =
   let f =
@@ -150,46 +143,11 @@ let rec to_string ~tab p e =
   | Tuple l ->
     let l = List.map (to_string ~tab false) l |> String.concat ", " in
     Printf.sprintf "(%s)" l
-      (*
-  | Meth (e,(l,v)) ->
-    let e = to_string ~tab true e in
-    let v = to_string ~tab false v in
-    Printf.sprintf "%s.(%s = %s)" e l v
-  | Invoke (e,l) ->
-    let e = to_string ~tab true e in
-    Printf.sprintf "%s.%s" e l
-  | Record (r,l) ->
-     if l = [] then (if r then "module end" else "()") else
-       let l = List.map (fun (x,v) -> Printf.sprintf "%s%s = %s" (tabss()) x (to_string ~tab:(tab+1) false v)) l in
-       let l = String.concat "\n" l in
-       if r then Printf.sprintf "module\n%s\n%send" l (tabs())
-       else Printf.sprintf "(\n%s\n%s)" l (tabs())
-*)
 and string_of_pattern ~tab = function
   | PVar x -> x
   | PTuple l ->
     let l = List.map (string_of_pattern ~tab) l |> String.concat ", " in
     Printf.sprintf "(%s)" l
-      (*
-  | PMeth (p,l,x,v) ->
-    let p = string_of_pattern ~tab p in
-    let l = if l = x then l else Printf.sprintf "%s[%s]" l x in
-    let v = match v with Some v -> Printf.sprintf " = %s" (to_string ~tab false v) | None -> "" in
-    Printf.sprintf "%s.(%s%s)" p l v
-  | PRecord l ->
-     let l =
-       List.map
-         (fun (l,x,v) ->
-           let v =
-             match v with
-             | Some v -> "="^to_string ~tab:(tab+1) false v
-             | None -> ""
-           in
-           Printf.sprintf "%s[%s]%s" l x v) l
-     in
-     let l = String.concat ", " l in
-     Printf.sprintf "(%s)" l
-*)
 
 let to_string e = to_string ~tab:0 false e
 
@@ -232,26 +190,6 @@ let rec check level (env:T.environment) e =
     | PTuple l ->
       let env, l = List.fold_map (type_of_pattern level) env l in
       env, T.tuple l
-       (*
-    | PRecord l ->
-       let env, l =
-         List.fold_left
-           (fun (env, l) (lab,x,d) ->
-             let a = T.evar level in
-             (
-               match d with
-               | Some d ->
-                  check level env d;
-                  d <: a
-               | None -> ()
-             );
-             let env = (x,a)::env in
-             env, (lab,a)::l
-           ) (env,[]) l
-       in
-       let l = List.rev l in
-       env, { desc = Record l }
-*)
   in
   match e.desc with
   | Bool _ -> e >: T.bool ()
@@ -300,17 +238,6 @@ let rec check level (env:T.environment) e =
   | Tuple l ->
     List.iter (check level env) l;
     e >: T.tuple (List.map (fun v -> v.t) l)
-  (* | Record (r,l) -> *)
-     (* let env, l = *)
-       (* List.fold_left *)
-         (* (fun (env,l) (x,e) -> *)
-           (* check level env e; *)
-           (* let env = if r then (x,e.t)::env else env in *)
-           (* env, (x,e.t)::l *)
-         (* ) (env,[]) l *)
-     (* in *)
-     (* let l = List.rev l in *)
-     (* e >: T.record l *)
 
 let check t = check 0 !tenv t
 
@@ -344,15 +271,6 @@ let rec reduce env t =
      reduce env u
   | Tuple l ->
     { t with desc = Tuple (List.map (reduce env) l) }
-  (* | Record (r, l) -> *)
-     (* let l = *)
-       (* List.fold_left *)
-         (* (fun l (x,t) -> *)
-           (* let env = if r then l@env else env in *)
-           (* (x, reduce env t)::l *)
-         (* ) [] l *)
-     (* in *)
-     (* make ~pos:t.pos (Record (false, List.rev l)) *)
 
 and reduce_pattern env pat v =
   match pat, v.desc with
