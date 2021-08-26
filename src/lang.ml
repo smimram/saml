@@ -357,19 +357,7 @@ let rec reduce env t =
 and reduce_pattern env pat v =
   match pat, v.desc with
   | PVar x, _ -> (x,v)::env
-  (* | PRecord p, Record (false, l) -> *)
-     (* let env' = *)
-       (* List.map *)
-         (* (fun (lab,x,d) -> *)
-           (* let v = *)
-             (* try List.assoc lab l *)
-             (* with Not_found -> *)
-               (* reduce env (Option.get d) *)
-           (* in *)
-           (* x, v *)
-         (* ) p *)
-     (* in *)
-     (* env'@env *)
+  | PTuple p, Tuple l -> List.fold_left2 reduce_pattern env p l
   | _ -> assert false
 
 let reduce t = reduce !env t

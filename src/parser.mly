@@ -63,7 +63,7 @@ simple_expr:
   | STRING { make ~pos:$loc (String $1) }
   | LPAR expr RPAR { $2 }
   | BEGIN exprs END { $2 }
-  (* | LPAR simple_decl_list RPAR { record ~pos:$loc $2 } *)
+  | LPAR simple_expr_list RPAR { tuple ~pos:$loc $2 }
   (* | MODULE n simple_decl_list END { record ~pos:$loc ~recursive:true $3 } *)
   (* | simple_expr PIPE IDENT { field ~pos:$loc $3 $1 } *)
   | BUILTIN STRING { Builtin.get ~pos:$loc $2 }
@@ -88,13 +88,16 @@ elif:
   | ELSE exprs { $2 }
   | ELIF exprs THEN exprs elif { app ~pos:$loc (Builtin.get ~pos:$loc "ite") (tuple ~pos:$loc [$2; ufun ~pos:$loc $4; ufun ~pos:$loc $5]) }
 
-
 exprs:
   | expr n { $1 }
   | expr NEWLINE exprs { seq ~pos:$loc $1 $3 }
   | decl n { letin ~pos:$loc $1 (unit ~pos:$loc ()) }
   | decl NEWLINE exprs { letin ~pos:$loc $1 $3 }
   /* | INCLUDE STRING NEWLINE exprs { (parse_file_ctx $3) $5 } */
+
+simple_expr_list:
+  | simple_expr { [$1] }
+  | simple_expr COMMA simple_expr_list { $1::$3 }
 
 // An expression context, this is used for includes
 exprs_ctx:
