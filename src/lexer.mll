@@ -1,5 +1,5 @@
 {
-  open Lexing
+  (* open Lexing *)
   open Parser
 }
 

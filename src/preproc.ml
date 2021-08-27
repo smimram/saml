@@ -70,7 +70,7 @@ let merge_newlines tokenizer =
 (* The usual trick for uminus in yacc does not work with our syntax. *)
 let uminus tokenizer =
   let state = ref false in
-  let rec token lexbuf =
+  let token lexbuf =
     let x = tokenizer lexbuf in
     match x with
     | Parser.LPAR -> state := true; x

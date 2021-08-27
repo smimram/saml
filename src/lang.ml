@@ -14,6 +14,7 @@ type t =
     pos : pos; (** Position in source file. *)
     t : T.t; (** Type. *)
   }
+
 (** Contents of an expression. *)
 and desc =
   | Bool of bool
@@ -28,9 +29,11 @@ and desc =
   | Seq of t * t
   | Tuple of t list
   | Closure of environment * t (** A closure. *)
+
 and pattern =
   | PVar of string
   | PTuple of pattern list (** A tuple. *)
+
 and ffi =
   {
     ffi_name : string;
@@ -38,6 +41,7 @@ and ffi =
     ffi_otype : T.t; (** type of the output *)
     ffi_eval : t -> t; (** evaluation *)
   }
+
 (** An environment. *)
 and environment = (string * t) list
 
@@ -123,7 +127,7 @@ let rec to_string ~tab p e =
       let pat = string_of_pattern ~tab pat in 
       let e = to_string ~tab:(tab+1) false e in
       pa p (Printf.sprintf "fun %s ->%s%s" pat (if String.contains e '\n' then ("\n"^(tabs ~tab:(tab+1) ())) else " ") e)
-    | Closure (env, e) -> Printf.sprintf "<closure>%s" (to_string ~tab true e)
+    | Closure (_, e) -> Printf.sprintf "<closure>%s" (to_string ~tab true e)
     | App (e, a) ->
       let e = to_string ~tab true e in
       let a = to_string ~tab:(tab+1) true a in
@@ -267,11 +271,11 @@ let rec reduce env t =
     let t = reduce env t in
     (
       match t.desc with
-      | Closure (env', {desc = Fun (pat, t)}) ->
-        let env' = reduce_pattern [] pat u in
-        let t = closure env' t in
-        let t = letin args_pattern u t in
-        reduce env t
+      (* | Closure (env', {desc = Fun (pat, t)}) -> *)
+        (* let env' = reduce_pattern [] pat u in *)
+        (* let t = closure env' t in *)
+        (* let t = letin args_pattern u t in *)
+        (* reduce env t *)
       | FFI f -> f.ffi_eval u
       | _ -> error "Unexpected term during application: %s" (to_string t)
     )
@@ -292,11 +296,11 @@ let reduce t = reduce !env t
 module Run = struct
   let fst t =
     match t.desc with
-    | Tuple [a; b] -> a
+    | Tuple [a; _] -> a
     | _ -> assert false
 
   let snd t =
     match t.desc with
-    | Tuple [a; b] -> b
+    | Tuple [_; b] -> b
     | _ -> assert false
 end

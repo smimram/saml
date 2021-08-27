@@ -1,14 +1,11 @@
-SOURCES = extralib.ml common.ml config.ml type.ml lang.ml builtin.ml parser.mly lexer.mll preproc.ml pa.ml saml.ml
-RESULT = saml
-OCAMLYACC = menhir
-PACKS = pulseaudio
-THREADS = true
+all: build
+	dune exec ./saml.exe test.saml
 
-all: dnc
-	./saml test.saml
+build:
+	@dune build
 
-install: dnc
-	install saml $(PREFIX)/bin
+install:
+	@dune install
 
 ci:
 	git ci . -m "Progress on SAML."
@@ -18,5 +15,3 @@ conflicts:
 	rm -f parser.conflicts
 	menhir --explain parser.mly
 	less parser.conflicts
-
-include OCamlMakefile

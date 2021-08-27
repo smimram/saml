@@ -146,13 +146,13 @@ let rec occurs x t =
   | UVar _ -> false
   | Int | Float | String | Bool -> false
   | Tuple l -> List.exists (occurs x) l
-  | Monad (m, a) -> occurs x a
+  | Monad (_, a) -> occurs x a
 
 let update_level l t =
   let rec aux t =
     match t.desc with
-    | Arr (a, t) -> aux t
-    | UVar v -> ()
+    | Arr (a, t) -> aux a; aux t
+    | UVar _ -> ()
     | Var v ->
       (
         match !v with
@@ -161,7 +161,7 @@ let update_level l t =
       )
     | Int | Float | String | Bool -> ()
     | Tuple l -> List.iter aux l
-    | Monad (m, a) -> aux a
+    | Monad (_, a) -> aux a
   in
   aux t
 
@@ -203,12 +203,12 @@ let rec ( <: ) (t1:t) (t2:t) =
 let generalize level t =
   let rec generalize t =
     match (unvar t).desc with
-    | UVar v -> ()
+    | UVar _ -> ()
     | Var ({ contents = `Level l } as x) -> if l > level then x := `Link (uvar ())
     | Var { contents = `Link _ } -> assert false
     | Arr (a, b) -> generalize a; generalize b
     | Tuple l -> List.iter generalize l
-    | Monad (m, a) -> generalize a
+    | Monad (_, a) -> generalize a
     | Bool | Int | Float | String -> ()
   in
   generalize t
