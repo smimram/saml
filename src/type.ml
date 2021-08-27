@@ -14,7 +14,7 @@ and desc =
   | Int
   | Float
   | String
-  | UVar of t option ref (** A universally quantified variable. *)
+  | UVar of unit ref (** A universally quantified variable. *)
   | Var of evar (** A variable. *)
   | Arr of t * t
   | Tuple of t list
@@ -55,7 +55,7 @@ let pair x y = tuple [x;y]
 
 let unit () = tuple []
 
-let uvar () = make (UVar (ref None))
+let uvar () = make (UVar (ref ()))
 
 let var level =
   make (Var (ref (Level level)))
@@ -71,7 +71,6 @@ let rec unlink x =
 let unvar t =
   let rec aux t =
     match t.desc with
-    | UVar { contents = Some t } -> aux t
     | Var { contents = Link t } -> aux t
     | _ -> t
   in
@@ -85,15 +84,7 @@ let to_string t =
   (* When p is false we don't need parenthesis. *)
   let rec to_string p t =
     match t.desc with
-    | UVar v ->
-      (
-        match !v with
-        | Some t ->
-          if !Config.Debug.Typing.show_links
-          then Printf.sprintf "[%s]" (to_string false t)
-          else to_string p t
-        | None -> un v
-      )
+    | UVar v -> un v
     | Var v ->
       (
         match !v with
@@ -142,12 +133,7 @@ let update_level l t =
   let rec aux t =
     match t.desc with
     | Arr (a, t) -> aux t
-    | UVar v ->
-       (
-         match !v with
-         | Some t -> aux t
-         | None -> ()
-       )
+    | UVar v -> ()
     | Var v ->
        (
          match !v with
