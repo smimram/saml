@@ -50,7 +50,7 @@ let make ?(pos=dummy_pos) ?t e =
   let t =
     match t with
     | Some t -> t
-    | None -> T.evar max_int
+    | None -> T.var max_int
   in
   {
     desc = e;
@@ -184,7 +184,7 @@ let rec check level (env:T.environment) e =
   let (>:) e a = if not (T.( <: ) a e.t) then error "%s: %s has type %s but %s expected." (Common.string_of_pos e.pos) (to_string e) (T.to_string e.t) (T.to_string a) in
   let rec type_of_pattern level env = function
     | PVar x ->
-       let a = T.evar level in
+       let a = T.var level in
        let env = (x,a)::env in
        env, a
     | PTuple l ->
@@ -230,7 +230,7 @@ let rec check level (env:T.environment) e =
      e >: T.arr a v.t
   | Closure _ -> assert false
   | App (f, v) ->
-     let b = T.evar level in
+     let b = T.var level in
      check level env f;
      check level env v;
      f <: T.arr v.t b;

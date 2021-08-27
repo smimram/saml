@@ -14,10 +14,8 @@ and desc =
   | Int
   | Float
   | String
-  | UVar of t option ref
-  (** A universal variable, which might be unified with another. *)
-  | EVar of evar
-  (** An existential type variable. *)
+  | UVar of t option ref (** A universally quantified variable. *)
+  | Var of evar (** A variable. *)
   | Arr of t * t
   | Tuple of t list
   | Monad of ([`Unknown | `Link of 'a | `Monad of monad] as 'a) ref * t
@@ -57,11 +55,10 @@ let pair x y = tuple [x;y]
 
 let unit () = tuple []
 
-let uvar () =
-  make (UVar (ref None))
+let uvar () = make (UVar (ref None))
 
-let evar level =
-  make (EVar (ref (Level level)))
+let var level =
+  make (Var (ref (Level level)))
 
 let arr a b = make (Arr (a, b))
 
@@ -75,7 +72,7 @@ let unvar t =
   let rec aux t =
     match t.desc with
     | UVar { contents = Some t } -> aux t
-    | EVar { contents = Link t } -> aux t
+    | Var { contents = Link t } -> aux t
     | _ -> t
   in
   aux t
@@ -97,7 +94,7 @@ let to_string t =
           else to_string p t
         | None -> un v
       )
-    | EVar v ->
+    | Var v ->
       (
         match !v with
         | Link t ->
@@ -135,7 +132,7 @@ let to_string t =
 let rec occurs x t =
   match (unvar t).desc with
   | Arr (a, b) -> occurs x a || occurs x b
-  | EVar v -> x == v
+  | Var v -> x == v
   | UVar _ -> false
   | Int | Float | String | Bool -> false
   | Tuple l -> List.exists (occurs x) l
@@ -151,7 +148,7 @@ let update_level l t =
          | Some t -> aux t
          | None -> ()
        )
-    | EVar v ->
+    | Var v ->
        (
          match !v with
          | Link t -> aux t
@@ -170,8 +167,8 @@ let rec ( <: ) (t1:t) (t2:t) =
     match t1.desc, t2.desc with
     | UVar v1, UVar v2 when v1 == v2 -> true
     | UVar _, _ -> t2 <: t1
-    | EVar v1, EVar v2 when v1 == v2 -> true
-    | _, EVar ({ contents = Level l } as x) ->
+    | Var v1, Var v2 when v1 == v2 -> true
+    | _, Var ({ contents = Level l } as x) ->
        if occurs x t1 then false
        else
          (
@@ -180,7 +177,7 @@ let rec ( <: ) (t1:t) (t2:t) =
            x := Link t1;
            true
          )
-    | EVar ({ contents = Level l } as x), _ ->
+    | Var ({ contents = Level l } as x), _ ->
        if occurs x t2 then false
        else
          (
@@ -202,8 +199,8 @@ let generalize level t =
   let rec generalize t =
     match (unvar t).desc with
     | UVar v -> ()
-    | EVar ({ contents = Level l } as x) -> if l > level then x := Link (uvar ())
-    | EVar { contents = Link _ } -> assert false
+    | Var ({ contents = Level l } as x) -> if l > level then x := Link (uvar ())
+    | Var { contents = Link _ } -> assert false
     | Arr (a, b) -> generalize a; generalize b
     | Tuple l -> List.iter generalize l
     | Monad (m, a) -> generalize a
@@ -219,9 +216,9 @@ let instantiate level t =
     let desc =
       match (unvar t).desc with
       | UVar x ->
-         if not (List.mem_assq x !tenv) then tenv := (x, (evar level).desc) :: !tenv;
+         if not (List.mem_assq x !tenv) then tenv := (x, (var level).desc) :: !tenv;
          List.assq x !tenv
-      | EVar v -> EVar v
+      | Var v -> Var v
       | Arr (a, b) -> Arr (aux a, aux b)
       | Tuple l -> Tuple (List.map aux l)
       | Monad (m, a) -> Monad (m, aux a)
