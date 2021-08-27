@@ -28,6 +28,7 @@ and desc =
   | App of t * t
   | Seq of t * t
   | Tuple of t list
+  | Field of t * string
   | Closure of environment * t (** A closure. *)
 
 and pattern =
@@ -158,6 +159,8 @@ let rec to_string ~tab p e =
     | Tuple l ->
       let l = List.map (to_string ~tab false) l |> String.concat ", " in
       Printf.sprintf "(%s)" l
+    | Field (e, l) ->
+      Printf.sprintf "%s.%s" (to_string ~tab true e) l
   in
   if e.methods = [] then desc
   else
@@ -269,6 +272,11 @@ let rec check level (env:T.environment) e =
   | Tuple l ->
     List.iter (check level env) l;
     e >: T.tuple ~methods (List.map (fun v -> v.t) l)
+  | Field (v, l) ->
+    check level env v;
+    let a = T.var level in
+    v <: T.var ~methods:(`At_least [l, a]) level;
+    e >: a
 
 let check t = check 0 !tenv t
 
@@ -303,6 +311,9 @@ let rec reduce env t =
     reduce env u
   | Tuple l ->
     { t with desc = Tuple (List.map (reduce env) l) }
+  | Field (t, l) ->
+    let t = reduce env t in
+    List.assoc l t.methods
 
 and reduce_pattern env pat v =
   match pat, v.desc with

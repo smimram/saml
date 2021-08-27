@@ -32,7 +32,7 @@
 %left PLUS MINUS
 %left TIMES DIV
 %nonassoc UMINUS
-%left PIPE
+%left DOT
 
 %start prog
 %type <Lang.t> prog
@@ -65,6 +65,7 @@ simple_expr:
   | LPAR expr_list RPAR { tuple ~pos:$loc $2 }
   | LPAR labeled_expr_list RPAR { record ~pos:$loc $2 }
   | LPAR expr COMMA labeled_expr_list RPAR { meth $4 $2 }
+  | simple_expr DOT IDENT { assert false }
   (* | MODULE n simple_decl_list END { record ~pos:$loc ~recursive:true $3 } *)
   (* | simple_expr PIPE IDENT { field ~pos:$loc $3 $1 } *)
   | BUILTIN STRING { Builtin.get ~pos:$loc $2 }
