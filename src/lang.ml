@@ -64,6 +64,8 @@ let make ?(pos=dummy_pos) ?(methods=[]) ?t e =
     t
   }
 
+let meth m e = { e with methods = m@e.methods }
+
 let var ?pos s = make ?pos (Var s)
 
 let args_name = "args"

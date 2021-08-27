@@ -62,9 +62,9 @@ simple_expr:
   | FLOAT { make ~pos:$loc (Float $1) }
   | STRING { make ~pos:$loc (String $1) }
   | BEGIN exprs END { $2 }
-  | LPAR simple_expr_list RPAR { tuple ~pos:$loc $2 }
+  | LPAR expr_list RPAR { tuple ~pos:$loc $2 }
   | LPAR labeled_expr_list RPAR { record ~pos:$loc $2 }
-  (* | LPAR expr COMMA labeled_expr_list RPAR { record ~pos:$loc $4 } *)
+  | LPAR expr COMMA labeled_expr_list RPAR { meth $4 $2 }
   (* | MODULE n simple_decl_list END { record ~pos:$loc ~recursive:true $3 } *)
   (* | simple_expr PIPE IDENT { field ~pos:$loc $3 $1 } *)
   | BUILTIN STRING { Builtin.get ~pos:$loc $2 }
@@ -96,14 +96,13 @@ exprs:
   | decl NEWLINE exprs { letin ~pos:$loc $1 $3 }
   /* | INCLUDE STRING NEWLINE exprs { (parse_file_ctx $3) $5 } */
 
-simple_expr_list:
-  | simple_expr { [$1] }
-  | simple_expr COMMA simple_expr_list { $1::$3 }
-
+expr_list:
+  | expr { [$1] }
+  | expr COMMA expr_list { $1::$3 }
 
 labeled_expr_list:
-  | IDENT EQ simple_expr { [$1,$3] }
-  | IDENT EQ simple_expr COMMA labeled_expr_list { ($1,$3)::$5 }
+  | IDENT EQ expr { [$1,$3] }
+  | IDENT EQ expr COMMA labeled_expr_list { ($1,$3)::$5 }
 
 // an expression context, this is used for includes
 exprs_ctx:
