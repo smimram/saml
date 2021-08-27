@@ -11,5 +11,7 @@
  (name saml)
  (synopsis "A compiler for sound generators and effects")
  (description "A compiler for sound generators and effects.")
+ (depends
+   menhir)
 )
 (using menhir 2.0)
