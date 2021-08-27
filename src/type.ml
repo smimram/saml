@@ -6,7 +6,8 @@ open Extralib
 (** A type. *)
 type t =
   {
-    desc : desc
+    desc : desc;
+    methods : ([ `Meth of (string * t) * 'a | `None | `Link of 'a option ref] as 'a); (** Methods. *)
   }
 
 and desc =
@@ -31,7 +32,17 @@ and monad =
 
 type typ = t
 
-let make t = { desc = t }
+let make ?(methods=`None) t =
+  let rec aux = function
+    | `At_least ((l,a)::m) -> `Meth ((l,a), aux (`At_least m))
+    | `At_least [] -> aux `Any
+    | `Exactly ((l,a)::m) -> `Meth ((l,a), aux (`Exactly m))
+    | `Exactly [] -> aux `None
+    | `Any -> `Link (ref None)
+    | `None -> `None
+  in
+  let methods = aux methods in
+  { desc = t ; methods }
 
 let bool () = make Bool
 
@@ -202,6 +213,6 @@ let instantiate level t =
       | Monad (m, a) -> Monad (m, aux a)
       | Bool | Int | Float | String as t -> t
     in
-    { desc }
+    { desc ; methods = t.methods }
   in
   aux t

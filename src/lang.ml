@@ -10,6 +10,7 @@ module T = Type
 type t =
   {
     desc : desc; (** The expression. *)
+    methods : (string * t) list; (** The methods. *)
     pos : pos; (** Position in source file. *)
     t : T.t; (** Type. *)
   }
@@ -46,7 +47,7 @@ let tenv = ref ([] : T.environment)
 let env = ref ([] : environment)
 
 (** Create an expression. *)
-let make ?(pos=dummy_pos) ?t e =
+let make ?(pos=dummy_pos) ?(methods=[]) ?t e =
   let t =
     match t with
     | Some t -> t
@@ -54,6 +55,7 @@ let make ?(pos=dummy_pos) ?t e =
   in
   {
     desc = e;
+    methods;
     pos;
     t
   }
