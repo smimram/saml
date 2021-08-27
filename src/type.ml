@@ -15,15 +15,12 @@ and desc =
   | Float
   | String
   | UVar of t option ref
-  (** A universal variable, which can be unified if necessary. *)
+  (** A universal variable, which might be unified with another. *)
   | EVar of evar
-  (** An existential type variable: this is an opaque type whose contents will
-      be revealed later (it is used only for states at the moment because they
-      are not known at typing time). They cannot be substituted by types with
-      universal variables. *)
+  (** An existential type variable. *)
   | Arr of t * t
   | Tuple of t list
-  | Monad of monad * t
+  | Monad of ([`Unknown | `Link of 'a | `Monad of monad] as 'a) ref * t
 
 (** Existential variable. *)
 and evar = evar_contents ref
@@ -41,7 +38,6 @@ and monad =
   {
     m_name : string;
   }
-
 
 type typ = t
 
@@ -68,6 +64,11 @@ let evar level =
   make (EVar (ref (Level level)))
 
 let arr a b = make (Arr (a, b))
+
+let rec unlink x =
+  match x with
+  | `Link x -> unlink x
+  | x -> x
 
 (** Follow links in variables. *)
 let unvar t =
@@ -119,6 +120,15 @@ let to_string t =
       let a = to_string true a in
       let b = to_string false b in
       pa p (Printf.sprintf "%s -> %s" a b)
+    | Monad (m, a) ->
+      let m =
+        match unlink !m with
+        | `Unknown -> "monad"
+        | `Monad m -> m.m_name
+        | `Link _ -> assert false
+      in
+      let a = to_string true a in
+      pa p (Printf.sprintf "%s %s" m a)
   in
   to_string false t
 
@@ -129,6 +139,7 @@ let rec occurs x t =
   | UVar _ -> false
   | Int | Float | String | Bool -> false
   | Tuple l -> List.exists (occurs x) l
+  | Monad (m, a) -> occurs x a
 
 let update_level l t =
   let rec aux t =
@@ -148,6 +159,7 @@ let update_level l t =
        )
     | Int | Float | String | Bool -> ()
     | Tuple l -> List.iter aux l
+    | Monad (m, a) -> aux a
   in
   aux t
 
@@ -185,15 +197,19 @@ let rec ( <: ) (t1:t) (t2:t) =
     | Tuple l, Tuple l' -> List.length l = List.length l' && List.for_all2 ( <: ) l l'
     | _, _ -> false
 
-(** Generalize existential variable to universal ones. *)
-let rec generalize level t =
-  match (unvar t).desc with
-  | UVar v -> ()
-  | EVar ({ contents = Level l } as x) -> if l > level then x := Link (uvar ())
-  | EVar { contents = Link _ } -> assert false
-  | Arr (a, b) -> generalize level a; generalize level b
-  | Tuple l -> List.iter (generalize level) l
-  | Bool | Int | Float | String -> ()
+(** Generalize existential variables to universal ones. *)
+let generalize level t =
+  let rec generalize t =
+    match (unvar t).desc with
+    | UVar v -> ()
+    | EVar ({ contents = Level l } as x) -> if l > level then x := Link (uvar ())
+    | EVar { contents = Link _ } -> assert false
+    | Arr (a, b) -> generalize a; generalize b
+    | Tuple l -> List.iter generalize l
+    | Monad (m, a) -> generalize a
+    | Bool | Int | Float | String -> ()
+  in
+  generalize t
 
 (** Instantiate a type scheme: replace universally quantified variables with
     fresh variables. *)
@@ -208,6 +224,7 @@ let instantiate level t =
       | EVar v -> EVar v
       | Arr (a, b) -> Arr (aux a, aux b)
       | Tuple l -> Tuple (List.map aux l)
+      | Monad (m, a) -> Monad (m, aux a)
       | Bool | Int | Float | String as t -> t
     in
     { desc }
