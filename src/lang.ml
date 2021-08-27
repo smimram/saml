@@ -107,44 +107,51 @@ let closure ?pos env t =
 
 (** String representation of an expression. *)
 let rec to_string ~tab p e =
+  let p = if e.methods = [] then p else false in
   let pa p s = if p then Printf.sprintf "(%s)" s else s in
   let tabs ?(tab=tab) () = String.make (2*tab) ' ' in
   let tabss () = tabs ~tab:(tab+1) () in
-  match e.desc with
-  | Var x -> x
-  | Bool b -> string_of_bool b
-  | Int n -> string_of_int n
-  | Float f -> string_of_float f
-  | String s -> Printf.sprintf "%S" s
-  | FFI ffi -> Printf.sprintf "<%s>" ffi.ffi_name
-  | Fun (pat, e) ->
-     let pat = string_of_pattern ~tab pat in 
-     let e = to_string ~tab:(tab+1) false e in
-     pa p (Printf.sprintf "fun %s ->%s%s" pat (if String.contains e '\n' then ("\n"^(tabs ~tab:(tab+1) ())) else " ") e)
-  | Closure (env, e) -> Printf.sprintf "<closure>%s" (to_string ~tab true e)
-  | App (e, a) ->
-     let e = to_string ~tab true e in
-     let a = to_string ~tab:(tab+1) true a in
-     pa p (Printf.sprintf "%s %s" e a)
-  | Seq (e1, e2) ->
-     let e1 = to_string ~tab false e1 in
-     let e2 = to_string ~tab false e2 in
-     pa p (Printf.sprintf "%s%s\n%s%s" e1 (if !Config.Debug.Lang.show_seq then ";" else "") (tabs ()) e2)
-  | Let (pat, def, body) ->
-     let pat = string_of_pattern ~tab pat in
-     let def = to_string ~tab:(tab+1) false def in
-     let def =
-       if String.contains def '\n' then Printf.sprintf "\n%s%s" (tabss ()) def
-       else Printf.sprintf " %s " def
-     in
-     let body = to_string ~tab false body in
-     if !Config.Debug.Lang.show_let then
-       pa p (Printf.sprintf "let %s =%s%s\n%s%s" pat def (if String.contains def '\n' then "\n"^tabs()^"in" else "in") (tabs ()) body)
-     else
-       pa p (Printf.sprintf "%s =%s\n%s%s" pat def (tabs ()) body)
-  | Tuple l ->
-    let l = List.map (to_string ~tab false) l |> String.concat ", " in
-    Printf.sprintf "(%s)" l
+  let desc =
+    match e.desc with
+    | Var x -> x
+    | Bool b -> string_of_bool b
+    | Int n -> string_of_int n
+    | Float f -> string_of_float f
+    | String s -> Printf.sprintf "%S" s
+    | FFI ffi -> Printf.sprintf "<%s>" ffi.ffi_name
+    | Fun (pat, e) ->
+      let pat = string_of_pattern ~tab pat in 
+      let e = to_string ~tab:(tab+1) false e in
+      pa p (Printf.sprintf "fun %s ->%s%s" pat (if String.contains e '\n' then ("\n"^(tabs ~tab:(tab+1) ())) else " ") e)
+    | Closure (env, e) -> Printf.sprintf "<closure>%s" (to_string ~tab true e)
+    | App (e, a) ->
+      let e = to_string ~tab true e in
+      let a = to_string ~tab:(tab+1) true a in
+      pa p (Printf.sprintf "%s %s" e a)
+    | Seq (e1, e2) ->
+      let e1 = to_string ~tab false e1 in
+      let e2 = to_string ~tab false e2 in
+      pa p (Printf.sprintf "%s%s\n%s%s" e1 (if !Config.Debug.Lang.show_seq then ";" else "") (tabs ()) e2)
+    | Let (pat, def, body) ->
+      let pat = string_of_pattern ~tab pat in
+      let def = to_string ~tab:(tab+1) false def in
+      let def =
+        if String.contains def '\n' then Printf.sprintf "\n%s%s" (tabss ()) def
+        else Printf.sprintf " %s " def
+      in
+      let body = to_string ~tab false body in
+      if !Config.Debug.Lang.show_let then
+        pa p (Printf.sprintf "let %s =%s%s\n%s%s" pat def (if String.contains def '\n' then "\n"^tabs()^"in" else "in") (tabs ()) body)
+      else
+        pa p (Printf.sprintf "%s =%s\n%s%s" pat def (tabs ()) body)
+    | Tuple l ->
+      let l = List.map (to_string ~tab false) l |> String.concat ", " in
+      Printf.sprintf "(%s)" l
+  in
+  if e.methods = [] then desc
+  else
+    let methods = List.map (fun (l,t) -> l ^ "=" ^ to_string ~tab:(tab+1) false t) e.methods |> String.concat ", " in
+    Printf.sprintf "(%s, %s)" desc methods
 and string_of_pattern ~tab = function
   | PVar x -> x
   | PTuple l ->

@@ -86,40 +86,56 @@ let to_string t =
   let pa p s = if p then Printf.sprintf "(%s)" s else s in
   (* When p is false we don't need parenthesis. *)
   let rec to_string p t =
-    match t.desc with
-    | UVar v -> un v
-    | Var v ->
-      (
-        match !v with
-        | `Link t ->
-          if !Config.Debug.Typing.show_links
-          then Printf.sprintf "?[%s]" (to_string false t)
-          else to_string p t
-        | `Level l ->
-          "?" ^ en v ^ (if !Config.Debug.Typing.show_levels then "@" ^ string_of_int l else "")
-      )
-    | Int -> "int"
-    | Float -> "float"
-    | String -> "string"
-    | Bool -> "bool"
-    | Tuple l ->
-      if l = [] then "unit"
-      else
-        let l = String.concat_map ", " (to_string false) l in
-        Printf.sprintf "(%s)" l
-    | Arr (a,b) ->
-      let a = to_string true a in
-      let b = to_string false b in
-      pa p (Printf.sprintf "%s -> %s" a b)
-    | Monad (m, a) ->
-      let m =
-        match unlink !m with
-        | `Unknown -> "monad"
-        | `Monad m -> m.m_name
-        | `Link _ -> assert false
+    let p = if t.methods = `None then p else false in
+    let desc =
+      match t.desc with
+      | UVar v -> un v
+      | Var v ->
+        (
+          match !v with
+          | `Link t ->
+            if !Config.Debug.Typing.show_links
+            then Printf.sprintf "?[%s]" (to_string false t)
+            else to_string p t
+          | `Level l ->
+            "?" ^ en v ^ (if !Config.Debug.Typing.show_levels then "@" ^ string_of_int l else "")
+        )
+      | Int -> "int"
+      | Float -> "float"
+      | String -> "string"
+      | Bool -> "bool"
+      | Tuple l ->
+        if l = [] then "unit"
+        else
+          let l = String.concat_map ", " (to_string false) l in
+          Printf.sprintf "(%s)" l
+      | Arr (a,b) ->
+        let a = to_string true a in
+        let b = to_string false b in
+        pa p (Printf.sprintf "%s -> %s" a b)
+      | Monad (m, a) ->
+        let m =
+          match unlink !m with
+          | `Unknown -> "monad"
+          | `Monad m -> m.m_name
+          | `Link _ -> assert false
+        in
+        let a = to_string true a in
+        pa p (Printf.sprintf "%s %s" m a)
+    in
+    if t.methods = `None then desc
+    else
+      let methods =
+        let rec aux = function
+          | `Meth ((l,a),`None) -> Printf.sprintf "%s=%s" l (to_string false a)
+          | `Meth ((l,a),m) -> Printf.sprintf "%s=%s, %s" l (to_string false a) (aux m)
+          | `Link { contents = Some m } -> aux m
+          | `Link { contents = None } -> "..."
+          | `None -> ""
+        in
+        aux t.methods
       in
-      let a = to_string true a in
-      pa p (Printf.sprintf "%s %s" m a)
+      Printf.sprintf "(%s, %s)" desc methods
   in
   to_string false t
 
