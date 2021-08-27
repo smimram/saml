@@ -154,11 +154,11 @@ let update_level l t =
     | Arr (a, t) -> aux t
     | UVar v -> ()
     | Var v ->
-       (
-         match !v with
-         | `Link t -> aux t
-         | `Level l' -> v := `Level (min l l')
-       )
+      (
+        match !v with
+        | `Link t -> aux t
+        | `Level l' -> v := `Level (min l l')
+      )
     | Int | Float | String | Bool -> ()
     | Tuple l -> List.iter aux l
     | Monad (m, a) -> aux a
@@ -166,38 +166,38 @@ let update_level l t =
   aux t
 
 let rec ( <: ) (t1:t) (t2:t) =
-    (* Printf.printf "subtype: %s with %s\n%!" (to_string t1) (to_string t2); *)
-    let t1 = unvar t1 in
-    let t2 = unvar t2 in
-    match t1.desc, t2.desc with
-    | UVar v1, UVar v2 when v1 == v2 -> true
-    | UVar _, _ -> t2 <: t1
-    | Var v1, Var v2 when v1 == v2 -> true
-    | _, Var ({ contents = `Level l } as x) ->
-       if occurs x t1 then false
-       else
-         (
-           update_level l t1;
-           if !Config.Debug.Typing.show_assignations then Printf.printf "%s <- %s\n%!" (to_string t2) (to_string t1);
-           x := `Link t1;
-           true
-         )
-    | Var ({ contents = `Level l } as x), _ ->
-       if occurs x t2 then false
-       else
-         (
-           update_level l t2;
-           if !Config.Debug.Typing.show_assignations then Printf.printf "%s <- %s\n%!" (to_string t1) (to_string t2);
-           x := `Link t2;
-           true
-         )
-    | Arr (a, b), Arr (a', b') -> a' <: a && b <: b'
-    | Bool, Bool
-    | Int, Int
-    | Float, Float
-    | String, String -> true
-    | Tuple l, Tuple l' -> List.length l = List.length l' && List.for_all2 ( <: ) l l'
-    | _, _ -> false
+  (* Printf.printf "subtype: %s with %s\n%!" (to_string t1) (to_string t2); *)
+  let t1 = unvar t1 in
+  let t2 = unvar t2 in
+  match t1.desc, t2.desc with
+  | UVar v1, UVar v2 when v1 == v2 -> true
+  | UVar _, _ -> t2 <: t1
+  | Var v1, Var v2 when v1 == v2 -> true
+  | _, Var ({ contents = `Level l } as x) ->
+    if occurs x t1 then false
+    else
+      (
+        update_level l t1;
+        if !Config.Debug.Typing.show_assignations then Printf.printf "%s <- %s\n%!" (to_string t2) (to_string t1);
+        x := `Link t1;
+        true
+      )
+  | Var ({ contents = `Level l } as x), _ ->
+    if occurs x t2 then false
+    else
+      (
+        update_level l t2;
+        if !Config.Debug.Typing.show_assignations then Printf.printf "%s <- %s\n%!" (to_string t1) (to_string t2);
+        x := `Link t2;
+        true
+      )
+  | Arr (a, b), Arr (a', b') -> a' <: a && b <: b'
+  | Bool, Bool
+  | Int, Int
+  | Float, Float
+  | String, String -> true
+  | Tuple l, Tuple l' -> List.length l = List.length l' && List.for_all2 ( <: ) l l'
+  | _, _ -> false
 
 (** Generalize existential variables to universal ones. *)
 let generalize level t =
@@ -221,8 +221,8 @@ let instantiate level t =
     let desc =
       match (unvar t).desc with
       | UVar x ->
-         if not (List.mem_assq x !tenv) then tenv := (x, (var level).desc) :: !tenv;
-         List.assq x !tenv
+        if not (List.mem_assq x !tenv) then tenv := (x, (var level).desc) :: !tenv;
+        List.assq x !tenv
       | Var v -> Var v
       | Arr (a, b) -> Arr (aux a, aux b)
       | Tuple l -> Tuple (List.map aux l)

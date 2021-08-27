@@ -193,9 +193,9 @@ let rec check level (env:T.environment) e =
   let (>:) e a = if not (T.( <: ) a e.t) then error "%s: %s has type %s but %s expected." (Common.string_of_pos e.pos) (to_string e) (T.to_string e.t) (T.to_string a) in
   let rec type_of_pattern level env = function
     | PVar x ->
-       let a = T.var level in
-       let env = (x,a)::env in
-       env, a
+      let a = T.var level in
+      let env = (x,a)::env in
+      env, a
     | PTuple l ->
       let env, l = List.fold_map (type_of_pattern level) env l in
       env, T.tuple l
@@ -206,44 +206,44 @@ let rec check level (env:T.environment) e =
   | Float _ -> e >: T.float ()
   | String _ -> e >: T.string ()
   | FFI f ->
-     e >: T.instantiate level (T.arr f.ffi_itype f.ffi_otype)
+    e >: T.instantiate level (T.arr f.ffi_itype f.ffi_otype)
   | Var x ->
-     let t = try List.assoc x env with Not_found -> type_error e "Unbound variable %s." x in
-     e >: T.instantiate level t
+    let t = try List.assoc x env with Not_found -> type_error e "Unbound variable %s." x in
+    e >: T.instantiate level t
   | Seq (e1, e2) ->
-     check level env e1;
-     e1 <: T.unit ();
-     check level env e2;
-     e >: e2.t
+    check level env e1;
+    e1 <: T.unit ();
+    check level env e2;
+    e >: e2.t
   | Let (pat,def,body) ->
-     check (level+1) env def;
-     let env, a = type_of_pattern (level+1) env pat in
-     def >: a;
-     let env =
-       (* Generalize the bound variables. *)
-       (List.map
-          (fun x ->
+    check (level+1) env def;
+    let env, a = type_of_pattern (level+1) env pat in
+    def >: a;
+    let env =
+      (* Generalize the bound variables. *)
+      (List.map
+         (fun x ->
             let t = List.assoc x env in
             (* Printf.printf "generalize %s: %s\n%!" x (T.to_string t); *)
             T.generalize level t;
             (* Printf.printf "generalized  : %s\n%!" (T.to_string t); *)
             x, t)
-          (pattern_variables pat)
-       )@env
-     in
-     check level env body;
-     e >: body.t
+         (pattern_variables pat)
+      )@env
+    in
+    check level env body;
+    e >: body.t
   | Fun (pat,v) ->
-     let env, a = type_of_pattern level env pat in
-     check level env v;
-     e >: T.arr a v.t
+    let env, a = type_of_pattern level env pat in
+    check level env v;
+    e >: T.arr a v.t
   | Closure _ -> assert false
   | App (f, v) ->
-     let b = T.var level in
-     check level env f;
-     check level env v;
-     f <: T.arr v.t b;
-     e >: b
+    let b = T.var level in
+    check level env f;
+    check level env v;
+    f <: T.arr v.t b;
+    e >: b
   | Tuple l ->
     List.iter (check level env) l;
     e >: T.tuple (List.map (fun v -> v.t) l)
@@ -259,25 +259,25 @@ let rec reduce env t =
   | Fun _ -> make ~pos:t.pos (Closure (env, t))
   | Closure (env, t) -> reduce env t
   | Let (pat, def, body) ->
-     let def = reduce env def in
-     let env = reduce_pattern env pat def in
-     reduce env body
+    let def = reduce env def in
+    let env = reduce_pattern env pat def in
+    reduce env body
   | App (t, u) ->
-     let u = reduce env u in
-     let t = reduce env t in
-     (
-       match t.desc with
-       | Closure (env', {desc = Fun (pat, t)}) ->
-          let env' = reduce_pattern [] pat u in
-          let t = closure env' t in
-          let t = letin args_pattern u t in
-          reduce env t
-       | FFI f -> f.ffi_eval u
-       | _ -> error "Unexpected term during application: %s" (to_string t)
-     )
+    let u = reduce env u in
+    let t = reduce env t in
+    (
+      match t.desc with
+      | Closure (env', {desc = Fun (pat, t)}) ->
+        let env' = reduce_pattern [] pat u in
+        let t = closure env' t in
+        let t = letin args_pattern u t in
+        reduce env t
+      | FFI f -> f.ffi_eval u
+      | _ -> error "Unexpected term during application: %s" (to_string t)
+    )
   | Seq (t, u) ->
-     let _ = reduce env t in
-     reduce env u
+    let _ = reduce env t in
+    reduce env u
   | Tuple l ->
     { t with desc = Tuple (List.map (reduce env) l) }
 
