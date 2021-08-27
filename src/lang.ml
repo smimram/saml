@@ -271,11 +271,12 @@ let rec reduce env t =
     let t = reduce env t in
     (
       match t.desc with
-      (* | Closure (env', {desc = Fun (pat, t)}) -> *)
-        (* let env' = reduce_pattern [] pat u in *)
-        (* let t = closure env' t in *)
-        (* let t = letin args_pattern u t in *)
-        (* reduce env t *)
+      | Closure (env', {desc = Fun (pat, t) ; _}) ->
+        let env'' = reduce_pattern [] pat u in
+        let env' = env''@env' in
+        let t = closure env' t in
+        let t = letin args_pattern u t in
+        reduce env t
       | FFI f -> f.ffi_eval u
       | _ -> error "Unexpected term during application: %s" (to_string t)
     )
