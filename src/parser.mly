@@ -20,7 +20,7 @@
 %token <int> INT
 %token <float> FLOAT
 %token <bool> BOOL
-%token <string> IDENT IDENT_LPAR
+%token <string> IDENT
 %token <string> STRING
 
 %right BOR
@@ -61,9 +61,10 @@ simple_expr:
   | INT { make ~pos:$loc (Int $1) }
   | FLOAT { make ~pos:$loc (Float $1) }
   | STRING { make ~pos:$loc (String $1) }
-  | LPAR expr RPAR { $2 }
   | BEGIN exprs END { $2 }
   | LPAR simple_expr_list RPAR { tuple ~pos:$loc $2 }
+  | LPAR labeled_expr_list RPAR { record ~pos:$loc $2 }
+  (* | LPAR expr COMMA labeled_expr_list RPAR { record ~pos:$loc $4 } *)
   (* | MODULE n simple_decl_list END { record ~pos:$loc ~recursive:true $3 } *)
   (* | simple_expr PIPE IDENT { field ~pos:$loc $3 $1 } *)
   | BUILTIN STRING { Builtin.get ~pos:$loc $2 }
@@ -99,7 +100,12 @@ simple_expr_list:
   | simple_expr { [$1] }
   | simple_expr COMMA simple_expr_list { $1::$3 }
 
-// An expression context, this is used for includes
+
+labeled_expr_list:
+  | IDENT EQ simple_expr { [$1,$3] }
+  | IDENT EQ simple_expr COMMA labeled_expr_list { ($1,$3)::$5 }
+
+// an expression context, this is used for includes
 exprs_ctx:
   | { fun e -> e }
   | expr exprs_ctx { fun e -> mk_seq $1 ($2 e) }

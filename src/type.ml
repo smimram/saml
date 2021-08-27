@@ -16,7 +16,7 @@ and desc =
   | Float
   | String
   | UVar of unit ref (** A universally quantified variable. *)
-  | Var of [`Level of int | `Link of t] ref (** A variable. *)
+  | Var of [`Free of int (* level *) | `Link of t] ref (** A variable. *)
   | Arr of t * t
   | Tuple of t list
   | Monad of ([`Unknown | `Monad of monad | `Link of 'b] as 'b) ref * t
@@ -44,26 +44,25 @@ let make ?(methods=`None) t =
   let methods = aux methods in
   { desc = t ; methods }
 
-let bool () = make Bool
+let bool ?methods () = make ?methods Bool
 
-let int () = make Int
+let int ?methods () = make ?methods Int
 
-let float () = make Float
+let float ?methods () = make ?methods Float
 
-let string () = make String
+let string ?methods () = make ?methods String
 
-let tuple l = make (Tuple l)
+let tuple ?methods l = make ?methods (Tuple l)
 
-let pair x y = tuple [x;y]
+let pair ?methods x y = tuple ?methods [x;y]
 
-let unit () = tuple []
+let unit ?methods () = tuple ?methods []
 
-let uvar () = make (UVar (ref ()))
+let uvar ?methods () = make ?methods (UVar (ref ()))
 
-let var level =
-  make (Var (ref (`Level level)))
+let var ?methods level = make ?methods (Var (ref (`Free level)))
 
-let arr a b = make (Arr (a, b))
+let arr ?methods a b = make ?methods (Arr (a, b))
 
 let rec unlink x =
   match x with
@@ -97,7 +96,7 @@ let to_string t =
             if !Config.Debug.Typing.show_links
             then Printf.sprintf "?[%s]" (to_string false t)
             else to_string p t
-          | `Level l ->
+          | `Free l ->
             "?" ^ en v ^ (if !Config.Debug.Typing.show_levels then "@" ^ string_of_int l else "")
         )
       | Int -> "int"
@@ -157,7 +156,7 @@ let update_level l t =
       (
         match !v with
         | `Link t -> aux t
-        | `Level l' -> v := `Level (min l l')
+        | `Free l' -> v := `Free (min l l')
       )
     | Int | Float | String | Bool -> ()
     | Tuple l -> List.iter aux l
@@ -173,7 +172,7 @@ let rec ( <: ) (t1:t) (t2:t) =
   | UVar v1, UVar v2 when v1 == v2 -> true
   | UVar _, _ -> t2 <: t1
   | Var v1, Var v2 when v1 == v2 -> true
-  | _, Var ({ contents = `Level l } as x) ->
+  | _, Var ({ contents = `Free l } as x) ->
     if occurs x t1 then false
     else
       (
@@ -182,7 +181,7 @@ let rec ( <: ) (t1:t) (t2:t) =
         x := `Link t1;
         true
       )
-  | Var ({ contents = `Level l } as x), _ ->
+  | Var ({ contents = `Free l } as x), _ ->
     if occurs x t2 then false
     else
       (
@@ -204,7 +203,7 @@ let generalize level t =
   let rec generalize t =
     match (unvar t).desc with
     | UVar _ -> ()
-    | Var ({ contents = `Level l } as x) -> if l > level then x := `Link (uvar ())
+    | Var ({ contents = `Free l } as x) -> if l > level then x := `Link (uvar ())
     | Var { contents = `Link _ } -> assert false
     | Arr (a, b) -> generalize a; generalize b
     | Tuple l -> List.iter generalize l

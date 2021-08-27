@@ -12,6 +12,7 @@ ci:
 	git push
 
 conflicts:
-	rm -f parser.conflicts
-	menhir --explain parser.mly
-	less parser.conflicts
+	@rm -f parser.conflicts
+	@menhir --explain parser.mly
+	@rm -f parser.ml parser.mli
+	@less parser.conflicts

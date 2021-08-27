@@ -72,11 +72,11 @@ let args_pattern = PVar args_name
 
 let args ?pos () = var ?pos args_name
 
-let bool ?pos b = make ?pos (Bool b)
+let bool ?pos ?methods b = make ?pos ?methods (Bool b)
 
-let float ?pos x = make ?pos (Float x)
+let float ?pos ?methods x = make ?pos ?methods (Float x)
 
-let string ?pos x = make ?pos (String x)
+let string ?pos ?methods x = make ?pos ?methods (String x)
 
 let fct ?pos args e = make ?pos (Fun (args, e))
 
@@ -88,11 +88,16 @@ let seq ?pos e1 e2 = make ?pos (Seq (e1, e2))
 
 let letin ?pos pat def body = make ?pos (Let (pat, def, body))
 
-let tuple ?pos l = make ?pos (Tuple l)
+let tuple ?pos ?methods l =
+  match l with
+  | [e] -> e
+  | l -> make ?pos ?methods (Tuple l)
 
 let pair ?pos x y = tuple ?pos [x; y]
 
-let unit ?pos () = tuple ?pos []
+let unit ?pos ?methods () = tuple ?pos ?methods []
+
+let record ?pos l = unit ?pos ~methods:l ()
 
 let ffi ?pos name ?(eval=fun _ -> error "Not implemented: %s" name) a b =
   let f =
@@ -204,20 +209,29 @@ let rec check level (env:T.environment) e =
       let env, l = List.fold_map (type_of_pattern level) env l in
       env, T.tuple l
   in
+  let methods =
+    if e.methods = [] then `None
+    else
+      let methods = List.map (fun (l,e) -> check level env e; l, e.t) e.methods in
+      `Exactly methods
+  in
   match e.desc with
-  | Bool _ -> e >: T.bool ()
-  | Int _ -> e >: T.int ()
-  | Float _ -> e >: T.float ()
-  | String _ -> e >: T.string ()
+  | Bool _ -> e >: T.bool ~methods ()
+  | Int _ -> e >: T.int ~methods ()
+  | Float _ -> e >: T.float ~methods ()
+  | String _ -> e >: T.string ~methods ()
   | FFI f ->
+    assert (methods = `None); (* TODO *)
     e >: T.instantiate level (T.arr f.ffi_itype f.ffi_otype)
   | Var x ->
     let t = try List.assoc x env with Not_found -> type_error e "Unbound variable %s." x in
+    assert (methods = `None);
     e >: T.instantiate level t
   | Seq (e1, e2) ->
     check level env e1;
     e1 <: T.unit ();
     check level env e2;
+    assert (methods = `None);
     e >: e2.t
   | Let (pat,def,body) ->
     check (level+1) env def;
@@ -236,21 +250,23 @@ let rec check level (env:T.environment) e =
       )@env
     in
     check level env body;
+    assert (methods = `None);
     e >: body.t
   | Fun (pat,v) ->
     let env, a = type_of_pattern level env pat in
     check level env v;
-    e >: T.arr a v.t
+    e >: T.arr ~methods a v.t
   | Closure _ -> assert false
   | App (f, v) ->
     let b = T.var level in
     check level env f;
     check level env v;
     f <: T.arr v.t b;
+    assert (methods = `None);
     e >: b
   | Tuple l ->
     List.iter (check level env) l;
-    e >: T.tuple (List.map (fun v -> v.t) l)
+    e >: T.tuple ~methods (List.map (fun v -> v.t) l)
 
 let check t = check 0 !tenv t
 
