@@ -56,7 +56,7 @@ let make ?(pos=dummy_pos) ?(methods=[]) ?t e =
   let t =
     match t with
     | Some t -> t
-    | None -> T.var max_int
+    | None -> T.var ~methods:`Any max_int
   in
   {
     desc = e;
@@ -101,6 +101,8 @@ let pair ?pos x y = tuple ?pos [x; y]
 let unit ?pos ?methods () = tuple ?pos ?methods []
 
 let record ?pos l = unit ?pos ~methods:l ()
+
+let field ?pos e l  = make ?pos (Field (e, l))
 
 let ffi ?pos name ?(eval=fun _ -> error "Not implemented: %s" name) a b =
   let f =
@@ -201,7 +203,7 @@ let type_error e s =
 
 (** Check the type of an expression. *)
 let rec check level (env:T.environment) e =
-  (* Printf.printf "infer_type:\n%s\n\n\n%!" (to_string e); *)
+  (* Printf.printf "check %s\n\n\n%!" (to_string e); *)
   (* Printf.printf "env: %s\n\n" (String.concat_map " , " (fun (x,(_,t)) -> x ^ ":" ^ T.to_string t) env.T.Env.t); *)
   let (<:) e a = if not (T.( <: ) e.t a) then error "%s: %s has type %s but %s expected." (Common.string_of_pos e.pos) (to_string e) (T.to_string e.t) (T.to_string a) in
   let (>:) e a = if not (T.( <: ) a e.t) then error "%s: %s has type %s but %s expected." (Common.string_of_pos e.pos) (to_string e) (T.to_string e.t) (T.to_string a) in
@@ -230,8 +232,12 @@ let rec check level (env:T.environment) e =
     e >: T.instantiate level (T.arr f.ffi_itype f.ffi_otype)
   | Var x ->
     let t = try List.assoc x env with Not_found -> type_error e "Unbound variable %s." x in
-    assert (methods = `None);
-    e >: T.instantiate level t
+    let methods =
+      match methods with
+      | `Exactly m -> m
+      | `None -> []
+    in
+    e >: T.meth methods (T.instantiate level t)
   | Seq (e1, e2) ->
     check level env e1;
     e1 <: T.unit ();
@@ -242,6 +248,7 @@ let rec check level (env:T.environment) e =
     check (level+1) env def;
     let env, a = type_of_pattern (level+1) env pat in
     def >: a;
+    Printf.printf "let %s : %s\n%!" (string_of_pattern ~tab:0 pat) (T.to_string def.t);
     let env =
       (* Generalize the bound variables. *)
       (List.map

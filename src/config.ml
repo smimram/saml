@@ -2,13 +2,14 @@
 
 module Debug = struct
   module Typing = struct
+    (** Show links in variables. *)
     let show_links = ref false
 
     (** Show levels of variables. *)
-    let show_levels = ref true
+    let show_levels = ref false
 
     (** Show assignations of type variables. *)
-    let show_assignations = ref false
+    let show_assignations = ref true
   end
 
   module Lang = struct

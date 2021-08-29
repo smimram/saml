@@ -1,0 +1,10 @@
+# A record
+r = (a=5, b="x")
+# A decorated value
+v = (3, a="a", b=2)
+# Re-extend
+v = (v, c=4.)
+# A field
+x = v.c
+x = v.a
+x
