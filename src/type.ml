@@ -7,10 +7,7 @@ open Extralib
 type t =
   {
     desc : desc;
-    methods : methods; (** Methods. *)
   }
-
-and methods = [ `Meth of (string * t) * 'a | `None | `Link of 'a option ref] as 'a
 
 and desc =
   | Bool
@@ -21,6 +18,7 @@ and desc =
   | Var of [`Free of int (* level *) | `Link of t] ref (** A variable. *)
   | Arr of t * t
   | Tuple of t list
+  | Meth of t * (string * t)
   | Monad of ([`Unknown | `Monad of monad | `Link of 'b] as 'b) ref * t
 
 (** Typing environment. *)
@@ -34,64 +32,29 @@ and monad =
 
 type typ = t
 
-let make ?(methods=`None) t =
-  let rec aux = function
-    | `At_least ((l,a)::m) -> `Meth ((l,a), aux (`At_least m))
-    | `At_least [] -> aux `Any
-    | `Exactly ((l,a)::m) -> `Meth ((l,a), aux (`Exactly m))
-    | `Exactly [] -> aux `None
-    | `Any -> `Link (ref None)
-    | `None -> `None
-  in
-  let methods = aux methods in
-  { desc = t ; methods }
+let make t = { desc = t }
 
-let meth m t =
-  let rec aux = function
-    | (l,a)::m -> `Meth ((l,a), aux m)
-    | [] -> t.methods
-  in
-  if m = [] then t else
-    let methods = aux m in
-    { t with methods }
+let bool () = make Bool
 
-let meth' m t =
-  let rec aux = function
-    | `Meth ((l,a),m) -> `Meth ((l,a), aux m)
-    | `None -> t.methods
-    | `Link { contents = None } -> failwith "not sure about how to handle this case"
-    | `Link { contents = Some m } -> aux m
-  in
-  if m = `None then t else
-    let methods = aux m in
-    { t with methods }
+let int () = make Int
 
-let rec string_of_methods = function
-  | `Meth ((l,_),`None) -> Printf.sprintf "%s=?" l
-  | `Meth ((l,_),m) -> Printf.sprintf "%s=?, %s" l (string_of_methods m)
-  | `Link { contents = Some m } -> string_of_methods m
-  | `Link { contents = None } -> "..."
-  | `None -> ""
+let float () = make Float
 
-let bool ?methods () = make ?methods Bool
+let string () = make String
 
-let int ?methods () = make ?methods Int
+let tuple l = make (Tuple l)
 
-let float ?methods () = make ?methods Float
+let pair x y = tuple [x;y]
 
-let string ?methods () = make ?methods String
+let unit () = tuple []
 
-let tuple ?methods l = make ?methods (Tuple l)
+let uvar () = make (UVar (ref ()))
 
-let pair ?methods x y = tuple ?methods [x;y]
+let var level = make (Var (ref (`Free level)))
 
-let unit ?methods () = tuple ?methods []
+let arr a b = make (Arr (a, b))
 
-let uvar ?methods () = make ?methods (UVar (ref ()))
-
-let var ?methods level = make ?methods (Var (ref (`Free level)))
-
-let arr ?methods a b = make ?methods (Arr (a, b))
+let meth a lv = make (Meth (a, lv))
 
 let rec unlink x =
   match x with
@@ -102,14 +65,18 @@ let rec unlink x =
 let unvar t =
   let rec aux t =
     match t.desc with
-    | Var { contents = `Link t } -> meth' t.methods (aux t)
+    | Var { contents = `Link t } -> aux t
     | _ -> t
   in
   aux t
 
-let rec unvar_meth = function
-  | `Link { contents = Some m } -> unvar_meth m
-  | m -> m
+let rec split_meths t =
+  match (unvar t).desc with
+  | Meth (t,lv) ->
+    let t, m = split_meths t in
+    t, lv::m
+  | _ ->
+    t, []
 
 (** String representation of a type. *)
 let to_string t =
@@ -122,52 +89,40 @@ let to_string t =
   (* When p is false we don't need parenthesis. *)
   let rec to_string p t =
     let t = if !Config.Debug.Typing.show_links then t else unvar t in
-    let p = if t.methods = `None then p else false in
-    let desc =
-      match t.desc with
-      | UVar v -> un v
-      | Var v ->
-        (
-          match !v with
-          | `Link t' -> Printf.sprintf "[%s]" (to_string false t')
-          | `Free l -> en v ^ (if !Config.Debug.Typing.show_levels then "@" ^ string_of_int l else "")
-        )
-      | Int -> "int"
-      | Float -> "float"
-      | String -> "string"
-      | Bool -> "bool"
-      | Tuple l ->
-        if l = [] then "unit"
-        else
-          let l = String.concat_map ", " (to_string false) l in
-          Printf.sprintf "(%s)" l
-      | Arr (a,b) ->
-        let a = to_string true a in
-        let b = to_string false b in
-        pa p (Printf.sprintf "%s -> %s" a b)
-      | Monad (m, a) ->
-        let m =
-          match unlink !m with
-          | `Unknown -> "monad"
-          | `Monad m -> m.m_name
-          | `Link _ -> assert false
-        in
-        let a = to_string true a in
-        pa p (Printf.sprintf "%s %s" m a)
-    in
-    if unvar_meth t.methods = `None then desc
-    else
-      let methods =
-        let rec aux = function
-          | `Meth ((l,a),`None) -> Printf.sprintf "%s:%s" l (to_string false a)
-          | `Meth ((l,a),m) -> Printf.sprintf "%s:%s, %s" l (to_string false a) (aux m)
-          | `Link { contents = Some m } -> aux m
-          | `Link { contents = None } -> "..."
-          | `None -> ""
-        in
-        aux t.methods
+    match t.desc with
+    | UVar v -> un v
+    | Var v ->
+      (
+        match !v with
+        | `Link t' -> Printf.sprintf "[%s]" (to_string false t')
+        | `Free l -> en v ^ (if !Config.Debug.Typing.show_levels then "@" ^ string_of_int l else "")
+      )
+    | Int -> "int"
+    | Float -> "float"
+    | String -> "string"
+    | Bool -> "bool"
+    | Tuple l ->
+      if l = [] then "unit"
+      else
+        let l = String.concat_map ", " (to_string false) l in
+        Printf.sprintf "(%s)" l
+    | Arr (a,b) ->
+      let a = to_string true a in
+      let b = to_string false b in
+      pa p (Printf.sprintf "%s -> %s" a b)
+    | Meth _ ->
+      let t, m = split_meths t in
+      let t = to_string false t in
+      "(" ^ List.fold_right (fun (l,v) s -> Printf.sprintf "%s, %s : %s" s l (to_string false v)) m t ^ ")"
+    | Monad (m, a) ->
+      let m =
+        match unlink !m with
+        | `Unknown -> "monad"
+        | `Monad m -> m.m_name
+        | `Link _ -> assert false
       in
-      Printf.sprintf "(%s, %s)" desc methods
+      let a = to_string true a in
+      pa p (Printf.sprintf "%s %s" m a)
   in
   to_string false t
 
@@ -178,6 +133,7 @@ let rec occurs x t =
   | UVar _ -> false
   | Int | Float | String | Bool -> false
   | Tuple l -> List.exists (occurs x) l
+  | Meth (a,(_,b)) -> occurs x a || occurs x b
   | Monad (_, a) -> occurs x a
 
 let update_level l t =
@@ -193,34 +149,15 @@ let update_level l t =
       )
     | Int | Float | String | Bool -> ()
     | Tuple l -> List.iter aux l
+    | Meth (a,(_,b)) -> aux a; aux b
     | Monad (_, a) -> aux a
   in
   aux t
 
 let rec ( <: ) (t1:t) (t2:t) =
-  Printf.printf "subtype: %s <: %s\n%!" (to_string t1) (to_string t2);
+  (* Printf.printf "subtype: %s <: %s\n%!" (to_string t1) (to_string t2); *)
   let t1 = unvar t1 in
   let t2 = unvar t2 in
-  let rec submeth (m1:methods) (m2:methods) =
-    match m1, m2 with
-    | _, `Meth ((l2,a2),m2) ->
-      (* Find l2 in m1 *)
-      let rec aux = function
-        | `Meth ((l1,a1),m1) -> if l1 = l2 then a1 <: a2 else aux m1
-        | `Link { contents = Some m1 } -> aux m1
-        | `Link ({ contents = None } as x) -> x := Some (`Meth ((l2,a2), `Link (ref None))); true
-        | `None -> false
-      in
-      aux m1 && submeth m1 m2
-    | _, `Link { contents = Some m2 } -> submeth m1 m2
-    | `Link { contents = Some m1 }, _ -> submeth m1 m2
-    | `Link v1, `Link v2 when v1 == v2 -> true
-    | _, `Link ({ contents = None } as x) -> x := Some m1; true
-    | `Link ({ contents = None } as x), _ -> x := Some m2; true
-    | `None, `None -> true
-    | _, `None -> false
-  in
-  submeth t1.methods t2.methods &&
   match t1.desc, t2.desc with
   | UVar v1, UVar v2 when v1 == v2 -> true
   | UVar _, _ -> t2 <: t1
@@ -231,7 +168,7 @@ let rec ( <: ) (t1:t) (t2:t) =
       (
         update_level l t1;
         if !Config.Debug.Typing.show_assignations then Printf.printf "%s <- %s\n%!" (to_string t2) (to_string t1);
-        x := `Link { t1 with methods = `None };
+        x := `Link t1;
         true
       )
   | Var ({ contents = `Free l } as x), _ ->
@@ -240,7 +177,7 @@ let rec ( <: ) (t1:t) (t2:t) =
       (
         update_level l t2;
         if !Config.Debug.Typing.show_assignations then Printf.printf "%s <- %s\n%!" (to_string t1) (to_string t2);
-        x := `Link { t2 with methods = `None };
+        x := `Link t2;
         true
       )
   | Arr (a, b), Arr (a', b') -> a' <: a && b <: b'
@@ -249,6 +186,8 @@ let rec ( <: ) (t1:t) (t2:t) =
   | Float, Float
   | String, String -> true
   | Tuple l, Tuple l' -> List.length l = List.length l' && List.for_all2 ( <: ) l l'
+  | Meth (a,(l,b)), Meth (a',(l',b')) when l = l' -> a <: a' && b <: b'
+  | Meth (t1,_), _ -> t1 <: t2
   | _, _ -> false
 
 (** Generalize existential variables to universal ones. *)
@@ -260,6 +199,7 @@ let generalize level t =
     | Var { contents = `Link _ } -> assert false
     | Arr (a, b) -> generalize a; generalize b
     | Tuple l -> List.iter generalize l
+    | Meth (a,(_,b)) -> generalize a; generalize b
     | Monad (_, a) -> generalize a
     | Bool | Int | Float | String -> ()
   in
@@ -278,9 +218,10 @@ let instantiate level t =
       | Var v -> Var v
       | Arr (a, b) -> Arr (aux a, aux b)
       | Tuple l -> Tuple (List.map aux l)
+      | Meth (a, (l, b)) -> Meth (aux a, (l, aux b))
       | Monad (m, a) -> Monad (m, aux a)
       | Bool | Int | Float | String as t -> t
     in
-    { desc ; methods = t.methods }
+    { desc }
   in
   aux t

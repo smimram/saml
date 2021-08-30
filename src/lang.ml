@@ -10,7 +10,6 @@ module T = Type
 type t =
   {
     desc : desc; (** The expression. *)
-    methods : (string * t) list; (** The methods. *)
     pos : pos; (** Position in source file. *)
     t : T.t; (** Type. *)
   }
@@ -28,6 +27,7 @@ and desc =
   | App of t * t
   | Seq of t * t
   | Tuple of t list
+  | Meth of t * (string * t)
   | Field of t * string
   | Closure of environment * t (** A closure. *)
 
@@ -52,20 +52,17 @@ let tenv = ref ([] : T.environment)
 let env = ref ([] : environment)
 
 (** Create an expression. *)
-let make ?(pos=dummy_pos) ?(methods=[]) ?t e =
+let make ?(pos=dummy_pos) ?t e =
   let t =
     match t with
     | Some t -> t
-    | None -> T.var ~methods:`Any max_int
+    | None -> T.var max_int
   in
   {
     desc = e;
-    methods;
     pos;
     t
   }
-
-let meth m e = { e with methods = m@e.methods }
 
 let var ?pos s = make ?pos (Var s)
 
@@ -75,11 +72,11 @@ let args_pattern = PVar args_name
 
 let args ?pos () = var ?pos args_name
 
-let bool ?pos ?methods b = make ?pos ?methods (Bool b)
+let bool ?pos b = make ?pos (Bool b)
 
-let float ?pos ?methods x = make ?pos ?methods (Float x)
+let float ?pos x = make ?pos (Float x)
 
-let string ?pos ?methods x = make ?pos ?methods (String x)
+let string ?pos x = make ?pos (String x)
 
 let fct ?pos args e = make ?pos (Fun (args, e))
 
@@ -91,16 +88,24 @@ let seq ?pos e1 e2 = make ?pos (Seq (e1, e2))
 
 let letin ?pos pat def body = make ?pos (Let (pat, def, body))
 
-let tuple ?pos ?methods l =
+let tuple ?pos l =
   match l with
   | [e] -> e
-  | l -> make ?pos ?methods (Tuple l)
+  | l -> make ?pos (Tuple l)
 
 let pair ?pos x y = tuple ?pos [x; y]
 
-let unit ?pos ?methods () = tuple ?pos ?methods []
+let unit ?pos () = tuple ?pos []
 
-let record ?pos l = unit ?pos ~methods:l ()
+let meth ?pos e lv =
+  make ?pos (Meth (e,lv))
+
+let rec meths ?pos e m =
+  match m with
+  | lv::m -> meth ?pos (meths ?pos e m) lv
+  | [] -> e
+
+let record ?pos l = meths ?pos (unit ?pos ()) (List.rev l)
 
 let field ?pos e l  = make ?pos (Field (e, l))
 
@@ -121,53 +126,48 @@ let closure ?pos env t =
 
 (** String representation of an expression. *)
 let rec to_string ~tab p e =
-  let p = if e.methods = [] then p else false in
   let pa p s = if p then Printf.sprintf "(%s)" s else s in
   let tabs ?(tab=tab) () = String.make (2*tab) ' ' in
   let tabss () = tabs ~tab:(tab+1) () in
-  let desc =
-    match e.desc with
-    | Var x -> x
-    | Bool b -> string_of_bool b
-    | Int n -> string_of_int n
-    | Float f -> string_of_float f
-    | String s -> Printf.sprintf "%S" s
-    | FFI ffi -> Printf.sprintf "<%s>" ffi.ffi_name
-    | Fun (pat, e) ->
-      let pat = string_of_pattern ~tab pat in 
-      let e = to_string ~tab:(tab+1) false e in
-      pa p (Printf.sprintf "fun %s ->%s%s" pat (if String.contains e '\n' then ("\n"^(tabs ~tab:(tab+1) ())) else " ") e)
-    | Closure (_, e) -> Printf.sprintf "<closure>%s" (to_string ~tab true e)
-    | App (e, a) ->
-      let e = to_string ~tab true e in
-      let a = to_string ~tab:(tab+1) true a in
-      pa p (Printf.sprintf "%s %s" e a)
-    | Seq (e1, e2) ->
-      let e1 = to_string ~tab false e1 in
-      let e2 = to_string ~tab false e2 in
-      pa p (Printf.sprintf "%s%s\n%s%s" e1 (if !Config.Debug.Lang.show_seq then ";" else "") (tabs ()) e2)
-    | Let (pat, def, body) ->
-      let pat = string_of_pattern ~tab pat in
-      let def = to_string ~tab:(tab+1) false def in
-      let def =
-        if String.contains def '\n' then Printf.sprintf "\n%s%s" (tabss ()) def
-        else Printf.sprintf " %s " def
-      in
-      let body = to_string ~tab false body in
-      if !Config.Debug.Lang.show_let then
-        pa p (Printf.sprintf "let %s =%s%s\n%s%s" pat def (if String.contains def '\n' then "\n"^tabs()^"in" else "in") (tabs ()) body)
-      else
-        pa p (Printf.sprintf "%s =%s\n%s%s" pat def (tabs ()) body)
-    | Tuple l ->
-      let l = List.map (to_string ~tab false) l |> String.concat ", " in
-      Printf.sprintf "(%s)" l
-    | Field (e, l) ->
-      Printf.sprintf "%s.%s" (to_string ~tab true e) l
-  in
-  if e.methods = [] then desc
-  else
-    let methods = List.map (fun (l,t) -> l ^ "=" ^ to_string ~tab:(tab+1) false t) e.methods |> String.concat ", " in
-    Printf.sprintf "(%s, %s)" desc methods
+  match e.desc with
+  | Var x -> x
+  | Bool b -> string_of_bool b
+  | Int n -> string_of_int n
+  | Float f -> string_of_float f
+  | String s -> Printf.sprintf "%S" s
+  | FFI ffi -> Printf.sprintf "<%s>" ffi.ffi_name
+  | Fun (pat, e) ->
+    let pat = string_of_pattern ~tab pat in 
+    let e = to_string ~tab:(tab+1) false e in
+    pa p (Printf.sprintf "fun %s ->%s%s" pat (if String.contains e '\n' then ("\n"^(tabs ~tab:(tab+1) ())) else " ") e)
+  | Closure (_, e) -> Printf.sprintf "<closure>%s" (to_string ~tab true e)
+  | App (e, a) ->
+    let e = to_string ~tab true e in
+    let a = to_string ~tab:(tab+1) true a in
+    pa p (Printf.sprintf "%s %s" e a)
+  | Seq (e1, e2) ->
+    let e1 = to_string ~tab false e1 in
+    let e2 = to_string ~tab false e2 in
+    pa p (Printf.sprintf "%s%s\n%s%s" e1 (if !Config.Debug.Lang.show_seq then ";" else "") (tabs ()) e2)
+  | Let (pat, def, body) ->
+    let pat = string_of_pattern ~tab pat in
+    let def = to_string ~tab:(tab+1) false def in
+    let def =
+      if String.contains def '\n' then Printf.sprintf "\n%s%s" (tabss ()) def
+      else Printf.sprintf " %s " def
+    in
+    let body = to_string ~tab false body in
+    if !Config.Debug.Lang.show_let then
+      pa p (Printf.sprintf "let %s =%s%s\n%s%s" pat def (if String.contains def '\n' then "\n"^tabs()^"in" else "in") (tabs ()) body)
+    else
+      pa p (Printf.sprintf "%s =%s\n%s%s" pat def (tabs ()) body)
+  | Tuple l ->
+    let l = List.map (to_string ~tab false) l |> String.concat ", " in
+    Printf.sprintf "(%s)" l
+  | Meth (e,(l,v)) -> Printf.sprintf "(%s,%s=%s)" (to_string ~tab:(tab+1) false e) l (to_string ~tab:(tab+1) false v)
+  | Field (e, l) ->
+    Printf.sprintf "%s.%s" (to_string ~tab true e) l
+
 and string_of_pattern ~tab = function
   | PVar x -> x
   | PTuple l ->
@@ -216,33 +216,19 @@ let rec check level (env:T.environment) e =
       let env, l = List.fold_map (type_of_pattern level) env l in
       env, T.tuple l
   in
-  let methods =
-    if e.methods = [] then `None
-    else
-      let methods = List.map (fun (l,e) -> check level env e; l, e.t) e.methods in
-      `Exactly methods
-  in
   match e.desc with
-  | Bool _ -> e >: T.bool ~methods ()
-  | Int _ -> e >: T.int ~methods ()
-  | Float _ -> e >: T.float ~methods ()
-  | String _ -> e >: T.string ~methods ()
-  | FFI f ->
-    assert (methods = `None); (* TODO *)
-    e >: T.instantiate level (T.arr f.ffi_itype f.ffi_otype)
+  | Bool _ -> e >: T.bool ()
+  | Int _ -> e >: T.int ()
+  | Float _ -> e >: T.float ()
+  | String _ -> e >: T.string ()
+  | FFI f -> e >: T.instantiate level (T.arr f.ffi_itype f.ffi_otype)
   | Var x ->
     let t = try List.assoc x env with Not_found -> type_error e "Unbound variable %s." x in
-    let methods =
-      match methods with
-      | `Exactly m -> m
-      | `None -> []
-    in
-    e >: T.meth methods (T.instantiate level t)
+    e >: T.instantiate level t
   | Seq (e1, e2) ->
     check level env e1;
     e1 <: T.unit ();
     check level env e2;
-    assert (methods = `None);
     e >: e2.t
   | Let (pat,def,body) ->
     check (level+1) env def;
@@ -262,27 +248,30 @@ let rec check level (env:T.environment) e =
       )@env
     in
     check level env body;
-    assert (methods = `None);
     e >: body.t
   | Fun (pat,v) ->
     let env, a = type_of_pattern level env pat in
     check level env v;
-    e >: T.arr ~methods a v.t
+    e >: T.arr a v.t
   | Closure _ -> assert false
   | App (f, v) ->
     let b = T.var level in
     check level env f;
     check level env v;
     f <: T.arr v.t b;
-    assert (methods = `None);
     e >: b
   | Tuple l ->
     List.iter (check level env) l;
-    e >: T.tuple ~methods (List.map (fun v -> v.t) l)
+    e >: T.tuple (List.map (fun v -> v.t) l)
+  | Meth (u,(l,v)) ->
+    check level env u;
+    check level env v;
+    e >: T.meth u.t (l, v.t)
   | Field (v, l) ->
     check level env v;
     let a = T.var level in
-    v <: T.var ~methods:(`At_least [l, a]) level;
+    let b = T.var level in
+    v <: T.meth b (l, a);
     e >: a
 
 let check t = check 0 !tenv t
@@ -316,11 +305,19 @@ let rec reduce env t =
   | Seq (t, u) ->
     let _ = reduce env t in
     reduce env u
+  | Meth (t,(l,v)) ->
+    meth (reduce env t) (l, reduce env v)
   | Tuple l ->
     { t with desc = Tuple (List.map (reduce env) l) }
   | Field (t, l) ->
     let t = reduce env t in
-    List.assoc l t.methods
+    let rec aux t =
+      match t.desc with
+      | Meth (_,(l',v)) when l = l' -> v
+      | Meth (t,(_,_)) -> aux t
+      | _ -> assert false
+    in
+    aux t
 
 and reduce_pattern env pat v =
   match pat, v.desc with

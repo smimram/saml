@@ -63,7 +63,7 @@ simple_expr:
   | BEGIN exprs END { $2 }
   | LPAR expr_list RPAR { tuple ~pos:$loc $2 }
   | LPAR labeled_expr_list RPAR { record ~pos:$loc $2 }
-  | LPAR expr COMMA labeled_expr_list RPAR { meth $4 $2 }
+  | LPAR expr COMMA labeled_expr_list RPAR { meths $2 (List.rev $4) }
   | simple_expr DOT IDENT { field $1 $3 }
   (* | MODULE n simple_decl_list END { record ~pos:$loc ~recursive:true $3 } *)
   (* | simple_expr PIPE IDENT { field ~pos:$loc $3 $1 } *)
