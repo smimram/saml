@@ -46,6 +46,14 @@ let make ?(methods=`None) t =
   let methods = aux methods in
   { desc = t ; methods }
 
+let rec string_of_methods = function
+  | `Meth ((l,_),`None) -> Printf.sprintf "%s=?" l
+  | `Meth ((l,_),m) -> Printf.sprintf "%s=?, %s" l (string_of_methods m)
+  | `Link { contents = Some m } -> string_of_methods m
+  | `Link { contents = None } -> "..."
+  | `None -> ""
+
+(** Add methods to a type. *)
 let meth m t =
   let rec aux = function
     | (l,a)::m -> `Meth ((l,a), aux m)
@@ -55,23 +63,31 @@ let meth m t =
     let methods = aux m in
     { t with methods }
 
+(*
+(** Add methods to a type. *)
 let meth' m t =
+  Printf.printf "meth': %s\n%!" (string_of_methods m);
   let rec aux = function
     | `Meth ((l,a),m) -> `Meth ((l,a), aux m)
     | `None -> t.methods
-    | `Link { contents = None } -> failwith "not sure about how to handle this case"
+    | `Link ({ contents = None } as x) ->
+      let rec aux2 = function
+        | `Meth (_,m) -> aux2 m
+        | `Link { contents = Some m } -> aux2 m
+        | `Link { contents = None } as m ->
+          (* We always merge the variables (this is the most canonical thing to
+             do, although not the only possibility). *)
+          x := Some m
+        | `None -> failwith "not sure"
+      in
+      aux2 t.methods;
+      t.methods
     | `Link { contents = Some m } -> aux m
   in
   if m = `None then t else
     let methods = aux m in
     { t with methods }
-
-let rec string_of_methods = function
-  | `Meth ((l,_),`None) -> Printf.sprintf "%s=?" l
-  | `Meth ((l,_),m) -> Printf.sprintf "%s=?, %s" l (string_of_methods m)
-  | `Link { contents = Some m } -> string_of_methods m
-  | `Link { contents = None } -> "..."
-  | `None -> ""
+*)
 
 let bool ?methods () = make ?methods Bool
 
@@ -101,8 +117,9 @@ let rec unlink x =
 (** Follow links in variables. *)
 let unvar t =
   let rec aux t =
+    if t.methods <> `None then t else
     match t.desc with
-    | Var { contents = `Link t } -> meth' t.methods (aux t)
+    | Var { contents = `Link t } -> aux t
     | _ -> t
   in
   aux t
@@ -174,6 +191,7 @@ let to_string t =
 let rec occurs x t =
   match (unvar t).desc with
   | Arr (a, b) -> occurs x a || occurs x b
+  | Var { contents = `Link a } -> occurs x a
   | Var v -> x == v
   | UVar _ -> false
   | Int | Float | String | Bool -> false
@@ -202,6 +220,7 @@ let rec ( <: ) (t1:t) (t2:t) =
   let t1 = unvar t1 in
   let t2 = unvar t2 in
   let rec submeth (m1:methods) (m2:methods) =
+    (* Printf.printf "submeth: %s / %s\n%!" (string_of_methods m1) (string_of_methods m2); *)
     match m1, m2 with
     | _, `Meth ((l2,a2),m2) ->
       (* Find l2 in m1 *)
@@ -220,7 +239,9 @@ let rec ( <: ) (t1:t) (t2:t) =
     | `None, `None -> true
     | _, `None -> false
   in
-  submeth t1.methods t2.methods &&
+  let submeth = submeth t1.methods t2.methods in
+  if not submeth then Printf.printf "bad methods\n%!";
+  submeth &&
   match t1.desc, t2.desc with
   | UVar v1, UVar v2 when v1 == v2 -> true
   | UVar _, _ -> t2 <: t1
@@ -230,8 +251,10 @@ let rec ( <: ) (t1:t) (t2:t) =
     else
       (
         update_level l t1;
+        let t1 = { t1 with methods = `None } in
         if !Config.Debug.Typing.show_assignations then Printf.printf "%s <- %s\n%!" (to_string t2) (to_string t1);
-        x := `Link { t1 with methods = `None };
+        x := `Link t1;
+        Printf.printf "x = %s\n%!" (to_string t2);
         true
       )
   | Var ({ contents = `Free l } as x), _ ->
