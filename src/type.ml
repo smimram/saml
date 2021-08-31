@@ -89,7 +89,7 @@ module Bind = struct
     with Not_found ->
     try env, of_string x
     with Not_found ->
-      Printf.printf "generate new var for %s\n%!" x;
+      (* Printf.printf "generate new var for %s\n%!" x; *)
       let a = var max_int in
       let env = (x,a)::env in
       env, a
