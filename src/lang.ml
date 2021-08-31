@@ -27,9 +27,11 @@ and desc =
   | App of t * t
   | Seq of t * t
   | Tuple of t list
-  | Meth of t * (string * t)
-  | Field of t * string
+  | Meth of t * (string * t) (** A method. *)
+  | Field of t * string (** A field. *)
   | Closure of environment * t (** A closure. *)
+  | Cast of t * T.t (** Type casting. *)
+  (* | Monad of string * t (\** Monad declaration : name, implementation. *\) *)
 
 and pattern =
   | PVar of string
@@ -105,9 +107,11 @@ let rec meths ?pos e m =
   | lv::m -> meth ?pos (meths ?pos e m) lv
   | [] -> e
 
-let record ?pos l = meths ?pos (unit ?pos ()) (List.rev l)
+let record ?pos l = meths ?pos (unit ?pos ()) l
 
 let field ?pos e l  = make ?pos (Field (e, l))
+
+let cast ?pos e t = make ?pos (Cast (e,t))
 
 let ffi ?pos name ?(eval=fun _ -> error "Not implemented: %s" name) a b =
   let f =
@@ -167,6 +171,9 @@ let rec to_string ~tab p e =
   | Meth (e,(l,v)) -> Printf.sprintf "(%s,%s=%s)" (to_string ~tab:(tab+1) false e) l (to_string ~tab:(tab+1) false v)
   | Field (e, l) ->
     Printf.sprintf "%s.%s" (to_string ~tab true e) l
+  | Cast (e, t) -> Printf.sprintf "(%s : %s)" (to_string ~tab:(tab+1) false e) (T.to_string t)
+  (* | Monad (s, v) -> *)
+    (* Printf.sprintf "monad %s = %s" s (to_string ~tab:(tab+1) false v) *)
 
 and string_of_pattern ~tab = function
   | PVar x -> x
@@ -273,6 +280,10 @@ let rec check level (env:T.environment) e =
     let b = T.var level in
     v <: T.meth b (l, a);
     e >: a
+  | Cast (u,a) ->
+    check level env u;
+    u <: a;
+    e >: a
 
 let check t = check 0 !tenv t
 
@@ -318,6 +329,8 @@ let rec reduce env t =
       | _ -> assert false
     in
     aux t
+  | Cast (u, _) ->
+    reduce env u
 
 and reduce_pattern env pat v =
   match pat, v.desc with

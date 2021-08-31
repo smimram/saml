@@ -56,6 +56,12 @@ let arr a b = make (Arr (a, b))
 
 let meth a lv = make (Meth (a, lv))
 
+let of_string = function
+  | "int" -> int ()
+  | "bool" -> bool ()
+  | "float" -> float ()
+  | t -> failwith ("Unknown type "^t)
+
 let rec unlink x =
   match x with
   | `Link x -> unlink x

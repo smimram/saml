@@ -62,11 +62,11 @@ simple_expr:
   | STRING { make ~pos:$loc (String $1) }
   | BEGIN exprs END { $2 }
   | LPAR expr_list RPAR { tuple ~pos:$loc $2 }
-  | LPAR labeled_expr_list RPAR { record ~pos:$loc $2 }
+  | LPAR labeled_expr_list RPAR { record ~pos:$loc (List.rev $2) }
   | LPAR expr COMMA labeled_expr_list RPAR { meths $2 (List.rev $4) }
+  | LPAR expr COLON typ RPAR { cast ~pos:$loc $2 $4 }
   | simple_expr DOT IDENT { field $1 $3 }
   (* | MODULE n simple_decl_list END { record ~pos:$loc ~recursive:true $3 } *)
-  (* | simple_expr PIPE IDENT { field ~pos:$loc $3 $1 } *)
   | BUILTIN STRING { Builtin.get ~pos:$loc $2 }
   | simple_expr PLUS simple_expr { app ~pos:$loc (Builtin.get ~pos:$loc "fadd") (pair ~pos:$loc $1 $3) }
   | simple_expr MINUS simple_expr { app ~pos:$loc (Builtin.get ~pos:$loc "fsub") (pair ~pos:$loc $1 $3) }
@@ -132,3 +132,6 @@ pattern:
 pattern_list:
   | pattern { [$1] }
   | pattern COMMA pattern_list { $1::$3 }
+
+typ:
+  | IDENT { Type.of_string $1 }
