@@ -220,10 +220,9 @@ let get_string t =
   | _ -> assert false
 
 (** Free variables of a pattern. *)
-let pattern_variables = function
+let rec pattern_variables = function
   | PVar x -> [x]
-(* | PRecord l -> List.map (fun (_,x,_) -> x) l *)
-  | _ -> assert false
+  | PTuple l -> List.fold_left (fun v p -> (pattern_variables p)@v) [] l
 
 (** {2 Type inference} *)
 

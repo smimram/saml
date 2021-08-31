@@ -54,7 +54,7 @@ prog:
 expr:
   | simple_expr { $1 }
   | simple_expr simple_expr { app ~pos:$loc $1 $2 }
-  | FUN pattern ARR expr { fct ~pos:$loc $2 $4 }
+  | FUN pattern ARR n expr { fct ~pos:$loc $2 $5 }
 
 simple_expr:
   | IDENT { var ~pos:$loc $1 }
@@ -62,7 +62,7 @@ simple_expr:
   | INT { make ~pos:$loc (Int $1) }
   | FLOAT { make ~pos:$loc (Float $1) }
   | STRING { make ~pos:$loc (String $1) }
-  | BEGIN exprs END { $2 }
+  | BEGIN n e = exprs END { e }
   | LPAR expr_list RPAR { tuple ~pos:$loc $2 }
   | LPAR labeled_expr_list RPAR { record ~pos:$loc (List.rev $2) }
   | MODULE n decls = decl_list END { modul ~pos:$loc (List.rev decls) }
@@ -116,7 +116,7 @@ exprs_ctx:
 
 simple_decl:
   | IDENT EQ expr { $1, $3 }
-  | DEF record = IDENT DOT field = IDENT EQ e = expr END { record, meth ~pos:$loc (var ~pos:$loc(record) record) (field,e) }
+  | DEF record = IDENT DOT field = IDENT EQ e = exprs END { record, meth ~pos:$loc (var ~pos:$loc(record) record) (field,e) }
   | DEF IDENT pattern EQ n exprs END { $2, fct ~pos:$loc $3 $6 }
 
 decl:

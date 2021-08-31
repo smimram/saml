@@ -6,14 +6,15 @@
 state = module
   def return x = fun s -> (s , x) end
 
-  # def bind (x , f) = fun s ->
-    # def (s , x) = x s end
-    # f (x s , s)
-  # end
-
-  def f(x) =
-    def x = 2 end
-    5
+  def bind (x , f) = fun s -> begin
+      def (s , x) = x s end
+      f (x s , s)
+    end
   end
+
+  # def f(x) =
+    # def f (s ,  x) = 2 end
+    # 5
+  # end
 end
 state = monad state a = b -> (b * a) with state
