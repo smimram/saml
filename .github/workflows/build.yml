@@ -15,5 +15,7 @@ jobs:
       run: opam pin -y add --no-action .
     - name: Install locally
       run: opam depext -y -i saml
-    - name: Build locally
+    - name: Build
       run: eval $(opam env) && make
+    - name: Test
+      run: eval $(opam env) && make test
