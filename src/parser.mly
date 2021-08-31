@@ -135,3 +135,10 @@ pattern_list:
 
 typ:
   | IDENT { Type.of_string $1 }
+  | LPAR in_tuple RPAR { Type.tuple $2 }
+  | LPAR RPAR { Type.unit () }
+  | typ ARR typ { Type.arr $1 $3 }
+
+in_tuple:
+  | typ { [$1] }
+  | typ TIMES in_tuple { $1::$3 }
