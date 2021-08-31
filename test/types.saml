@@ -1,3 +1,9 @@
 x = (3 : int)
 x = (5. : float)
 x = ((2, 3.) : (int * float))
+def id x = x end
+_ = id 2
+_ = id 2.
+id = (id : a -> a)
+_ = id 2
+_ = id 2.

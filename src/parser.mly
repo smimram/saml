@@ -53,7 +53,7 @@ prog:
 
 expr:
   | simple_expr { $1 }
-  | simple_expr expr { app ~pos:$loc $1 $2 }
+  | simple_expr simple_expr { app ~pos:$loc $1 $2 }
   | FUN pattern ARR expr { fct ~pos:$loc $2 $4 }
 
 simple_expr:
@@ -67,7 +67,7 @@ simple_expr:
   | LPAR labeled_expr_list RPAR { record ~pos:$loc (List.rev $2) }
   | MODULE n decls = decl_list END { modul ~pos:$loc (List.rev decls) }
   | LPAR expr COMMA labeled_expr_list RPAR { meths $2 (List.rev $4) }
-  | LPAR expr COLON typ RPAR { cast ~pos:$loc $2 ($4 []) }
+  | LPAR expr COLON typ RPAR { cast ~pos:$loc $2 (T.Bind.eval [] $4) }
   | simple_expr DOT IDENT { field $1 $3 }
   | BUILTIN STRING { Builtin.get ~pos:$loc $2 }
   | simple_expr PLUS simple_expr { app ~pos:$loc (Builtin.get ~pos:$loc "fadd") (pair ~pos:$loc $1 $3) }
@@ -85,7 +85,7 @@ simple_expr:
   | BNOT simple_expr { app ~pos:$loc (Builtin.get ~pos:$loc "not") $2 }
   | IF expr THEN exprs elif END { app ~pos:$loc (Builtin.get ~pos:$loc "ite") (tuple ~pos:$loc [$2; ufun ~pos:$loc $4; ufun ~pos:$loc $5]) }
 (* | WHILE expr DO exprs DONE { app ~pos:$loc (Builtin.get ~pos:$loc "while") (record ~pos:$loc ["cond",$2; "body", ufun ~pos:$loc $4]) } *)
-  | MONAD name = IDENT a = IDENT EQ t = typ WITH fields = simple_expr { make ~pos:$loc (Monad (name, (fun x -> t [a,x]), fields)) }
+  | MONAD name = IDENT a = IDENT EQ t = typ WITH fields = simple_expr { make ~pos:$loc (Monad (name, (fun x -> T.Bind.eval [a,x] t), fields)) }
 
 elif:
   | { unit () }

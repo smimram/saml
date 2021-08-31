@@ -64,21 +64,52 @@ let of_string = function
   | "int" -> int ()
   | "bool" -> bool ()
   | "float" -> float ()
-  | t -> failwith ("Unknown type "^t)
+  | _ -> raise Not_found
 
 (** Types with bindings. *)
 module Bind = struct
-  type nonrec t = (string * t) list -> t
+  type env = (string * t) list
 
-  let of_string t : t = fun env ->
-    try List.assoc t env
-    with Not_found -> of_string t
+  type 'a bind = env -> env * 'a
 
-  let arr a b : t = fun env -> arr (a env) (b env)
+  type nonrec t = t bind
 
-  let tuple l : t = fun env -> tuple (List.map (fun a -> a env) l)
+  let return a : 'a bind = fun env -> env, a
 
-  let unit () : t = fun _ -> unit ()
+  let ( let* ) (a : 'a bind) (f : 'a -> 'b bind) : 'b bind = fun env ->
+    let env, a = a env in
+    f a env
+
+  let eval env (a : t) = snd (a env)
+
+  let of_string x : t = fun env ->
+    try env, List.assoc x env
+    with Not_found ->
+    try env, of_string x
+    with Not_found ->
+      Printf.printf "generate new var for %s\n%!" x;
+      let a = var max_int in
+      let env = (x,a)::env in
+      env, a
+
+  let arr a b =
+    let* a = a in
+    let* b = b in
+    return (arr a b)
+
+  let tuple l =
+    let* l =
+      List.fold_right
+        (fun a l ->
+           let* a = a in
+           let* l = l in
+           return (a::l))
+        l
+        (return [])
+    in
+    return (tuple l)
+
+  let unit () = return (unit ())
 end
 
 let rec unlink x =
