@@ -35,8 +35,8 @@
 
 %start prog
 %type <Lang.t> prog
-/* %start prog_ctx */
-/* %type <Lang.t -> Lang.t> prog_ctx */
+(* %start prog_ctx *)
+(* %type <Lang.t -> Lang.t> prog_ctx *)
 %%
 
 n:
@@ -94,7 +94,7 @@ exprs:
   | expr NEWLINE exprs { seq ~pos:$loc $1 $3 }
   | decl n { letin ~pos:$loc $1 (unit ~pos:$loc ()) }
   | decl NEWLINE exprs { letin ~pos:$loc $1 $3 }
-  /* | INCLUDE STRING NEWLINE exprs { (parse_file_ctx $3) $5 } */
+  (* | INCLUDE STRING NEWLINE exprs { (parse_file_ctx $3) $5 } *)
 
 expr_list:
   | expr { [$1] }
@@ -104,12 +104,12 @@ labeled_expr_list:
   | IDENT EQ expr { [$1,$3] }
   | IDENT EQ expr COMMA labeled_expr_list { ($1,$3)::$5 }
 
-// an expression context, this is used for includes
+(* an expression context, this is used for includes *)
 exprs_ctx:
   | { fun e -> e }
   | expr exprs_ctx { fun e -> mk_seq $1 ($2 e) }
   | decl exprs_ctx { fun e -> mk_let $1 ($2 e) }
-  /* | INCLUDE LPAR STRING RPAR exprs_ctx { fun e -> (parse_file_ctx $3) ($5 e) } */
+  (* | INCLUDE LPAR STRING RPAR exprs_ctx { fun e -> (parse_file_ctx $3) ($5 e) } *)
 
 simple_decl:
   | IDENT EQ expr { $1, $3 }
