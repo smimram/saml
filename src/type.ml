@@ -56,6 +56,10 @@ let arr a b = make (Arr (a, b))
 
 let meth a lv = make (Meth (a, lv))
 
+let rec meths a = function
+  | lv::m -> meth (meths a m) lv
+  | [] -> a
+
 let of_string = function
   | "int" -> int ()
   | "bool" -> bool ()

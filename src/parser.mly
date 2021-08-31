@@ -1,12 +1,12 @@
 %{
-    open Stdlib
-    open Lang
+open Stdlib
+open Lang
 
-    let letin ~pos (pat,def) body =
-      letin ~pos pat def body
+let letin ?pos (pat,def) body =
+  letin ?pos pat def body  
 %}
 
-%token DEF LET BEGIN END FUN ARR DOT PIPE
+%token DEF LET BEGIN END FUN ARR DOT MONAD
 %token MODULE BUILTIN INCLUDE
 %token FOR WHILE TO DO DONE
 %token CMP LE GE LT GT
@@ -23,6 +23,7 @@
 %token <string> IDENT
 %token <string> STRING
 
+%right ARR
 %right BOR
 %right BAND
 %nonassoc BNOT
@@ -46,8 +47,8 @@ n:
 prog:
   | n exprs EOF { $2 }
 
-/* prog_ctx: */
-/* | exprs_ctx EOF { $1 } */
+(* prog_ctx: *)
+(* | exprs_ctx EOF { $1 } *)
 
 expr:
   | simple_expr { $1 }
@@ -63,10 +64,10 @@ simple_expr:
   | BEGIN exprs END { $2 }
   | LPAR expr_list RPAR { tuple ~pos:$loc $2 }
   | LPAR labeled_expr_list RPAR { record ~pos:$loc (List.rev $2) }
+  | MODULE n decls = simple_decl_list END { modul ~pos:$loc (List.rev decls) }
   | LPAR expr COMMA labeled_expr_list RPAR { meths $2 (List.rev $4) }
   | LPAR expr COLON typ RPAR { cast ~pos:$loc $2 ($4 []) }
   | simple_expr DOT IDENT { field $1 $3 }
-  (* | MODULE n simple_decl_list END { record ~pos:$loc ~recursive:true $3 } *)
   | BUILTIN STRING { Builtin.get ~pos:$loc $2 }
   | simple_expr PLUS simple_expr { app ~pos:$loc (Builtin.get ~pos:$loc "fadd") (pair ~pos:$loc $1 $3) }
   | simple_expr MINUS simple_expr { app ~pos:$loc (Builtin.get ~pos:$loc "fsub") (pair ~pos:$loc $1 $3) }
@@ -94,6 +95,7 @@ exprs:
   | expr NEWLINE exprs { seq ~pos:$loc $1 $3 }
   | decl n { letin ~pos:$loc $1 (unit ~pos:$loc ()) }
   | decl NEWLINE exprs { letin ~pos:$loc $1 $3 }
+  | name = IDENT EQ MONAD LPAR FUN a = IDENT TO t = typ RPAR rest = exprs { make ~pos:$loc (Monad (name, (fun x -> t [a,x]), var ~pos:$loc(name) name, rest)) }
   (* | INCLUDE STRING NEWLINE exprs { (parse_file_ctx $3) $5 } *)
 
 expr_list:
@@ -104,7 +106,7 @@ labeled_expr_list:
   | IDENT EQ expr { [$1,$3] }
   | IDENT EQ expr COMMA labeled_expr_list { ($1,$3)::$5 }
 
-(* an expression context, this is used for includes *)
+(* An expression context, this is used for includes *)
 exprs_ctx:
   | { fun e -> e }
   | expr exprs_ctx { fun e -> mk_seq $1 ($2 e) }
@@ -113,7 +115,12 @@ exprs_ctx:
 
 simple_decl:
   | IDENT EQ expr { $1, $3 }
+  | DEF record = IDENT DOT field = IDENT EQ e = expr END { record, meth ~pos:$loc (var ~pos:$loc(record) record) (field,e) }
   | DEF IDENT pattern EQ n exprs END { $2, fct ~pos:$loc $3 $6 }
+
+simple_decl_list:
+  | simple_decl NEWLINE simple_decl_list { $1::$3 }
+  | { [] }
 
 decl:
   | simple_decl { let x, v = $1 in PVar x, v }

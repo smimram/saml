@@ -2,9 +2,15 @@
 r = (a=5, b="x")
 # A decorated value
 v = (3, a="a", b=2)
-# Re-extend
+# Extend
 v = (v, c=4.)
+# Alternate syntax for extension
+def v.c = "a" end
 # A field
 x = v.c
-x = v.a
-x
+x = v.b
+# A module
+m = module
+  a = 4
+  b = 2.
+end

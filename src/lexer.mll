@@ -25,12 +25,12 @@ rule token = parse
   | "{" { LACC }
   | "}" { RACC }
   | "->" { ARR }
+  | "→" { ARR }
   | "+" { PLUS }
   | "-" { MINUS }
   | "*" { TIMES }
   | "/" { DIV }
   | "." { DOT }
-  | "|" { PIPE }
   (* | "`"([^' ']+ as s) { VARIANT s } *)
 
   (***** Keywords *****)
@@ -54,6 +54,7 @@ rule token = parse
   | "not" { BNOT }
   | "include" { INCLUDE }
   | "fun" { FUN }
+  | "monad" { MONAD }
 
   (***** Identifiers *****)
   | (['_''a'-'z''A'-'Z']['a'-'z''A'-'Z''0'-'9''_']*['\'']* as str) { IDENT str }

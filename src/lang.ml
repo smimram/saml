@@ -31,7 +31,7 @@ and desc =
   | Field of t * string (** A field. *)
   | Closure of environment * t (** A closure. *)
   | Cast of t * T.t (** Type casting. *)
-  (* | Monad of string * t (\** Monad declaration : name, implementation. *\) *)
+  | Monad of string * (T.t -> T.t) * t * t (** Monad declaration : name, type, implementation, rest. *)
 
 and pattern =
   | PVar of string
@@ -67,6 +67,14 @@ let make ?(pos=dummy_pos) ?t e =
   }
 
 let var ?pos s = make ?pos (Var s)
+
+(*
+let free_var_name =
+  let n = ref (-1) in
+  fun () ->
+    incr n;
+    Printf.sprintf "#x%d" !n
+*)
 
 let args_name = "args"
 
@@ -108,6 +116,23 @@ let rec meths ?pos e m =
   | [] -> e
 
 let record ?pos l = meths ?pos (unit ?pos ()) l
+
+(*
+module
+  b = v
+  a = u
+end
+is translated to
+a = u
+b = v
+(a=a, b=b)
+ *)
+let modul ?pos decls =
+  let rec aux e = function
+    | (l,v)::m -> aux (letin ~pos:v.pos (PVar l) v e) m
+    | [] -> e
+  in
+  aux (record ?pos (List.map (fun (l,_) -> l, var l) decls)) decls
 
 let field ?pos e l  = make ?pos (Field (e, l))
 
@@ -172,8 +197,8 @@ let rec to_string ~tab p e =
   | Field (e, l) ->
     Printf.sprintf "%s.%s" (to_string ~tab true e) l
   | Cast (e, t) -> Printf.sprintf "(%s : %s)" (to_string ~tab:(tab+1) false e) (T.to_string t)
-  (* | Monad (s, v) -> *)
-    (* Printf.sprintf "monad %s = %s" s (to_string ~tab:(tab+1) false v) *)
+  | Monad (s, t, v, body) ->
+    Printf.sprintf "%s = monad %s with %s\n%s" s (T.to_string (t (T.var 0))) (to_string ~tab:(tab+1) false v) (to_string ~tab false body)
 
 and string_of_pattern ~tab = function
   | PVar x -> x
@@ -284,6 +309,12 @@ let rec check level (env:T.environment) e =
     check level env u;
     u <: a;
     e >: a
+  | Monad (_, t, r, e) ->
+    check level env r;
+    check level env e;
+    let a = T.var level in
+    let ta = t a in
+    r <: T.meths (T.var level) ["return", T.arr a ta]
 
 let check t = check 0 !tenv t
 
@@ -331,6 +362,8 @@ let rec reduce env t =
     aux t
   | Cast (u, _) ->
     reduce env u
+  | Monad (_, _, _, e) ->
+    reduce env e
 
 and reduce_pattern env pat v =
   match pat, v.desc with
