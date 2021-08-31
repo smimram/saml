@@ -62,6 +62,21 @@ let of_string = function
   | "float" -> float ()
   | t -> failwith ("Unknown type "^t)
 
+(** Types with bindings. *)
+module Bind = struct
+  type nonrec t = (string * t) list -> t
+
+  let of_string t : t = fun env ->
+    try List.assoc t env
+    with Not_found -> of_string t
+
+  let arr a b : t = fun env -> arr (a env) (b env)
+
+  let tuple l : t = fun env -> tuple (List.map (fun a -> a env) l)
+
+  let unit () : t = fun _ -> unit ()
+end
+
 let rec unlink x =
   match x with
   | `Link x -> unlink x

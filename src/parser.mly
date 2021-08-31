@@ -64,7 +64,7 @@ simple_expr:
   | LPAR expr_list RPAR { tuple ~pos:$loc $2 }
   | LPAR labeled_expr_list RPAR { record ~pos:$loc (List.rev $2) }
   | LPAR expr COMMA labeled_expr_list RPAR { meths $2 (List.rev $4) }
-  | LPAR expr COLON typ RPAR { cast ~pos:$loc $2 $4 }
+  | LPAR expr COLON typ RPAR { cast ~pos:$loc $2 ($4 []) }
   | simple_expr DOT IDENT { field $1 $3 }
   (* | MODULE n simple_decl_list END { record ~pos:$loc ~recursive:true $3 } *)
   | BUILTIN STRING { Builtin.get ~pos:$loc $2 }
@@ -134,10 +134,10 @@ pattern_list:
   | pattern COMMA pattern_list { $1::$3 }
 
 typ:
-  | IDENT { Type.of_string $1 }
-  | LPAR in_tuple RPAR { Type.tuple $2 }
-  | LPAR RPAR { Type.unit () }
-  | typ ARR typ { Type.arr $1 $3 }
+  | IDENT { Type.Bind.of_string $1 }
+  | LPAR in_tuple RPAR { Type.Bind.tuple $2 }
+  | LPAR RPAR { Type.Bind.unit () }
+  | typ ARR typ { Type.Bind.arr $1 $3 }
 
 in_tuple:
   | typ { [$1] }
