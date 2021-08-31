@@ -55,6 +55,7 @@ rule token = parse
   | "include" { INCLUDE }
   | "fun" { FUN }
   | "monad" { MONAD }
+  | "with" { WITH }
 
   (***** Identifiers *****)
   | (['_''a'-'z''A'-'Z']['a'-'z''A'-'Z''0'-'9''_']*['\'']* as str) { IDENT str }

@@ -1,1 +1,9 @@
-x = 2
+identity = module
+  def return x = x end
+end
+identity = monad identity a = a with identity
+
+state = module
+  def return x = fun s -> (s , x) end
+end
+# state = monad state a = b -> (b * b) with state
