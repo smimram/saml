@@ -223,6 +223,25 @@ let update_level l t =
   in
   aux t
 
+let rec invoke a l =
+  let a = unvar a in
+  match a.desc with
+  | Meth (_, (l',b)) when l' = l -> b
+  | Meth (b, _) -> invoke b l
+  | Var ({ contents = `Free level } as x) ->
+    let a = var level in
+    let b = var level in
+    x := `Link (meth a (l,b));
+    b
+  | _ -> raise Not_found
+
+let rec hide a l =
+  let a = unvar a in
+  match a.desc with
+  | Meth (a, (l',_)) when l' = l -> hide a l
+  | Meth (a, (l,b)) -> meth (hide a l) (l,b)
+  | _ -> a
+
 let rec ( <: ) (t1:t) (t2:t) =
   (* Printf.printf "subtype: %s <: %s\n%!" (to_string t1) (to_string t2); *)
   let t1 = unvar t1 in
@@ -255,8 +274,10 @@ let rec ( <: ) (t1:t) (t2:t) =
   | Float, Float
   | String, String -> true
   | Tuple l, Tuple l' -> List.length l = List.length l' && List.for_all2 ( <: ) l l'
-  | Meth (a,(l,b)), Meth (a',(l',b')) when l = l' -> a <: a' && b <: b'
-  | Meth (t1,_), _ -> t1 <: t2
+  | Meth (a,(l,b)), _ ->
+    let b' = invoke t2 l in
+    b <: b' && hide a l <: t2
+  | _, Meth (t2,_) -> t1 <: t2
   | _, _ -> false
 
 (** Generalize existential variables to universal ones. *)
