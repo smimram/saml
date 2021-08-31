@@ -60,6 +60,8 @@ let rec meths a = function
   | lv::m -> meth (meths a m) lv
   | [] -> a
 
+let record r = meths (unit ()) r
+
 let of_string = function
   | "int" -> int ()
   | "bool" -> bool ()
@@ -110,6 +112,17 @@ module Bind = struct
     return (tuple l)
 
   let unit () = return (unit ())
+
+  let record r =
+    let* r =
+      List.fold_right
+        (fun ((l:string), a) r ->
+           let* a = a in
+           let* r = r in
+           return ((l,a)::r)
+        ) r (return [])
+    in
+    return (record r)
 end
 
 let rec unlink x =

@@ -140,9 +140,14 @@ pattern_list:
 typ:
   | IDENT { Type.Bind.of_string $1 }
   | LPAR in_tuple RPAR { Type.Bind.tuple $2 }
+  | LPAR in_record RPAR { Type.Bind.record (List.rev $2) }
   | LPAR RPAR { Type.Bind.unit () }
   | typ ARR typ { Type.Bind.arr $1 $3 }
 
 in_tuple:
   | typ { [$1] }
   | typ TIMES in_tuple { $1::$3 }
+
+in_record:
+  | l = IDENT COLON t = typ { [l,t] }
+  | l = IDENT COLON t = typ COMMA r = in_record { (l,t)::r }

@@ -311,8 +311,12 @@ let rec check level (env:T.environment) e =
   | Monad (_, t, r) ->
     check level env r;
     let a = T.var level in
-    let ta = t a in
-    r <: T.meths (T.var level) ["return", T.arr a ta]
+    let b = T.var level in
+    let c = T.var level in
+    r <: T.meths (T.var level) [
+      "return", T.arr a (t a);
+      "bind", T.arr (T.tuple [t b; T.arr b (t c)]) (t c)
+    ]
 
 let check t = check 0 !tenv t
 
