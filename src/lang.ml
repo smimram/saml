@@ -32,6 +32,7 @@ and desc =
   | Closure of environment * t (** A closure. *)
   | Cast of t * T.t (** Type casting. *)
   | Monad of string * (T.t -> T.t) * t (** Monad declaration : name, type, implementation. *)
+  (* | Bind of string * t * t (\** A bind. *\) *)
 
 and pattern =
   | PVar of string
@@ -308,7 +309,7 @@ let rec check level (env:T.environment) e =
     check level env u;
     u <: a;
     e >: a
-  | Monad (_, t, r) ->
+  | Monad (m, t, r) ->
     check level env r;
     let a = T.var level in
     let b = T.var level in
@@ -316,6 +317,11 @@ let rec check level (env:T.environment) e =
     r <: T.meths (T.var level) [
       "return", T.arr a (t a);
       "bind", T.arr (T.tuple [t b; T.arr b (t c)]) (t c)
+    ];
+    let m = T.monad m in
+    e >: T.meths r.t [
+      "bind", T.arr (T.tuple [m b; T.arr b (m c)]) (m c);
+      "return", T.arr a (m a);
     ]
 
 let check t = check 0 !tenv t

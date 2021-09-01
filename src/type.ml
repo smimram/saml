@@ -25,10 +25,7 @@ and desc =
 and environment = (string * t) list
 
 (** A monad. *)
-and monad =
-  {
-    m_name : string;
-  }
+and monad = string
 
 type typ = t
 
@@ -67,6 +64,8 @@ let of_string = function
   | "bool" -> bool ()
   | "float" -> float ()
   | _ -> raise Not_found
+
+let monad m a = make (Monad (ref (`Monad m), a))
 
 (** Types with bindings. *)
 module Bind = struct
@@ -187,7 +186,7 @@ let to_string t =
       let m =
         match unlink !m with
         | `Unknown -> "monad"
-        | `Monad m -> m.m_name
+        | `Monad m -> m
         | `Link _ -> assert false
       in
       let a = to_string true a in
