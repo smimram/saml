@@ -1,12 +1,15 @@
-TESTS = $(wildcard *.saml)
+TESTS = $(addprefix passed/,$(wildcard *.saml))
 SAML = dune exec ../src/saml.exe
 
 all: test
 
-test:
-	@for i in $(TESTS); do \
-	  echo "Testing $$i..."; \
-	  $(SAML) $$i || exit 1; \
-	done
+test: $(TESTS)
 
-.PHONY: test
+passed/%: %
+	@mkdir -p passed
+	@echo "## Testing $<"
+	@echo
+	@$(SAML) $< && touch $@
+
+clean:
+	rm -rf passed

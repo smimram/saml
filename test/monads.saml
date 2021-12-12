@@ -8,13 +8,8 @@ state = module
 
   def bind (x , f) = fun s -> begin
       def (s , x) = x s end
-      f (x s , s)
+      (f x) s
     end
   end
-
-  # def f(x) =
-    # def f (s ,  x) = 2 end
-    # 5
-  # end
 end
 state = monad state a = b -> (b * a) with state

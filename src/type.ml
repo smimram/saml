@@ -19,13 +19,16 @@ and desc =
   | Arr of t * t
   | Tuple of t list
   | Meth of t * (string * t)
-  | Monad of ([`Unknown | `Monad of monad | `Link of 'b] as 'b) ref * t
+  | Monad of monad_link * t
 
 (** Typing environment. *)
 and environment = (string * t) list
 
 (** A monad. *)
 and monad = string
+
+(** A monad being infered. *)
+and monad_link = ([`Unknown | `Monad of monad | `Link of 'm] as 'm) ref
 
 type typ = t
 

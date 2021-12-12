@@ -32,7 +32,7 @@ and desc =
   | Closure of environment * t (** A closure. *)
   | Cast of t * T.t (** Type casting. *)
   | Monad of string * (T.t -> T.t) * t (** Monad declaration : name, type, implementation. *)
-  (* | Bind of string * t * t (\** A bind. *\) *)
+  | Bind of T.monad_link * string * t * t (** A bind. *)
 
 and pattern =
   | PVar of string
@@ -200,6 +200,10 @@ let rec to_string ~tab p e =
   | Cast (e, t) -> Printf.sprintf "(%s : %s)" (to_string ~tab:(tab+1) false e) (T.to_string t)
   | Monad (s, t, v) ->
     pa p (Printf.sprintf "monad %s = %s with %s" s (T.to_string (t (T.var 0))) (to_string ~tab:(tab+1) false v))
+  | Bind (_, x, def, body) ->
+    let def = to_string ~tab:(tab+1) false def in
+    let body = to_string ~tab false body in
+    pa p (Printf.sprintf "%s = !%s\n%s%s" x def (tabs ()) body)
 
 and string_of_pattern ~tab = function
   | PVar x -> x
@@ -323,6 +327,15 @@ let rec check level (env:T.environment) e =
       "bind", T.arr (T.tuple [m b; T.arr b (m c)]) (m c);
       "return", T.arr a (m a);
     ]
+  | Bind (m, x, def, body) ->
+    let m a = T.make (T.Monad (m, a)) in
+    let a = T.var level in
+    let b = T.var level in
+    check (level+1) env def;
+    def <: m a;
+    check level ((x,a)::env) body;
+    body <: m b;
+    e >: body.t
 
 let check t = check 0 !tenv t
 
@@ -371,6 +384,28 @@ let rec reduce env t =
   | Cast (u, _) ->
     reduce env u
   | Monad (_, _, e) ->
+    reduce env e
+  | Bind (m, x, t, u) ->
+    let m =
+      let rec aux = function
+        | `Unknown -> error "unknown monad"
+        | `Link m -> aux m
+        | `Monad m -> m
+      in
+      aux !m
+    in
+    let m_name = m in
+    let m =
+      try List.assoc m env
+      with Not_found -> error "Could not find monad %s" m
+    in
+    let m =
+      match m.desc with
+      | Monad (_, _, m) -> m
+      | _ -> error "Monad expected for %s" m_name
+    in
+    let bind = field m "bind" in
+    let e = app (app bind (fct (PVar x) t)) u in
     reduce env e
 
 and reduce_pattern env pat v =

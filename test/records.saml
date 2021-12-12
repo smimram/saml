@@ -14,3 +14,6 @@ m = module
   a = 4
   b = 2.
 end
+# Order of members
+_ = (m : (a : int, b : float))
+_ = (m : (b : float, a : int))
