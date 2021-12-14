@@ -9,13 +9,9 @@ jobs:
     - uses: actions/checkout@v2
     - name: Setup OCaml
       uses: avsm/setup-ocaml@v2
-    - name: Install depext module
-      run: opam install -y depext
     - name: Pin locally
-      run: opam pin -y add --no-action .
+      run: opam pin -y add -n .
     - name: Install locally
-      run: opam depext -y -i saml
-    - name: Build
-      run: eval $(opam env) && make
+      run: opam install -y -t saml
     - name: Test
-      run: eval $(opam env) && make test
+      run: opam exec make test
