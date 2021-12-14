@@ -4,7 +4,7 @@ on: [push]
 
 jobs:
   build:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-lastest
     steps:
     - uses: actions/checkout@v2
     - name: Setup OCaml
@@ -15,3 +15,10 @@ jobs:
       run: opam install -y -t saml
     - name: Test
       run: opam exec make test
+    - name: Build doc
+      run: opam exec dune build @doc
+    - name: Deploy doc
+      uses: JamesIves/github-pages-deploy-action@4.1.6
+      with:
+        branch: gh-pages
+        folder: _build/default/_doc/_html

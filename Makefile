@@ -3,3 +3,5 @@ all install clean:
 
 test:
 	make -C test
+
+.PHONY: test
