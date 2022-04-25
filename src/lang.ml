@@ -339,7 +339,7 @@ let rec check level (env:T.environment) e =
 
 let check t = check 0 !tenv t
 
-(** Evaluate a term to a value *)
+(** Evaluate a term to a value. *)
 let rec reduce env t =
   (* Printf.printf "reduce: %s\n\n%!" (to_string t); *)
   match t.desc with

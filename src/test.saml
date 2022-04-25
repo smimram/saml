@@ -10,9 +10,13 @@
 
 # print = builtin "print"
 
-# m = module
-  # def f x = x end
-# end
+m = module
+  def f x = x end
+  def bind (a, f) = fun t -> (f (a t)) t end
+  def return c = fun t -> c end
+end
+
+m = monad stream a = float -> a with m
 
 # def double x = 2. * x end
 

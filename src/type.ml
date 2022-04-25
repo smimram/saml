@@ -228,14 +228,14 @@ let update_level l t =
 let rec invoke a l =
   let a = unvar a in
   match a.desc with
-  | Meth (_, (l',b)) when l' = l -> b
+  | Meth (_, (l',b)) when l' = l -> Some b
   | Meth (b, _) -> invoke b l
   | Var ({ contents = `Free level } as x) ->
     let a = var level in
     let b = var level in
     x := `Link (meth a (l,b));
-    b
-  | _ -> raise Not_found
+    Some b
+  | _ -> None
 
 let rec hide a l =
   let a = unvar a in
@@ -277,8 +277,11 @@ let rec ( <: ) (t1:t) (t2:t) =
   | String, String -> true
   | Tuple l, Tuple l' -> List.length l = List.length l' && List.for_all2 ( <: ) l l'
   | Meth (a,(l,b)), _ ->
-    let b' = invoke t2 l in
-    b <: b' && hide a l <: t2
+    (
+      match invoke t2 l with
+      | Some b' -> b <: b' && hide a l <: t2
+      | None -> false
+    )
   | _, Meth (t2,_) -> t1 <: t2
   | _, _ -> false
 
