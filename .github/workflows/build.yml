@@ -16,7 +16,9 @@ jobs:
     - name: Test
       run: opam exec make test
     - name: Build doc
-      run: opam exec dune build @doc
+      run: |
+        opam install -y odoc
+        opam exec dune build @doc
     - name: Deploy doc
       uses: JamesIves/github-pages-deploy-action@4.1.6
       with:
